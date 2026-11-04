@@ -24,6 +24,34 @@ static void start(NebulaActor* actor, void* user) {
     game->log(me, "the boss is here");
 }
 
+static float root(float value) {
+    float guess = value > 1.0f ? value : 1.0f;
+    int i;
+    for (i = 0; i < 12; i++) {
+        guess = (guess + value / guess) * 0.5f;
+    }
+    return guess;
+}
+
+/* It looks straight at the player: on a small planet a level line would leave the ground. */
+static void face_player(NebulaActor* actor) {
+    float at[3], to[3], gap[3];
+    float length;
+    NebulaActor* player = game->player();
+    if (player == 0) {
+        return;
+    }
+    game->get_position(actor, at);
+    game->get_position(player, to);
+    gap[0] = to[0] - at[0];
+    gap[1] = to[1] - at[1];
+    gap[2] = to[2] - at[2];
+    length = root(gap[0] * gap[0] + gap[1] * gap[1] + gap[2] * gap[2]);
+    if (length > 1.0f) {
+        game->set_front(actor, gap);
+    }
+}
+
 static void move_ahead(NebulaActor* actor, float speed) {
     float at[3], front[3];
     int i;
@@ -48,7 +76,7 @@ static void update(NebulaActor* actor, void* user) {
         }
         break;
     case NOTICING:
-        game->turn_to_player(actor, 6.0f);
+        face_player(actor);
         if (time == 0) {
             game->shake_camera_by(NEBULA_SHAKE_NORMAL);
         }
@@ -57,14 +85,14 @@ static void update(NebulaActor* actor, void* user) {
         }
         break;
     case WALKING:
-        game->turn_to_player(actor, 3.0f * pace);
+        face_player(actor);
         move_ahead(actor, 4.0f * pace);
         if (time >= 120 || game->distance_to_player(actor) < 300.0f) {
             state_is(actor, WINDING_UP, "winding up");
         }
         break;
     case WINDING_UP:
-        game->turn_to_player(actor, 2.0f);
+        face_player(actor);
         if (time >= 40) {
             state_is(actor, CHARGING, "charging");
         }
