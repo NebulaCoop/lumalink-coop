@@ -1,0 +1,18 @@
+[package]
+name = "lumalink-gui"
+description = "The LumaLink window: drop a mod, get a .luma."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+lumalink-core = { path = "../lumalink-core" }
+rfd.workspace = true
+sys-locale = "0.3"
+tempfile.workspace = true

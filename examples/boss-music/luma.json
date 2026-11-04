@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ],
+  "id": "boss-music",
+  "name": "Boss Music",
+  "description": "A track of the mod's, started by its code.",
+  "plugins": [
+    {
+      "api": 1,
+      "binaries": {
+        "windows-x64": "plugins/boss_music.dll"
+      }
+    }
+  ]
+}

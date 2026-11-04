@@ -1,0 +1,31 @@
+[workspace]
+members = ["crates/lumalink-core", "crates/lumalink", "crates/lumalink-gui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+rust-version = "1.85"
+repository = "https://github.com/keepvaibin/lumalink"
+homepage = "https://github.com/keepvaibin/lumalink"
+keywords = ["nebula", "mods", "riivolution", "texture-pack", "converter"]
+
+[workspace.dependencies]
+anyhow = "1"
+nebula-import = { git = "https://github.com/keepvaibin/nebula.git", branch = "main" }
+roxmltree = "0.20"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "lzma"] }
+sevenz-rust2 = "0.13"
+tempfile = "3"
+clap = { version = "4", features = ["derive"] }
+eframe = "0.31"
+rfd = "0.15"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"

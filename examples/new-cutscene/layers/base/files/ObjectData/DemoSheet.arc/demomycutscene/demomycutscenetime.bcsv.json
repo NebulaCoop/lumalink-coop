@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {
+      "PartName": "Look",
+      "TotalStep": 240,
+      "SuspendFlag": 0
+    },
+    {
+      "PartName": "Wave",
+      "TotalStep": 240,
+      "SuspendFlag": 0
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ],
+  "id": "new-cutscene",
+  "name": "A New Cutscene",
+  "description": "Mario looks up and waves when he lands in Good Egg, with his own music. All data, no code.",
+  "music": [
+    {
+      "name": "MyCutsceneTheme",
+      "file": "AudioRes/Stream/MyCutsceneTheme.ogg"
+    }
+  ]
+}

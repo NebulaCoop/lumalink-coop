@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "name": "DemoGroup",
+      "DemoName": "MyCutscene",
+      "TimeSheetName": "MyCutscene",
+      "l_id": 500,
+      "SW_APPEAR": 120,
+      "SW_DEAD": -1,
+      "SW_A": -1,
+      "SW_B": -1,
+      "pos_x": -1869.158935546875,
+      "pos_y": -14790.455078125,
+      "pos_z": -19621.21875,
+      "dir_x": 0.0,
+      "dir_y": 0.0,
+      "dir_z": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "scale_z": 1.0
+    }
+  ]
+}

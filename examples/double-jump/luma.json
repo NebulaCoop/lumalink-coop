@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [],
+  "id": "double-jump",
+  "name": "Double Jump",
+  "description": "A second jump in the air.",
+  "plugins": [
+    {
+      "api": 1,
+      "binaries": {
+        "windows-x64": "plugins/double_jump.dll"
+      }
+    }
+  ]
+}

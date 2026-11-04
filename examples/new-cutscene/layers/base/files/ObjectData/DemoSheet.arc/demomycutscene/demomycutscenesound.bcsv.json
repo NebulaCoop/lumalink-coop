@@ -1,0 +1,18 @@
+{
+  "rows": [
+    {
+      "PartName": "Look",
+      "Bgm": "MyCutsceneTheme",
+      "SystemSe": "",
+      "ReturnBgm": 0,
+      "BgmWipeoutFrame": -1
+    },
+    {
+      "PartName": "Wave",
+      "Bgm": "",
+      "SystemSe": "",
+      "ReturnBgm": 1,
+      "BgmWipeoutFrame": -1
+    }
+  ]
+}

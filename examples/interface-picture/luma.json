@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ],
+  "id": "interface-picture",
+  "name": "A Blue Coin Counter",
+  "description": "The counter's pictures, as PNG files."
+}
