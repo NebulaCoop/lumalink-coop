@@ -122,6 +122,20 @@ const SETTINGS: &[Setting] = &[
     set(0x802B07A0, LIFE_UP_HEALTH, Reads::Nothing(0), "a Life Up gives no health"),
     set(0x802DDF50, NO_LOW_HEALTH_WARNING, Reads::Skipped, "no low health warning"),
     set(0x803CDB60, NO_DARK_COMET_RULES, Reads::ReturnsZero, "Daredevil comets are like any other"),
+    set(0x803B237C, MAX_LIVES, Reads::Number, "the most lives"),
+    set(0x803B236C, MAX_LIVES, Reads::Number, "the most lives"),
+    set(0x803B2348, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
+    set(0x803B22E4, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
+    set(0x803B2318, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
+    set(0x803B23E0, MAX_STAR_BITS, Reads::Number, "the most star bits kept"),
+    set(0x803B2550, MAX_CARRIED_STAR_BITS, Reads::Number, "the most star bits carried"),
+    set(0x803B2598, MAX_CARRIED_STAR_BITS, Reads::Number, "the most star bits carried"),
+    set(0x80345860, MAX_COINS, Reads::Number, "the most coins in a stage"),
+    set(0x80345890, COINS_PER_ONE_UP, Reads::Number, "coins for a 1-up"),
+    set(0x803458C8, PURPLE_COINS_FOR_STAR, Reads::Compared, "purple coins for their star"),
+    set(0x8034592C, STAR_BITS_PER_ONE_UP, Reads::Number, "star bits for a 1-up"),
+    set(0x802B1CA8, WATER_AIR, Reads::Number, "the air under water"),
+    set(0x802AE8A8, WATER_AIR, Reads::Number, "the air under water"),
 ];
 
 /// A place in the program a mod set a value of, read from the instruction it wrote.
@@ -357,6 +371,14 @@ impl SpareMemory {
 /// table has the addresses mods use.
 pub fn find(address: u32, value: &[u8]) -> Option<&'static KnownPatch> {
     KNOWN.iter().find(|k| k.address == (address | 0x8000_0000) && crate::riivolution::hex_bytes(k.value) == value)
+}
+
+/// Whether a place in the program is a table of pointers, whose values also differ between versions.
+pub fn is_table(address: u32) -> bool {
+    let address = address | 0x8000_0000;
+    (crate::object_table::OBJECT_TABLE..crate::object_table::OBJECT_TABLE + crate::object_table::OBJECT_ROWS.len() as u32 * 12).contains(&address)
+        || COMET_TABLES.iter().any(|(at, _)| (*at..*at + 0x400).contains(&address))
+        || (EVENT_FLAG_TABLE..EVENT_FLAG_TABLE + 0x8000).contains(&address)
 }
 
 /// A switch's name in `luma.json`.

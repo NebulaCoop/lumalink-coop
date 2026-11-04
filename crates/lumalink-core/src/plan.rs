@@ -271,6 +271,24 @@ struct Builder<'a> {
     store: Option<&'a GameStore>,
     spare: known_patches::SpareMemory,
     comet_hook: Option<u32>,
+    /// The version of the game the patch being read was written for. Every table here is the first release's: others are read through `region_map`.
+    version: char,
+}
+
+/// The game's own program, to compare a mod's with: `--base`, or beside the imported game.
+static BASE_PROGRAM: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// A program file (main.dol) to compare a mod's with.
+pub fn set_base_program(path: Option<std::path::PathBuf>) {
+    *BASE_PROGRAM.lock().unwrap_or_else(|e| e.into_inner()) = path;
+}
+
+fn base_program(store: Option<&GameStore>) -> Option<Vec<u8>> {
+    if let Some(path) = BASE_PROGRAM.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        return fs::read(path).ok();
+    }
+    let folder = store?.path.parent()?.to_path_buf();
+    fs::read(folder.join("game-inputs").join("sys").join("main.dol")).ok()
 }
 
 impl Builder<'_> {
@@ -284,7 +302,7 @@ impl Builder<'_> {
             return;
         }
         if f.disc.eq_ignore_ascii_case("main.dol") || f.disc.eq_ignore_ascii_case("/main.dol") {
-            self.plan.note(Level::Lost, "main.dol: the Wii program, which Nebula does not have");
+            self.changed_program(sd_root, patch_root, &host);
             return;
         }
         if f.disc.starts_with('/') {
@@ -346,7 +364,54 @@ impl Builder<'_> {
         }
     }
 
+    /// A whole main.dol in a mod: what it changes, against the game's own.
+    fn changed_program(&mut self, sd_root: &Path, patch_root: &Path, host: &Path) {
+        let Some(changed) = fs::read(host).ok() else {
+            return;
+        };
+        let Some(original) = base_program(self.store) else {
+            self.plan.note(Level::Lost, "main.dol: to read what it changes, LumaLink needs the game's own: give it with --base");
+            return;
+        };
+        match crate::gecko::program_changes(&changed, &original) {
+            Some(writes) => self.writes(sd_root, patch_root, writes),
+            None => self.plan.note(Level::Lost, "main.dol: this isn't a program LumaLink can read"),
+        }
+    }
+
+    /// A plain write from anywhere: a code list, or a changed program.
+    fn writes(&mut self, sd_root: &Path, patch_root: &Path, writes: Vec<(u32, Vec<u8>)>) {
+        for (offset, value) in writes {
+            let patch = MemoryPatch { offset, value, ..Default::default() };
+            self.memory(sd_root, patch_root, &patch);
+        }
+    }
+
     fn memory(&mut self, sd_root: &Path, patch_root: &Path, patch: &MemoryPatch) {
+        // Addresses and the pointers in tables, as the first release has them.
+        let moved;
+        let patch = if self.version == 'E' || !matches!(self.version, 'P' | 'J' | 'K') {
+            patch
+        } else {
+            let mut one = patch.clone();
+            one.offset = crate::region_map::to_first_release(patch.offset, self.version);
+            if known_patches::is_table(one.offset) {
+                one.value = crate::region_map::pointers_to_first_release(&patch.value, self.version);
+            }
+            moved = one;
+            &moved
+        };
+        // A code list in a file: each write in it is read like a patch's.
+        if patch.ocarina && !patch.value_file.is_empty() {
+            if let Some(bytes) = resolve(sd_root, patch_root, &patch.value_file).filter(|f| f.is_file()).and_then(|f| fs::read(f).ok()) {
+                let list = crate::gecko::from_gct(&bytes);
+                for _ in 0..list.other {
+                    self.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                }
+                self.writes(sd_root, patch_root, list.writes);
+                return;
+            }
+        }
         // Tables in the Wii program that Nebula keeps as data.
         if !patch.ocarina && !patch.value_file.is_empty() {
             let file = resolve(sd_root, patch_root, &patch.value_file).filter(|f| f.is_file());
@@ -470,7 +535,7 @@ impl Builder<'_> {
             each.selected = 0;
         }
         alone.sections[section].options[option].selected = choice + 1;
-        let mut part = Builder { plan: Plan::default(), store: self.store, spare: known_patches::SpareMemory::default(), comet_hook: None };
+        let mut part = Builder { plan: Plan::default(), store: self.store, spare: known_patches::SpareMemory::default(), comet_hook: None, version: 'E' };
         for patch in alone.active_patches(game_id) {
             let patch_root = if patch.root.is_empty() {
                 file.xml.parent().unwrap_or(&file.sd_root).to_path_buf()
@@ -698,6 +763,7 @@ impl Builder<'_> {
             return Ok(false);
         }
         let game_id = version_named(&disc.target, game_id);
+        self.version = game_id.chars().nth(3).unwrap_or('E');
         let saved = layout::Layout::saved_choices(file, &game_id);
         disc.choose_defaults(&game_id, &saved);
         let total: usize = disc.sections.iter().map(|s| s.options.len()).sum();
@@ -741,7 +807,7 @@ impl Builder<'_> {
 /// The plan for a mod on this disc. `store`, when given, is the player's imported game; without it some placements cannot
 /// be checked and bare file names cannot be placed.
 pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Result<Plan> {
-    let mut builder = Builder { plan: Plan { game_id: game_id.to_string(), ..Default::default() }, store, spare: known_patches::SpareMemory::default(), comet_hook: None };
+    let mut builder = Builder { plan: Plan { game_id: game_id.to_string(), ..Default::default() }, store, spare: known_patches::SpareMemory::default(), comet_hook: None, version: 'E' };
     let mut used_patch = false;
     // One file per version of the game is one mod: the file for this version says it all, the others add the files only their versions need.
     let one_version = |file: &PatchFile| -> Option<char> {
@@ -792,6 +858,35 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
         if builder.plan.for_another_game.is_none() {
             for code in &layout.wii_code {
                 let name = code.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let lower = name.to_ascii_lowercase();
+                // The version a list is for: most are named by the game's id.
+                builder.version = name.get(3..4).and_then(|l| l.chars().next()).filter(|l| name.get(..3).is_some_and(|g| g.eq_ignore_ascii_case("RMG")) && matches!(l, 'E' | 'P' | 'J' | 'K')).unwrap_or('E');
+                if lower.ends_with(".gct") {
+                    if let Ok(bytes) = fs::read(code) {
+                        let list = crate::gecko::from_gct(&bytes);
+                        if !list.writes.is_empty() {
+                            for _ in 0..list.other {
+                                builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                            }
+                            builder.writes(&layout.root, &layout.root, list.writes);
+                            continue;
+                        }
+                    }
+                }
+                if lower == "main.dol" {
+                    builder.changed_program(&layout.root, &layout.root, code);
+                    continue;
+                }
+                if lower.ends_with(".ini") {
+                    if let Ok(text) = fs::read_to_string(code) {
+                        let list = crate::gecko::from_ini(&text);
+                        for _ in 0..list.other {
+                            builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                        }
+                        builder.writes(&layout.root, &layout.root, list.writes);
+                    }
+                    continue;
+                }
                 builder.plan.note(Level::Lost, format!("{name} is compiled Wii code and can't be converted. What it does has to be written again as a Nebula plugin."));
             }
         }
@@ -835,7 +930,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
             }
         }
     }
-    if builder.plan.file_count() == 0 && builder.plan.native_patches.is_empty() && layout.pack.as_ref().is_none_or(|p| p.textures == 0) && !builder.plan.blocked() {
+    if builder.plan.file_count() == 0 && builder.plan.native_patches.is_empty() && builder.plan.player_constants.is_empty() && builder.plan.object_changes.is_empty() && builder.plan.comet_limits.is_empty() && builder.plan.event_flags.is_empty() && layout.pack.as_ref().is_none_or(|p| p.textures == 0) && !builder.plan.blocked() {
         let other = layout.pack.as_ref().and_then(|p| p.other_games.keys().next().cloned());
         match other {
             Some(game) if game.starts_with("SB4") => builder.plan.note(Level::Blocked, "These textures are for Super Mario Galaxy 2."),

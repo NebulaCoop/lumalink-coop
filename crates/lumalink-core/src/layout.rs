@@ -112,7 +112,7 @@ impl Layout {
             }
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             let extension = name.rsplit('.').next().unwrap_or("");
-            if (name.starts_with("customcode") && name.ends_with(".bin")) || matches!(extension, "gct" | "dol" | "rel") {
+            if (name.starts_with("customcode") && name.ends_with(".bin")) || matches!(extension, "gct" | "dol" | "rel") || (extension == "ini" && name.len() >= 3 && name.starts_with("rmg")) {
                 layout.wii_code.push(entry.path().to_path_buf());
             }
         }

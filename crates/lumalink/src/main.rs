@@ -24,6 +24,9 @@ struct Game {
     /// The version of the game to check against when no game file is given. A .luma works on every version either way.
     #[arg(long, value_name = "ID", default_value = "RMGE01")]
     game_id: String,
+    /// The game's own main.dol or disc, to compare a mod's changed program or whole changed disc with.
+    #[arg(long, value_name = "FILE")]
+    base: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -190,8 +193,17 @@ fn find_nebula() -> Option<PathBuf> {
 }
 
 fn open_store(game: &Game) -> Result<(Option<GameStore>, String)> {
+    // --base: the game's own program, or its whole disc.
+    if let Some(base) = &game.base {
+        if base.extension().is_some_and(|e| e.eq_ignore_ascii_case("dol")) {
+            plan::set_base_program(Some(base.clone()));
+        } else {
+            source::set_base_game(Some(base.clone()));
+        }
+    }
     match &game.game {
         Some(path) => {
+            source::base_from_store(path);
             let store = GameStore::open(path)?;
             let id = store.game_id.clone();
             Ok((Some(store), id))

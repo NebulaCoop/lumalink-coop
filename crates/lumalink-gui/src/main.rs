@@ -160,6 +160,9 @@ fn read_mod(input: &Path, game: Option<&Path>) -> Result<ReadMod, String> {
     let store = game.map(GameStore::open).transpose().map_err(|e| format!("{e:#}"))?;
     let id = store.as_ref().map_or("RMGE01".to_string(), |s| s.game_id.clone());
     let work = tempfile::tempdir().map_err(|e| e.to_string())?;
+    if let Some(game) = game {
+        source::base_from_store(game);
+    }
     let root = source::open(input, work.path()).map_err(|e| format!("{e:#}"))?;
     let layout = Layout::of(&root);
     let plan = plan::build(&layout, &id, store.as_ref()).map_err(|e| format!("{e:#}"))?;
@@ -237,7 +240,7 @@ impl App {
                 self.game_problem = None;
                 self.game = Some(path);
                 for i in 0..self.mods.len() {
-                    if self.mods[i].input.is_dir() || source::is_archive(&self.mods[i].input) {
+                    if self.mods[i].input.is_dir() || source::is_archive(&self.mods[i].input) || source::is_disc(&self.mods[i].input) {
                         self.read(i);
                     }
                 }
@@ -263,7 +266,7 @@ impl App {
                 }
             }
             self.add(path);
-        } else if source::is_archive(&path) {
+        } else if source::is_archive(&path) || source::is_disc(&path) {
             self.add(path);
         } else {
             let state = not_a_mod(&path).unwrap_or_else(|| State::CantConvert(word(Word::NotAKind).to_string()));
@@ -279,7 +282,7 @@ impl App {
         if self.mods.iter().any(|m| m.input == input) {
             return;
         }
-        let input_is_a_mod = input.is_dir() || source::is_archive(&input);
+        let input_is_a_mod = input.is_dir() || source::is_archive(&input) || source::is_disc(&input);
         let name = plan::nice_name(&source::mod_name(&input));
         let hue = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(u32::from(b))) >> 3;
         let id = self.next_id;
@@ -302,7 +305,7 @@ impl App {
     }
 
     fn pick_mods(&mut self) {
-        if let Some(files) = rfd::FileDialog::new().add_filter(word(Word::ModsFilter), &["zip", "7z", "rar", "luma"]).pick_files() {
+        if let Some(files) = rfd::FileDialog::new().add_filter(word(Word::ModsFilter), &["zip", "7z", "rar", "iso", "wbfs", "rvz", "luma"]).pick_files() {
             for file in files {
                 self.add_path(file);
             }

@@ -12,6 +12,7 @@
 //!    `.luma`: see docs/format.md.
 
 pub mod column_names;
+pub mod gecko;
 pub mod game_store;
 pub mod inspect;
 pub mod known_patches;
@@ -21,6 +22,7 @@ pub mod package;
 pub mod plan;
 pub mod player_constants;
 pub mod project;
+pub mod region_map;
 pub mod riivolution;
 pub mod shaders;
 pub mod source;

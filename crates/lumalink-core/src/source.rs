@@ -209,16 +209,114 @@ pub fn is_archive(path: &Path) -> bool {
     )
 }
 
+/// A disc image of the game.
+pub fn is_disc(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        Some("iso" | "wbfs" | "rvz" | "wia" | "ciso" | "gcz" | "nfs")
+    )
+}
+
+/// A folder holding a whole game, as an emulator extracts one.
+fn is_extracted_disc(path: &Path) -> bool {
+    path.join("sys").join("main.dol").is_file() && path.join("files").is_dir()
+        || path.join("DATA").join("sys").join("main.dol").is_file() && path.join("DATA").join("files").is_dir()
+}
+
+/// The game as a disc or a folder: to compare a mod that's a whole changed game with.
+static BASE_GAME: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// The disc files Setup keeps beside the imported game, as the base when none was named.
+pub fn base_from_store(store: &Path) {
+    let inputs = store.parent().map(|p| p.join("game-inputs"));
+    if let Some(inputs) = inputs.filter(|p| p.join("sys").join("main.dol").is_file()) {
+        let mut base = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner());
+        if base.is_none() {
+            *base = Some(inputs);
+        }
+    }
+}
+
+/// What `--base` names, when it's a whole game.
+pub fn set_base_game(path: Option<PathBuf>) {
+    *BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()) = path;
+}
+
+/// A mod that's a whole changed game: only what differs from the game's own, in the folders of the disc, with its program beside them.
+fn changes_from_game(input: &Path, work: &Path) -> Result<PathBuf> {
+    use nebula_import::cook::store;
+    let Some(base) = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        bail!("{}: this is a whole game. To take only what the mod changes, name the game's own disc with --base", input.display());
+    };
+    let to_store = |from: &Path, name: &str| -> Result<PathBuf> {
+        let pak = work.join(name);
+        let mut partition = nebula_import::Partition::open(from).with_context(|| format!("{} can't be read as this game", from.display()))?;
+        partition.write_pak(&pak, &mut |_, _| true)?;
+        Ok(pak)
+    };
+    let changed = to_store(input, "changed.pak")?;
+    let original = to_store(&base, "original.pak")?;
+    let into = work.join("changes");
+    fs::create_dir_all(&into)?;
+    let mut count = 0usize;
+    for folder in crate::layout::DISC_FOLDERS {
+        let mut hashes = std::collections::BTreeMap::new();
+        let _ = store::visit_folder(&original, folder, &mut |path, bytes| {
+            hashes.insert(path.to_ascii_lowercase(), (bytes.len(), nebula_import::cook::texture::xxh64(&bytes)));
+        });
+        let _ = store::visit_folder(&changed, folder, &mut |path, bytes| {
+            let same = hashes.get(&path.to_ascii_lowercase()).is_some_and(|(size, hash)| *size == bytes.len() && *hash == nebula_import::cook::texture::xxh64(&bytes));
+            if !same {
+                let target = into.join(folder).join(path);
+                if let Some(parent) = target.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if fs::write(target, &bytes).is_ok() {
+                    count += 1;
+                }
+            }
+        });
+    }
+    // The program, for what it changes.
+    for name in ["sys/main.dol", "main.dol"] {
+        if let (Ok(new), Ok(old)) = (store::read_file(&changed, name), store::read_file(&original, name)) {
+            if new != old {
+                fs::write(into.join("main.dol"), new)?;
+                let kept = work.join("original.dol");
+                fs::write(&kept, old)?;
+                crate::plan::set_base_program(Some(kept));
+                count += 1;
+            }
+            break;
+        }
+    }
+    fs::remove_file(changed).ok();
+    fs::remove_file(original).ok();
+    if count == 0 {
+        bail!("{}: it's the same as the game's own disc", input.display());
+    }
+    Ok(into)
+}
+
 /// Opens a mod: an archive unpacks under `work`, a folder is used in place and never written to.
 pub fn open(input: &Path, work: &Path) -> Result<PathBuf> {
     if input.is_dir() {
+        if is_extracted_disc(input) {
+            return changes_from_game(input, work);
+        }
         return Ok(input.to_path_buf());
     }
     if !input.is_file() {
         bail!("{} does not exist", input.display());
     }
+    if is_disc(input) {
+        return changes_from_game(input, work);
+    }
+    if matches!(input.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("xdelta" | "vcdiff" | "bps" | "ips" | "ppf")) {
+        bail!("{}: a patch for a disc image. Apply it to your disc with its own tool, then give LumaLink the result and your original with --base", input.display());
+    }
     if !is_archive(input) {
-        bail!("{}: a mod is a folder or a .zip, .7z or .rar archive", input.display());
+        bail!("{}: a mod is a folder, a .zip, .7z or .rar archive, or a changed disc image", input.display());
     }
     // The file's name, when it's a name: `...zip` is a real file, and its stem is the folder above.
     let into = work.join(safe_relative(&mod_name(input)).filter(|p| p.components().count() == 1).unwrap_or_else(|| PathBuf::from("mod")));

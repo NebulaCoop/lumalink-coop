@@ -456,6 +456,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
     let mut has_anything = manifest.get("plugins").and_then(Value::as_array).is_some_and(|p| !p.is_empty())
         || manifest.get("text").and_then(Value::as_object).is_some_and(|t| !t.is_empty())
         || ["music", "event_flags", "comet_schedule"].iter().any(|k| manifest.get(*k).and_then(Value::as_array).is_some_and(|l| !l.is_empty()));
+    has_anything |= check_story(manifest, "the mod", found);
     let says_custom_shaders = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "custom-shaders"));
     for (i, layer) in layers.iter().enumerate() {
         if let Some(materials) = layer.get("materials") {
@@ -520,6 +521,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
             }
         }
         has_anything |= check_rows(folder, layer, &name, found);
+        has_anything |= check_story(layer, &name, found);
         // Rows a mod can have can also be in a layer, so that an option turns them on.
         check_galaxies(folder, layer, found);
         check_music(folder, layer, found);
@@ -533,6 +535,27 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
     if !has_anything {
         found.problem("it holds nothing the game can use");
     }
+}
+
+/// The journey: where a file starts, what the hub is.
+fn check_story(value: &Value, name: &str, found: &mut Findings) -> bool {
+    let Some(story) = value.get("story") else {
+        return false;
+    };
+    let Some(story) = story.as_object() else {
+        found.problem(format!("{name}: story is a set of keys"));
+        return false;
+    };
+    for (key, value) in story {
+        match key.as_str() {
+            "first_stage" | "hub" if value.is_string() => {}
+            "first_mission" if value.is_u64() => {}
+            "story_scenes" if value.is_boolean() || value.as_str().is_some_and(|v| v == "on" || v == "off") => {}
+            "first_stage" | "hub" | "first_mission" | "story_scenes" => found.problem(format!("{name}: story's {key} has the wrong kind of value")),
+            other => found.problem(format!("{name}: story has {other}, which this format doesn't know")),
+        }
+    }
+    !story.is_empty()
 }
 
 /// A layer's rows that aren't files. Whether it has any.
