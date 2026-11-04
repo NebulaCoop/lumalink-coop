@@ -12,6 +12,7 @@ keywords.workspace = true
 [dependencies]
 anyhow.workspace = true
 nebula-import.workspace = true
+encoding_rs = "0.8"
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -15,7 +15,7 @@ use std::path::{Component, Path, PathBuf};
 
 const VERSION_LETTERS: [&str; 6] = ["E", "P", "J", "K", "W", "C"];
 const PLATFORMS: [&str; 5] = ["windows", "android", "linux", "macos", "ios"];
-const WHEN_KEYS: [&str; 4] = ["version", "language", "platform", "option"];
+const WHEN_KEYS: [&str; 7] = ["version", "language", "platform", "option", "mods", "not", "any"];
 const LANGUAGES: [&str; 14] = ["en", "en-GB", "fr", "fr-CA", "es", "es-MX", "de", "it", "nl", "pt", "ja", "ko", "zh-Hans", "zh-Hant"];
 
 /// What Nebula reads as an id: it names a folder on every device (luma.cpp's valid_id).
@@ -331,6 +331,26 @@ fn check_options(manifest: &Value, found: &mut Findings) -> BTreeMap<String, Vec
             None => found.problem(format!("option {id} needs a name")),
         }
         let mut choices = Vec::new();
+        // A number option: a choice for each number of a range, its id the number.
+        if let Some(range) = option.get("range").and_then(Value::as_object) {
+            let number = |key: &str, missing: f64| range.get(key).and_then(Value::as_f64).unwrap_or(missing);
+            let (from, to, step) = (number("from", 0.0), number("to", 0.0), number("step", 1.0));
+            if step <= 0.0 || to < from || (to - from) / step > 10000.0 {
+                found.problem(format!("option {id}: a range goes from a number up to another, by a step above 0, in at most 10,000 steps"));
+            } else {
+                let mut at = from;
+                while at <= to + step * 0.001 {
+                    choices.push(format!("{at}"));
+                    at += step;
+                }
+                match option.get("default").and_then(Value::as_f64) {
+                    Some(default) if default >= from && default <= to => {}
+                    _ => found.problem(format!("option {id}'s default is a number in its range")),
+                }
+                options.insert(id.to_string(), choices);
+                continue;
+            }
+        }
         for choice in option.get("choices").and_then(Value::as_array).map_or(&[][..], Vec::as_slice) {
             let choice_id = choice.get("id").and_then(Value::as_str).unwrap_or("");
             if !valid_id(choice_id) {
@@ -384,6 +404,21 @@ fn check_when(when: &Value, name: &str, options: &BTreeMap<String, Vec<String>>,
         for platform in string_list(platforms, &format!("{name}'s platform"), found) {
             if !PLATFORMS.contains(&platform) {
                 found.problem(format!("{name}: {platform} isn't a device ({})", PLATFORMS.join(", ")));
+            }
+        }
+    }
+    if let Some(mods) = map.get("mods") {
+        for id in string_list(mods, &format!("{name}'s mods"), found) {
+            if !valid_id(id) {
+                found.problem(format!("{name}: {id} isn't a mod's id"));
+            }
+        }
+    }
+    for key in ["not", "any"] {
+        if let Some(inner) = map.get(key) {
+            let list = inner.as_array().map_or_else(|| std::slice::from_ref(inner), Vec::as_slice);
+            for one in list {
+                check_when(one, name, options, found);
             }
         }
     }
@@ -474,11 +509,23 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                 if !names.contains(&switch.as_str()) {
                     found.problem(format!("{name}: there's no switch called {switch}"));
                 }
-                if !value.is_u64() {
-                    found.problem(format!("{name}: {switch} needs a whole number"));
+                let from_option = value.get("option").and_then(Value::as_str);
+                if let Some(option) = from_option {
+                    if !options.contains_key(option) {
+                        found.problem(format!("{name}: {switch} takes its number from {option}, and there's no such option"));
+                    }
+                } else if !value.is_u64() {
+                    found.problem(format!("{name}: {switch} needs a whole number, or {{ \"option\": its id }}"));
                 }
             }
         }
+        has_anything |= check_rows(folder, layer, &name, found);
+        // Rows a mod can have can also be in a layer, so that an option turns them on.
+        check_galaxies(folder, layer, found);
+        check_music(folder, layer, found);
+        check_progression(layer, found);
+        has_anything |= ["music", "event_flags", "comet_schedule", "galaxies"].iter().any(|k| layer.get(*k).and_then(Value::as_array).is_some_and(|l| !l.is_empty()))
+            || layer.get("text").and_then(Value::as_object).is_some_and(|t| !t.is_empty());
         if let Some(when) = layer.get("when") {
             check_when(when, &name, options, found);
         }
@@ -486,6 +533,105 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
     if !has_anything {
         found.problem("it holds nothing the game can use");
     }
+}
+
+/// A layer's rows that aren't files. Whether it has any.
+fn check_rows(folder: &Path, layer: &Value, name: &str, found: &mut Findings) -> bool {
+    let mut any = false;
+    if let Some(rows) = layer.get("object_changes").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        for row in rows {
+            if row.get("object").and_then(Value::as_str).unwrap_or_default().is_empty() {
+                found.problem(format!("{name}: a row of object_changes names no object"));
+            }
+            match row.get("in").and_then(Value::as_str) {
+                None | Some("placed" | "display_models" | "treasure_boxes") => {}
+                Some(other) => found.problem(format!("{name}: object_changes can't be in {other}")),
+            }
+        }
+    }
+    if let Some(rows) = layer.get("comet_time_limits").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        for row in rows {
+            let good = row.get("galaxy").and_then(Value::as_str).is_some_and(|g| !g.is_empty())
+                && row.get("mission").and_then(Value::as_u64).is_some_and(|m| m > 0)
+                && row.get("seconds").and_then(Value::as_u64).is_some_and(|s| s > 0);
+            if !good {
+                found.problem(format!("{name}: a row of comet_time_limits needs a galaxy, a mission and seconds"));
+            }
+        }
+    }
+    if let Some(rows) = layer.get("stages").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        for row in rows {
+            let stage = row.get("stage").and_then(Value::as_str).unwrap_or_default();
+            if stage.is_empty() {
+                found.problem(format!("{name}: a row of stages names no stage"));
+            }
+            let acts = row.get("acts_as").and_then(Value::as_array).is_some_and(|a| !a.is_empty());
+            let own = row.get("own_rules").and_then(Value::as_bool).unwrap_or(true);
+            if !acts && own {
+                found.note(format!("{name}: the row for {stage} changes nothing: give it acts_as, or own_rules false"));
+            }
+        }
+    }
+    if let Some(constants) = layer.get("player_constants") {
+        let Some(people) = constants.as_object() else {
+            found.problem(format!("{name}: player_constants is mario, luigi or both, each with its numbers"));
+            return any;
+        };
+        for (who, numbers) in people {
+            if !matches!(who.as_str(), "mario" | "luigi" | "both") {
+                found.problem(format!("{name}: player_constants: {who} is none of mario, luigi and both"));
+                continue;
+            }
+            let Some(numbers) = numbers.as_object() else {
+                found.problem(format!("{name}: player_constants: {who} is a set of names and numbers"));
+                continue;
+            };
+            for (number, value) in numbers {
+                any = true;
+                let Some(field) = crate::player_constants::field(number) else {
+                    found.problem(format!("{name}: the player has no number {number}. `lumalink list player` names them"));
+                    continue;
+                };
+                let good = value.is_number() || value.get("option").is_some_and(Value::is_string) || value.as_array().is_some_and(|l| l.len() <= field.count as usize && l.iter().all(|i| i.is_number() || i.is_null()));
+                if !good {
+                    found.problem(format!("{name}: {number} is a number, or a list of up to {} numbers (null keeps the game's)", field.count));
+                }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("object_classes").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        for row in rows {
+            let object = row.get("name").and_then(Value::as_str).unwrap_or_default();
+            let like = row.get("like").and_then(Value::as_str).unwrap_or_default();
+            if object.is_empty() || like.is_empty() {
+                found.problem(format!("{name}: a row of object_classes needs name and like"));
+            } else if !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(like)) {
+                found.note(format!("{name}: {like}, which {object} is made like, isn't an object of the game's. A plugin may add it"));
+            }
+        }
+    }
+    if let Some(rows) = layer.get("sound_effects").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        for row in rows {
+            let sound = row.get("name").and_then(Value::as_str).unwrap_or_default();
+            let file = row.get("file").and_then(Value::as_str).unwrap_or_default();
+            if sound.is_empty() || file.is_empty() {
+                found.problem(format!("{name}: a row of sound_effects needs name and file"));
+                continue;
+            }
+            if let Some(path) = layer.get("path").and_then(Value::as_str) {
+                let there = folder.join(path).join("files").join(file);
+                if !there.is_file() {
+                    found.problem(format!("{name}: the sound {sound}: {file} isn't in the layer's files"));
+                }
+            }
+        }
+    }
+    any
 }
 
 /// What a layer adds to files many mods share. Whether it found anything.
@@ -503,7 +649,24 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
             continue;
         };
         if name.ends_with(".json") {
-            let rows = serde_json::from_slice::<Value>(&bytes).ok().and_then(|v| v.get("rows").and_then(Value::as_array).cloned());
+            let parsed = serde_json::from_slice::<Value>(&bytes).ok();
+            if let Some(root) = &parsed {
+                for row in root.get("remove").and_then(Value::as_array).map_or(&[][..], Vec::as_slice) {
+                    if !row.is_object() {
+                        found.problem(format!("merge/{shown}: each row of remove is a set of columns"));
+                    }
+                }
+                for change in root.get("change").and_then(Value::as_array).map_or(&[][..], Vec::as_slice) {
+                    if !change.get("where").is_some_and(Value::is_object) || !change.get("set").is_some_and(Value::is_object) {
+                        found.problem(format!("merge/{shown}: each change has where and set, each a set of columns"));
+                    }
+                }
+                if root.get("rows").is_none() && (root.get("remove").is_some() || root.get("change").is_some()) {
+                    any = true;
+                    continue;
+                }
+            }
+            let rows = parsed.and_then(|v| v.get("rows").and_then(Value::as_array).cloned());
             match rows {
                 Some(rows) if !rows.is_empty() && rows.iter().all(Value::is_object) => {}
                 _ => found.problem(format!("merge/{shown}: rows is a list of rows, each a set of columns")),

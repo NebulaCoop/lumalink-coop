@@ -11,12 +11,15 @@
 //! 5. [`package::write`] checks each file with the converter Nebula uses, builds what its materials need, and writes the
 //!    `.luma`: see docs/format.md.
 
+pub mod column_names;
 pub mod game_store;
+pub mod inspect;
 pub mod known_patches;
 pub mod object_table;
 pub mod layout;
 pub mod package;
 pub mod plan;
+pub mod player_constants;
 pub mod project;
 pub mod riivolution;
 pub mod shaders;

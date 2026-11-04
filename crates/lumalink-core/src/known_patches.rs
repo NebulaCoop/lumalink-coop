@@ -27,6 +27,15 @@ pub mod id {
     pub const LIFE_UP_HEALTH: u32 = 16;
     pub const NO_LOW_HEALTH_WARNING: u32 = 17;
     pub const NO_DARK_COMET_RULES: u32 = 18;
+    pub const MAX_LIVES: u32 = 19;
+    pub const MAX_STAR_BITS: u32 = 20;
+    pub const MAX_CARRIED_STAR_BITS: u32 = 21;
+    pub const MAX_COINS: u32 = 22;
+    pub const COINS_PER_ONE_UP: u32 = 23;
+    pub const STAR_BITS_PER_ONE_UP: u32 = 24;
+    pub const STARTING_LIVES: u32 = 25;
+    pub const PURPLE_COINS_FOR_STAR: u32 = 26;
+    pub const WATER_AIR: u32 = 27;
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -372,13 +381,22 @@ pub fn switch_name(switch: u32) -> Option<&'static str> {
         LIFE_UP_HEALTH => "life_up_health",
         NO_LOW_HEALTH_WARNING => "no_low_health_warning",
         NO_DARK_COMET_RULES => "no_dark_comet_rules",
+        MAX_LIVES => "max_lives",
+        MAX_STAR_BITS => "max_star_bits",
+        MAX_CARRIED_STAR_BITS => "max_carried_star_bits",
+        MAX_COINS => "max_coins",
+        COINS_PER_ONE_UP => "coins_per_one_up",
+        STAR_BITS_PER_ONE_UP => "star_bits_per_one_up",
+        STARTING_LIVES => "starting_lives",
+        PURPLE_COINS_FOR_STAR => "purple_coins_for_star",
+        WATER_AIR => "water_air",
         _ => return None,
     })
 }
 
 /// Every switch a `luma.json` may name.
 pub fn switch_names() -> impl Iterator<Item = &'static str> {
-    (1..=18).filter_map(switch_name)
+    (1..=27).filter_map(switch_name)
 }
 
 #[cfg(test)]

@@ -105,6 +105,62 @@ enum Command {
         #[command(flatten)]
         game: Game,
     },
+    /// List what the game's names are: settings, player (its numbers), objects, stages, or rules.
+    List {
+        /// settings, player, objects, rules
+        what: String,
+        /// Only names holding this.
+        #[arg(long)]
+        filter: Option<String>,
+    },
+    /// List the files of your imported game.
+    Files {
+        /// A folder of the game, such as ObjectData or StageData/EggStarGalaxy.
+        folder: String,
+        /// Your imported game (Nebula's game.pak).
+        #[arg(long, value_name = "FILE")]
+        game: PathBuf,
+        /// Only paths holding this.
+        #[arg(long)]
+        filter: Option<String>,
+    },
+    /// Copy a file or a folder out of your imported game. Tables come as JSON too.
+    Extract {
+        /// Its place in the game, such as StageData/EggStarGalaxy.
+        path: String,
+        /// Your imported game (Nebula's game.pak).
+        #[arg(long, value_name = "FILE")]
+        game: PathBuf,
+        /// The folder to write to.
+        #[arg(short, long, value_name = "FOLDER", default_value = ".")]
+        output: PathBuf,
+    },
+    /// Open one archive (.arc, .szs) from a disc or a mod into a folder. Tables come as JSON too.
+    Unarc {
+        /// The archive.
+        input: PathBuf,
+        /// The folder to write to.
+        #[arg(short, long, value_name = "FOLDER")]
+        output: PathBuf,
+    },
+    /// Show a table (.bcsv, .pa, .tbl, or a stage's placement file) as the JSON a mod writes.
+    Table {
+        /// The file.
+        input: PathBuf,
+        /// The file to write; the screen when absent.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
+    /// Build a project and open it in Nebula.
+    Run {
+        /// A folder with a luma.json.
+        folder: PathBuf,
+        /// The game: Nebula.exe. Looked for in the usual places when absent.
+        #[arg(long, value_name = "FILE")]
+        nebula: Option<PathBuf>,
+        #[command(flatten)]
+        game: Game,
+    },
     /// Convert every mod in a folder. One that fails doesn't stop the others.
     Batch {
         /// A folder of mods.
@@ -115,6 +171,22 @@ enum Command {
         #[command(flatten)]
         game: Game,
     },
+}
+
+/// Where Setup puts the game, on this device.
+fn find_nebula() -> Option<PathBuf> {
+    let name = if cfg!(windows) { "Nebula.exe" } else { "Nebula" };
+    let mut places = Vec::new();
+    if let Some(folder) = std::env::var_os("LOCALAPPDATA") {
+        places.push(PathBuf::from(folder).join("Programs").join("Nebula").join(name));
+    }
+    if let Some(folder) = std::env::var_os("ProgramFiles") {
+        places.push(PathBuf::from(folder).join("Nebula").join(name));
+    }
+    if let Some(folder) = std::env::var_os("HOME") {
+        places.push(PathBuf::from(folder).join(".local").join("share").join("Nebula").join(name));
+    }
+    places.into_iter().find(|p| p.is_file())
 }
 
 fn open_store(game: &Game) -> Result<(Option<GameStore>, String)> {
@@ -239,6 +311,77 @@ fn run(cli: Cli) -> Result<ExitCode> {
             let summary = project::cook_one(&input, &path, &game_id, store.as_ref().map(|s| s.path.as_path()), &output)?;
             println!("{summary}");
             println!("wrote {}", output.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::List { what, filter } => {
+            let keep = |name: &str| filter.as_deref().is_none_or(|f| name.to_ascii_lowercase().contains(&f.to_ascii_lowercase()));
+            match what.as_str() {
+                "settings" => {
+                    for (name, default, words) in lumalink_core::inspect::SETTINGS.iter().filter(|s| keep(s.0)) {
+                        println!("{name} ({default}): {words}");
+                    }
+                }
+                "player" => {
+                    for field in lumalink_core::player_constants::FIELDS.iter().filter(|f| keep(f.name)) {
+                        if field.count > 1 {
+                            println!("{}[{}]", field.name, field.count);
+                        } else {
+                            println!("{}", field.name);
+                        }
+                    }
+                }
+                "objects" => {
+                    for (name, _, _) in lumalink_core::object_table::OBJECT_ROWS.iter().filter(|o| keep(o.0)) {
+                        println!("{name}");
+                    }
+                }
+                "rules" => {
+                    for (name, words) in lumalink_core::inspect::STAGE_RULES.iter().filter(|s| keep(s.0)) {
+                        println!("{name}: {words}");
+                    }
+                }
+                other => bail!("{other}: choose settings, player, objects or rules"),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Files { folder, game, filter } => {
+            for (path, size) in lumalink_core::inspect::list_files(&game, &folder)? {
+                if filter.as_deref().is_none_or(|f| path.to_ascii_lowercase().contains(&f.to_ascii_lowercase())) {
+                    println!("{folder}/{path}  ({size} bytes)");
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Extract { path, game, output } => {
+            let written = lumalink_core::inspect::extract(&game, &path, &output)?;
+            println!("{written} files written to {}", output.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Unarc { input, output } => {
+            let written = lumalink_core::inspect::unarchive(&input, &output)?;
+            println!("{written} files written to {}", output.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Table { input, output } => {
+            let bytes = std::fs::read(&input).with_context(|| format!("{} cannot be read", input.display()))?;
+            let json = serde_json::to_string_pretty(&lumalink_core::inspect::table_to_json(&bytes)?)?;
+            match output {
+                Some(file) => std::fs::write(file, json)?,
+                None => println!("{json}"),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Run { folder, nebula, game } => {
+            let (store, _) = open_store(&game)?;
+            let output = std::env::temp_dir().join("lumalink-run");
+            std::fs::create_dir_all(&output)?;
+            let outcome = project::pack(&folder, &output, store.as_ref())?;
+            println!("built {}", outcome.file.display());
+            let nebula = match nebula {
+                Some(path) => path,
+                None => find_nebula().context("Nebula.exe wasn't found: name it with --nebula")?,
+            };
+            std::process::Command::new(&nebula).arg("--open-mod").arg(&outcome.file).spawn().with_context(|| format!("{} can't be started", nebula.display()))?;
             Ok(ExitCode::SUCCESS)
         }
         Command::Batch { folder, output, game } => {
