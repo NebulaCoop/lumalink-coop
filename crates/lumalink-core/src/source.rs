@@ -61,6 +61,28 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
     let mut zip = zip::ZipArchive::new(file).with_context(|| format!("{} is not a readable zip", archive.display()))?;
     let mut left = MAX_UNPACKED;
     for i in 0..zip.len() {
+        // LZMA first: the library hands this method's four-byte zip header to the decoder as if it were LZMA data.
+        let lzma = zip.by_index_raw(i)?.compression() == zip::CompressionMethod::Lzma;
+        if lzma {
+            let mut entry = zip.by_index_raw(i)?;
+            let name = entry.name().to_string();
+            let Some(relative) = safe_relative(&name) else {
+                bail!("{name}: a path in the archive leaves its folder");
+            };
+            let target = into.join(relative);
+            let (size, crc) = (entry.size(), entry.crc32());
+            if size > left {
+                bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
+            }
+            let mut packed = Vec::new();
+            entry.read_to_end(&mut packed).with_context(|| format!("{name} cannot be read"))?;
+            let plain = unzip_lzma(&packed, size).with_context(|| format!("{name} cannot be unpacked"))?;
+            if crc32fast::hash(&plain) != crc {
+                bail!("{name} is damaged in the archive");
+            }
+            write_limited(&mut plain.as_slice(), &target, &mut left)?;
+            continue;
+        }
         let mut entry = zip.by_index(i)?;
         let name = entry.name().to_string();
         let Some(relative) = safe_relative(&name) else {
@@ -77,6 +99,26 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
         write_limited(&mut entry, &target, &mut left)?;
     }
     Ok(())
+}
+
+/// A zip entry's LZMA: version (2 bytes), size of the properties (2), the properties, then the stream. The stream may or
+/// may not end in a marker, so the size comes from the zip's own record.
+fn unzip_lzma(packed: &[u8], size: u64) -> Result<Vec<u8>> {
+    let Some(head) = packed.get(2..4) else {
+        bail!("too short");
+    };
+    if u16::from_le_bytes([head[0], head[1]]) != 5 || packed.len() < 9 {
+        bail!("not the LZMA a zip holds");
+    }
+    let options = lzma_rs::decompress::Options {
+        unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(size)),
+        memlimit: None,
+        allow_incomplete: false,
+    };
+    let mut plain = Vec::with_capacity(size.min(1 << 30) as usize);
+    let mut stream = &packed[4..];
+    lzma_rs::lzma_decompress_with_options(&mut stream, &mut plain, &options).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    Ok(plain)
 }
 
 fn un7z(archive: &Path, into: &Path) -> Result<()> {
@@ -194,6 +236,53 @@ pub fn open(input: &Path, work: &Path) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    /// A zip with one LZMA entry, written as 7-Zip writes one: zip header, properties, stream with an end marker.
+    #[test]
+    fn unpacks_lzma_entries() {
+        let text = b"<wiidisc version=\"1\">the same words, the same words, the same words</wiidisc>".to_vec();
+        let mut lzma = Vec::new();
+        lzma_rs::lzma_compress(&mut text.as_slice(), &mut lzma).unwrap();
+        // lzma_compress writes properties (5), size (8), stream.
+        let mut data = vec![0x15, 0x07, 5, 0];
+        data.extend_from_slice(&lzma[..5]);
+        data.extend_from_slice(&lzma[13..]);
+        let name = b"a/b.xml";
+        let crc = crc32fast::hash(&text);
+        let mut record = Vec::new();
+        record.extend_from_slice(&63u16.to_le_bytes());
+        record.extend_from_slice(&2u16.to_le_bytes());
+        record.extend_from_slice(&14u16.to_le_bytes());
+        record.extend_from_slice(&[0, 0, 0x21, 0]);
+        record.extend_from_slice(&crc.to_le_bytes());
+        record.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        record.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        record.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        record.extend_from_slice(&0u16.to_le_bytes());
+        let mut zip = b"PK".to_vec();
+        zip.extend_from_slice(&record);
+        zip.extend_from_slice(name);
+        zip.extend_from_slice(&data);
+        let central = zip.len() as u32;
+        zip.extend_from_slice(b"PK");
+        zip.extend_from_slice(&63u16.to_le_bytes());
+        zip.extend_from_slice(&record);
+        zip.extend_from_slice(&[0u8; 10]);
+        zip.extend_from_slice(&0u32.to_le_bytes());
+        zip.extend_from_slice(name);
+        let size = zip.len() as u32 - central;
+        zip.extend_from_slice(b"PK");
+        zip.extend_from_slice(&[0, 0, 0, 0, 1, 0, 1, 0]);
+        zip.extend_from_slice(&size.to_le_bytes());
+        zip.extend_from_slice(&central.to_le_bytes());
+        zip.extend_from_slice(&[0, 0]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.zip");
+        std::fs::write(&path, &zip).unwrap();
+        let out = dir.path().join("out");
+        super::unzip(&path, &out).unwrap();
+        assert_eq!(std::fs::read(out.join("a/b.xml")).unwrap(), text);
+    }
+
     use super::*;
 
     #[test]

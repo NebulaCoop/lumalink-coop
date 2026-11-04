@@ -74,6 +74,7 @@ lumalink pack "My Mod"
 | Make a mod, from the first file to a galaxy of your own | [docs/guide.md](docs/guide.md), with projects to copy in [examples](examples) |
 | Everything a `.luma` can hold: options, regions, saves, new galaxies, hungry Lumas, text, shaders | [docs/format.md](docs/format.md) |
 | Change what the game does, with your own code | [docs/plugins.md](docs/plugins.md) |
+| Everything, in one page | [docs/REFERENCE.md](docs/REFERENCE.md) |
 
 `lumalink-core` is the library behind LumaLink, if you'd rather use it.
 

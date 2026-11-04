@@ -2201,6 +2201,8 @@ name = "lumalink-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crc32fast",
+ "lzma-rs",
  "nebula-import",
  "roxmltree",
  "serde",
@@ -2390,7 +2392,6 @@ dependencies = [
 [[package]]
 name = "nebula-import"
 version = "0.1.0"
-source = "git+https://github.com/keepvaibin/nebula.git?branch=main#c4936267949b3e16077609b7443da3baca978ec2"
 dependencies = [
  "anyhow",
  "jni-sys 0.4.1",

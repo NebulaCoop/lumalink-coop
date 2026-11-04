@@ -13,6 +13,7 @@
 
 pub mod game_store;
 pub mod known_patches;
+pub mod object_table;
 pub mod layout;
 pub mod package;
 pub mod plan;

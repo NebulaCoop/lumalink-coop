@@ -32,6 +32,10 @@ struct ManifestLayer {
     path: Option<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     switches: BTreeMap<String, u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    object_changes: Vec<known_patches::ObjectChangeRow>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    comet_time_limits: Vec<known_patches::CometLimitRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     when: Option<ManifestWhen>,
 }
@@ -343,10 +347,12 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         }
     }
     let has_base = building.join("layers/base").is_dir();
-    if has_base || !plan.native_patches.is_empty() {
+    if has_base || !plan.native_patches.is_empty() || !plan.object_changes.is_empty() || !plan.comet_limits.is_empty() {
         layers.push(ManifestLayer {
             path: has_base.then(|| "layers/base".to_string()),
             switches: switches_named(&plan.native_patches),
+            object_changes: plan.object_changes.clone(),
+            comet_time_limits: plan.comet_limits.clone(),
             when: None,
         });
     }
@@ -356,6 +362,8 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         layers.push(ManifestLayer {
             path: building.join(&path).is_dir().then_some(path),
             switches: switches_named(&layer.switches),
+            object_changes: layer.object_changes.clone(),
+            comet_time_limits: layer.comet_limits.clone(),
             when: when_of(&layer.when),
         });
     }

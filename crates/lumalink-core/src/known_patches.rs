@@ -21,6 +21,12 @@ pub mod id {
     pub const BEGOMAN_FIRE_PROOF: u32 = 10;
     pub const MESSENGER_ALWAYS_EX: u32 = 11;
     pub const MESSENGER_EX_ONE_UPS: u32 = 12;
+    pub const PLAYER_HEALTH: u32 = 13;
+    pub const PLAYER_HEALTH_FIXED: u32 = 14;
+    pub const HIT_TAKES_ALL: u32 = 15;
+    pub const LIFE_UP_HEALTH: u32 = 16;
+    pub const NO_LOW_HEALTH_WARNING: u32 = 17;
+    pub const NO_DARK_COMET_RULES: u32 = 18;
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -39,8 +45,6 @@ const fn row(address: u32, value: &'static str, id: u32, parameter: u32, what: &
 }
 
 pub const KNOWN: &[KnownPatch] = &[
-    row(0x801DD690, "38C00080", FLIP_PANEL_OBSERVER_GROUP, 0x80, "flip panel observer groups of 128"),
-    row(0x801DCE48, "38C00080", FLIP_PANEL_GROUP, 0x80, "flip panel groups of 128"),
     row(0x80153D84, "39000001", WATER_BAZOOKA_SHOT_FLAG, 1, "water bazooka shots' flag"),
     row(0x80001800, "C4BB8000C03E00103C608000C0031800EC00082AD01E0010809E008C4E800020", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "Kamek's barrier 1500 lower"),
     row(0x800382B8, "4BFC954D", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "Kamek's barrier 1500 lower"),
@@ -55,9 +59,6 @@ pub const KNOWN: &[KnownPatch] = &[
     row(0x800D5DD8, "38600000", BEGOMAN_FIRE_PROOF, 1, "Begomans survive fire ground"),
     row(0x800D7D50, "38600000", BEGOMAN_FIRE_PROOF, 1, "Begomans survive fire ground"),
     row(0x80275440, "60000000", MESSENGER_ALWAYS_EX, 1, "the 1-up messenger's larger supply"),
-    row(0x80275458, "38800063", MESSENGER_EX_ONE_UPS, 99, "99 1-ups from the messenger"),
-    row(0x802750F0, "2C1F0063", MESSENGER_EX_ONE_UPS, 99, "99 1-ups from the messenger"),
-    row(0x802750FC, "38800063", MESSENGER_EX_ONE_UPS, 99, "99 1-ups from the messenger"),
     row(0x8039AA2C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
     row(0x8039AAF0, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
     row(0x804A432C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
@@ -68,6 +69,280 @@ pub const KNOWN: &[KnownPatch] = &[
     row(0x8039C044, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
     row(0x804A656C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
 ];
+
+/// How a setting's value is read from what a mod writes at its place in the program.
+#[derive(Clone, Copy)]
+enum Reads {
+    /// `li rD, value`, the number a mod chose.
+    Number,
+    /// `cmpwi rA, value`.
+    Compared,
+    /// `li rD, 0`: the setting is on.
+    Zeroed,
+    /// `nop`: the given value.
+    Nothing(u32),
+    /// An unconditional branch over what was there: the setting is on.
+    Skipped,
+    /// The function returns zero at once: the setting is on.
+    ReturnsZero,
+}
+
+struct Setting {
+    address: u32,
+    id: u32,
+    reads: Reads,
+    what: &'static str,
+}
+
+const fn set(address: u32, id: u32, reads: Reads, what: &'static str) -> Setting {
+    Setting { address, id, reads, what }
+}
+
+/// The game's settings, by where the program keeps them.
+const SETTINGS: &[Setting] = &[
+    set(0x801DD690, FLIP_PANEL_OBSERVER_GROUP, Reads::Number, "the size of flip panel observer groups"),
+    set(0x801DCE48, FLIP_PANEL_GROUP, Reads::Number, "the size of flip panel groups"),
+    set(0x80275458, MESSENGER_EX_ONE_UPS, Reads::Number, "the 1-ups from the messenger"),
+    set(0x802750F0, MESSENGER_EX_ONE_UPS, Reads::Compared, "the 1-ups from the messenger"),
+    set(0x802750FC, MESSENGER_EX_ONE_UPS, Reads::Number, "the 1-ups from the messenger"),
+    set(0x802AE8A4, PLAYER_HEALTH, Reads::Number, "the player's health"),
+    set(0x802AE8C4, PLAYER_HEALTH_FIXED, Reads::Skipped, "the player's health stays the same on Daredevil comets"),
+    set(0x802B1C2C, HIT_TAKES_ALL, Reads::Zeroed, "a hit takes all the player's health"),
+    set(0x802B1CD8, HIT_TAKES_ALL, Reads::Zeroed, "a hit takes all the player's health"),
+    set(0x802B079C, LIFE_UP_HEALTH, Reads::Number, "the health a Life Up gives"),
+    set(0x802B07A0, LIFE_UP_HEALTH, Reads::Nothing(0), "a Life Up gives no health"),
+    set(0x802DDF50, NO_LOW_HEALTH_WARNING, Reads::Skipped, "no low health warning"),
+    set(0x803CDB60, NO_DARK_COMET_RULES, Reads::ReturnsZero, "Daredevil comets are like any other"),
+];
+
+/// A place in the program a mod set a value of, read from the instruction it wrote.
+pub struct SettingFound {
+    pub id: u32,
+    pub value: u32,
+    pub what: &'static str,
+}
+
+fn instruction(bytes: &[u8], at: usize) -> Option<u32> {
+    bytes.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+}
+
+fn signed_low(word: u32) -> i32 {
+    i32::from((word & 0xFFFF) as u16 as i16)
+}
+
+/// `rD` of `li rD, n` and n.
+fn load_immediate(word: u32) -> Option<(u32, i32)> {
+    (word >> 26 == 14 && (word >> 16) & 31 == 0).then(|| ((word >> 21) & 31, signed_low(word)))
+}
+
+fn is_branch(word: u32) -> bool {
+    word >> 26 == 18 && word & 3 == 0
+}
+
+/// The setting a patch's bytes change, whatever value it gives it.
+pub fn setting(address: u32, value: &[u8]) -> Option<SettingFound> {
+    let found = SETTINGS.iter().find(|s| s.address == (address | 0x8000_0000))?;
+    let word = instruction(value, 0)?;
+    let read = match found.reads {
+        Reads::Number => {
+            let (_, number) = load_immediate(word)?;
+            u32::try_from(number).ok()?
+        }
+        Reads::Compared => (word >> 26 == 11).then(|| u32::try_from(signed_low(word)).ok()).flatten()?,
+        Reads::Zeroed => (load_immediate(word)?.1 == 0).then_some(1)?,
+        Reads::Nothing(given) => (word == 0x6000_0000).then_some(given)?,
+        Reads::Skipped => is_branch(word).then_some(1)?,
+        Reads::ReturnsZero => (load_immediate(word) == Some((3, 0)) && instruction(value, 4) == Some(0x4E80_0020)).then_some(1)?,
+    };
+    // The game can't start the player on no health.
+    if found.id == PLAYER_HEALTH && read == 0 {
+        return None;
+    }
+    Some(SettingFound { id: found.id, value: read, what: found.what })
+}
+
+/// One of the game's objects as another, or gone.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ObjectChangeRow {
+    pub object: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub becomes: Option<String>,
+    #[serde(rename = "in", skip_serializing_if = "Option::is_none")]
+    pub within: Option<&'static str>,
+}
+
+/// What a write over the game's table of objects does, row by row. None: it writes something the table has no row for.
+pub fn object_table_write(address: u32, value: &[u8]) -> Option<Vec<ObjectChangeRow>> {
+    use crate::object_table::{OBJECT_ROWS, OBJECT_TABLE};
+    const ROW: u32 = 12;
+    let address = address | 0x8000_0000;
+    let end = OBJECT_TABLE + OBJECT_ROWS.len() as u32 * ROW;
+    if address < OBJECT_TABLE || address >= end || value.is_empty() || value.len() % 4 != 0 || address % 4 != 0 {
+        return None;
+    }
+    let mut changes = Vec::new();
+    let mut at = address;
+    let mut bytes = value;
+    while !bytes.is_empty() {
+        let index = (at - OBJECT_TABLE) / ROW;
+        let (object, create, archive) = *OBJECT_ROWS.get(index as usize)?;
+        let column = ((at - OBJECT_TABLE) % ROW) / 4;
+        let words = ((3 - column) as usize).min(bytes.len() / 4);
+        let read = |c: u32| (c >= column && ((c - column) as usize) < words).then(|| instruction(bytes, (c - column) as usize * 4)).flatten();
+        let (new_name, new_create, new_archive) = (read(0), read(1), read(2));
+        if new_name == Some(0) || new_create == Some(0) {
+            changes.push(ObjectChangeRow { object: object.to_string(), becomes: None, within: None });
+        } else if new_name.is_some() {
+            return None;
+        } else if let Some(create_now) = new_create {
+            if create_now != create {
+                let other = OBJECT_ROWS.iter().find(|(_, c, a)| *c == create_now && new_archive.is_none_or(|n| n == *a))?;
+                changes.push(ObjectChangeRow { object: object.to_string(), becomes: Some(other.0.to_string()), within: None });
+            }
+        } else if new_archive.is_some_and(|n| n != archive) {
+            let other = OBJECT_ROWS.iter().find(|(_, c, a)| *c == create && Some(*a) == new_archive)?;
+            changes.push(ObjectChangeRow { object: object.to_string(), becomes: Some(other.0.to_string()), within: None });
+        }
+        bytes = &bytes[words * 4..];
+        at += words as u32 * 4;
+    }
+    Some(changes)
+}
+
+/// What a treasure box holds: `li r0, kind` for each kind it reads from its name.
+const TREASURE_KINDS: [&str; 8] = ["", "Coin", "YellowChip", "BlueChip", "KinokoOneUp", "KinokoLifeUp", "AirBubble", "PowerStar"];
+const TREASURE_SITES: [(u32, &str); 5] = [
+    (0x8024_D4EC, "YellowChip"),
+    (0x8024_D50C, "BlueChip"),
+    (0x8024_D52C, "KinokoOneUp"),
+    (0x8024_D54C, "KinokoLifeUp"),
+    (0x8024_D56C, "AirBubble"),
+];
+
+/// A treasure box told to hold something else.
+pub fn treasure_box_write(address: u32, value: &[u8]) -> Option<ObjectChangeRow> {
+    let site = TREASURE_SITES.iter().find(|(at, _)| *at == (address | 0x8000_0000))?;
+    let (_, kind) = load_immediate(instruction(value, 0)?)?;
+    // Up to the kinds a box can hold without a star of its own.
+    let held = TREASURE_KINDS.get(usize::try_from(kind).ok()?).filter(|k| !k.is_empty() && **k != "PowerStar")?;
+    Some(ObjectChangeRow { object: site.1.to_string(), becomes: Some((*held).to_string()), within: Some("treasure_boxes") })
+}
+
+/// The still models things show before they're collected, by their row in the game's table.
+const DISPLAY_ROWS: [&str; 15] = [
+    "Coin", "Kinopio", "SpinDriver", "SuperSpinDriver", "StarPieceDummy", "Tico", "KeySwitch", "PowerStar", "KinokoOneUp", "Kuribo", "BlueChip", "YellowChip", "StrayTico", "GrandStar", "KinokoLifeUp",
+];
+const DISPLAY_LOOKUP: u32 = 0x801D_0330;
+
+/// The display model lookup, rewritten so one row reads another: `cmpwi r3, from; bne on; li r29, to; b on`.
+pub fn display_model_write(address: u32, value: &[u8]) -> Option<ObjectChangeRow> {
+    if address | 0x8000_0000 != DISPLAY_LOOKUP || value.len() != 16 {
+        return None;
+    }
+    let compare = instruction(value, 0)?;
+    let (to_register, to) = load_immediate(instruction(value, 8)?)?;
+    if compare >> 16 != 0x2C03 || to_register != 29 || instruction(value, 4)? >> 16 != 0x4082 || !is_branch(instruction(value, 12)?) {
+        return None;
+    }
+    let from = DISPLAY_ROWS.get(usize::try_from(signed_low(compare)).ok()?)?;
+    let to = DISPLAY_ROWS.get(usize::try_from(to).ok()?)?;
+    Some(ObjectChangeRow { object: (*from).to_string(), becomes: Some((*to).to_string()), within: Some("display_models") })
+}
+
+/// A comet mission's time limit.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CometLimitRow {
+    pub galaxy: String,
+    pub mission: u32,
+    pub seconds: u32,
+}
+
+/// Memory the program doesn't use, where mods put their own code and tables.
+pub fn is_spare_memory(address: u32) -> bool {
+    (0x8000_1000..0x8000_3000).contains(&(address | 0x8000_0000))
+}
+
+/// The call in the comets' setup to the lookup of a time limit in a table; a mod sends it through its own code to add tables.
+const COMET_LIMIT_CALL: u32 = 0x8029_9B4C;
+/// That lookup: r3 the table, r4 its rows.
+const COMET_LIMIT_LOOKUP: u32 = 0x8029_9C7C;
+const COMET_LIMIT_ROW: usize = 12;
+
+/// `bl target` at `at`.
+fn call_target(word: u32, at: u32) -> Option<u32> {
+    if word >> 26 != 18 || word & 3 != 1 {
+        return None;
+    }
+    let offset = ((word & 0x03FF_FFFC) as i32) << 6 >> 6;
+    Some(at.wrapping_add_signed(offset))
+}
+
+/// The code a patch at the comets' call jumps to.
+pub fn comet_limit_hook(address: u32, value: &[u8]) -> Option<u32> {
+    if address | 0x8000_0000 != COMET_LIMIT_CALL {
+        return None;
+    }
+    call_target(instruction(value, 0)?, COMET_LIMIT_CALL)
+}
+
+/// Spare memory as a mod's patches filled it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SpareMemory {
+    /// Address and bytes of each patch.
+    pub parts: Vec<(u32, Vec<u8>)>,
+}
+
+impl SpareMemory {
+    fn bytes_at(&self, address: u32) -> Option<&[u8]> {
+        self.parts.iter().find_map(|(at, bytes)| {
+            let offset = address.checked_sub(*at)? as usize;
+            // Patches sit end to end: the end of one is the start of the next.
+            bytes.get(offset..).filter(|rest| !rest.is_empty())
+        })
+    }
+
+    fn text_at(&self, address: u32) -> Option<String> {
+        let bytes = self.bytes_at(address)?;
+        let end = bytes.iter().position(|b| *b == 0)?;
+        std::str::from_utf8(&bytes[..end]).ok().map(str::to_string)
+    }
+
+    /// The time limits added by code at `target`: every call in it to the game's lookup with a table of the mod's own. What's read of the patches comes back so the caller knows what's left over.
+    pub fn comet_limits(&self, target: u32) -> Option<(Vec<CometLimitRow>, Vec<(u32, usize)>)> {
+        let code = self.bytes_at(target)?;
+        let mut rows = Vec::new();
+        let mut used = Vec::new();
+        let (mut high, mut table, mut count) = (None, None, None);
+        let mut length = 0usize;
+        for at in (0..code.len().saturating_sub(3)).step_by(4) {
+            let word = instruction(code, at)?;
+            let here = target + at as u32;
+            length = at + 4;
+            if word >> 26 == 15 && (word >> 21) & 31 == 3 && (word >> 16) & 31 == 0 {
+                high = Some(word << 16);
+            } else if word >> 26 == 14 && (word >> 21) & 31 == 3 && (word >> 16) & 31 == 3 {
+                table = high.map(|h: u32| h.wrapping_add_signed(signed_low(word)));
+            } else if let Some((4, number)) = load_immediate(word) {
+                count = usize::try_from(number).ok();
+            } else if call_target(word, here) == Some(COMET_LIMIT_LOOKUP) {
+                if let (Some(table), Some(count)) = (table, count) {
+                    let bytes = self.bytes_at(table)?;
+                    for row in 0..count {
+                        let at = row * COMET_LIMIT_ROW;
+                        let galaxy = self.text_at(instruction(bytes, at)?)?;
+                        used.push((instruction(bytes, at)?, galaxy.len() + 1));
+                        rows.push(CometLimitRow { galaxy, mission: instruction(bytes, at + 4)?, seconds: instruction(bytes, at + 8)? });
+                    }
+                    used.push((table, (count + 1) * COMET_LIMIT_ROW));
+                }
+            } else if is_branch(word) && at != 0 {
+                break;
+            }
+        }
+        used.push((target, length));
+        (!rows.is_empty()).then_some((rows, used))
+    }
+}
 
 /// The native version of a patch's bytes, if there is one. Nebula's switches don't depend on the version of the game; the
 /// table has the addresses mods use.
@@ -91,13 +366,19 @@ pub fn switch_name(switch: u32) -> Option<&'static str> {
         BEGOMAN_FIRE_PROOF => "begoman_fire_proof",
         MESSENGER_ALWAYS_EX => "messenger_always_ex",
         MESSENGER_EX_ONE_UPS => "messenger_ex_one_ups",
+        PLAYER_HEALTH => "player_health",
+        PLAYER_HEALTH_FIXED => "player_health_fixed",
+        HIT_TAKES_ALL => "hit_takes_all",
+        LIFE_UP_HEALTH => "life_up_health",
+        NO_LOW_HEALTH_WARNING => "no_low_health_warning",
+        NO_DARK_COMET_RULES => "no_dark_comet_rules",
         _ => return None,
     })
 }
 
 /// Every switch a `luma.json` may name.
 pub fn switch_names() -> impl Iterator<Item = &'static str> {
-    (1..=12).filter_map(switch_name)
+    (1..=18).filter_map(switch_name)
 }
 
 #[cfg(test)]
@@ -109,6 +390,74 @@ mod tests {
         assert_eq!(find(0x8039AA2C, &[0x60, 0, 0, 0]).unwrap().id, 0);
         assert_eq!(find(0x0007679C, &[0x60, 0, 0, 0]).unwrap().id, SKELETAL_FISH_BABY_NO_BUBBLE);
         assert!(find(0x8007679C, &[0x60, 0, 0, 1]).is_none());
+    }
+
+    #[test]
+    fn a_setting_takes_any_value_a_mod_chooses() {
+        let health = setting(0x802AE8A4, &0x3BC0_0002u32.to_be_bytes()).unwrap();
+        assert_eq!((health.id, health.value), (PLAYER_HEALTH, 2));
+        assert!(setting(0x802AE8A4, &0x3BC0_0000u32.to_be_bytes()).is_none());
+        assert!(setting(0x802AE8A4, &0x6000_0000u32.to_be_bytes()).is_none());
+        assert_eq!(setting(0x80275458, &0x3880_002Au32.to_be_bytes()).unwrap().value, 42);
+        assert_eq!(setting(0x802750F0, &0x2C1F_0007u32.to_be_bytes()).unwrap().value, 7);
+        assert_eq!(setting(0x802B07A0, &0x6000_0000u32.to_be_bytes()).unwrap().value, 0);
+        assert!(setting(0x802DDF50, &0x4800_0060u32.to_be_bytes()).is_some());
+        assert!(setting(0x803CDB60, &[0x38, 0x60, 0, 0, 0x4E, 0x80, 0, 0x20, 0, 0, 0, 0]).is_some());
+        assert!(setting(0x803CDB60, &[0x38, 0x60, 0, 1, 0x4E, 0x80, 0, 0x20]).is_none());
+    }
+
+    #[test]
+    fn writes_over_the_object_table_say_what_each_row_becomes() {
+        use crate::object_table::{OBJECT_ROWS, OBJECT_TABLE};
+        let row = |name: &str| OBJECT_ROWS.iter().position(|r| r.0 == name).unwrap() as u32;
+        let gone = object_table_write(OBJECT_TABLE + row("RestartCube") * 12, &[0; 12]).unwrap();
+        assert_eq!(gone[0].object, "RestartCube");
+        assert_eq!(gone[0].becomes, None);
+        let up = OBJECT_ROWS[row("BenefitItemOneUp") as usize];
+        let mut value = up.1.to_be_bytes().to_vec();
+        value.extend_from_slice(&up.2.to_be_bytes());
+        let swapped = object_table_write(OBJECT_TABLE + row("BenefitItemLifeUp") * 12 + 4, &value).unwrap();
+        assert_eq!(swapped[0].becomes.as_deref(), Some("BenefitItemOneUp"));
+        // A row's creator pointing nowhere in the table isn't something to guess at.
+        assert!(object_table_write(OBJECT_TABLE + 4, &0x8000_1234u32.to_be_bytes()).is_none());
+    }
+
+    #[test]
+    fn a_box_and_a_display_model_follow_the_numbers_written() {
+        let held = treasure_box_write(0x8024_D54C, &0x3800_0004u32.to_be_bytes()).unwrap();
+        assert_eq!((held.object.as_str(), held.becomes.as_deref()), ("KinokoLifeUp", Some("KinokoOneUp")));
+        assert_eq!(treasure_box_write(0x8024_D54C, &0x3800_0002u32.to_be_bytes()).unwrap().becomes.as_deref(), Some("YellowChip"));
+        let mut lookup = Vec::new();
+        for word in [0x2C03_000Eu32, 0x4082_0018, 0x3BA0_0008, 0x4800_0010] {
+            lookup.extend_from_slice(&word.to_be_bytes());
+        }
+        let shown = display_model_write(0x801D_0330, &lookup).unwrap();
+        assert_eq!((shown.object.as_str(), shown.becomes.as_deref()), ("KinokoLifeUp", Some("KinokoOneUp")));
+    }
+
+    #[test]
+    fn code_in_spare_memory_is_read_for_its_table() {
+        let mut table = b"AGalaxy\0".to_vec();
+        table.resize(16, 0);
+        for word in [0x8000_1000u32, 4, 90, 0, 0, 0] {
+            table.extend_from_slice(&word.to_be_bytes());
+        }
+        // Right after the table, as mods lay them out.
+        let target = 0x8000_1000u32 + table.len() as u32;
+        let lis = 0x3C60_8000u32;
+        let addi = 0x3863_1010u32;
+        let li = 0x3880_0001u32;
+        let call = |at: u32| 0x4800_0001u32 | ((COMET_LIMIT_LOOKUP.wrapping_sub(at)) & 0x03FF_FFFC);
+        let mut code = Vec::new();
+        for (i, word) in [lis, addi, li].iter().enumerate() {
+            let _ = i;
+            code.extend_from_slice(&word.to_be_bytes());
+        }
+        code.extend_from_slice(&call(target + 12).to_be_bytes());
+        code.extend_from_slice(&0x4800_0000u32.to_be_bytes());
+        let spare = SpareMemory { parts: vec![(0x8000_1000, table), (target, code)] };
+        let (rows, _) = spare.comet_limits(target).unwrap();
+        assert_eq!(rows, vec![CometLimitRow { galaxy: "AGalaxy".to_string(), mission: 4, seconds: 90 }]);
     }
 
     #[test]

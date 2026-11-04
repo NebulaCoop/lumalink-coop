@@ -104,7 +104,7 @@ game->register_object(&spinner);
 
 A level then places `MySpinner` like any object, and `ObjectData/MySpinner.arc` loads with the stage. A name the game already uses takes that object's place.
 
-`spawn(name, xyz)` makes one during play. Its archive must already be loaded, so a level has to place one too, or the stage has to hold it. The answer is null otherwise.
+`spawn(name, xyz)` makes any object during play, the mod's or the game's, on any stage: its files load if the stage hasn't them. Every call is in [REFERENCE.md](REFERENCE.md).
 
 ## Galaxies, hungry Lumas and messages
 

@@ -56,6 +56,8 @@ pub struct Layer {
     pub when: When,
     pub files: BTreeMap<String, PlannedFile>,
     pub switches: BTreeMap<u32, u32>,
+    pub object_changes: Vec<known_patches::ObjectChangeRow>,
+    pub comet_limits: Vec<known_patches::CometLimitRow>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -84,6 +86,8 @@ pub struct Plan {
     pub event_flags: Vec<known_patches::EventFlagRow>,
     /// Each dome's comets a mod's patches set.
     pub comet_schedule: BTreeMap<u32, Vec<known_patches::CometRow>>,
+    pub object_changes: Vec<known_patches::ObjectChangeRow>,
+    pub comet_limits: Vec<known_patches::CometLimitRow>,
     /// What is used only for some versions of the game or some of the player's choices.
     pub layers: Vec<Layer>,
     pub options: Vec<PlayerOption>,
@@ -177,11 +181,6 @@ fn join(a: &str, b: &str) -> String {
     }
 }
 
-fn is_language_path(disc: &str) -> Option<&'static str> {
-    let first = disc.trim_start_matches('/').split('/').next()?;
-    layout::LANGUAGE_FOLDERS.iter().copied().find(|l| l.eq_ignore_ascii_case(first))
-}
-
 /// Every version of the game, by the letter in its id.
 const VERSION_LETTERS: [char; 6] = ['E', 'P', 'J', 'K', 'W', 'C'];
 
@@ -268,6 +267,8 @@ pub(crate) fn reserved_id(id: &str) -> bool {
 struct Builder<'a> {
     plan: Plan,
     store: Option<&'a GameStore>,
+    spare: known_patches::SpareMemory,
+    comet_hook: Option<u32>,
 }
 
 impl Builder<'_> {
@@ -311,10 +312,7 @@ impl Builder<'_> {
 
     fn folder(&mut self, sd_root: &Path, patch_root: &Path, folder: &FolderPatch, disc: &str, external: &str) {
         let Some(directory) = resolve(sd_root, patch_root, external).filter(|d| d.is_dir()) else {
-            // Patches often list every language's folder and a mod brings only some: nothing is lost.
-            if is_language_path(disc).is_none() {
-                self.plan.note(Level::Lost, format!("{external}: no such folder in the mod"));
-            }
+            // Patches often list folders the download doesn't bring. Riivolution skips those too: nothing is lost.
             return;
         };
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -366,6 +364,43 @@ impl Builder<'_> {
                 }
             }
         }
+        // A value kept in a file says the same as one in the patch.
+        let from_file = if !patch.ocarina && !patch.search && !patch.value_file.is_empty() {
+            resolve(sd_root, patch_root, &patch.value_file).filter(|f| f.is_file()).and_then(|f| fs::read(f).ok())
+        } else {
+            None
+        };
+        let value: &[u8] = from_file.as_deref().unwrap_or(&patch.value);
+        if !patch.search && !patch.ocarina && !value.is_empty() {
+            if let Some(found) = known_patches::setting(patch.offset, value) {
+                self.plan.native_patches.insert(found.id, found.value);
+                self.said(found.what);
+                return;
+            }
+            if let Some(changes) = known_patches::object_table_write(patch.offset, value) {
+                self.plan.object_changes.extend(changes);
+                self.said("which objects the game can create");
+                return;
+            }
+            if let Some(change) = known_patches::treasure_box_write(patch.offset, value) {
+                self.plan.object_changes.push(change);
+                self.said("what treasure boxes hold");
+                return;
+            }
+            if let Some(change) = known_patches::display_model_write(patch.offset, value) {
+                self.plan.object_changes.push(change);
+                self.said("the models shown before things are collected");
+                return;
+            }
+            if let Some(target) = known_patches::comet_limit_hook(patch.offset, value) {
+                self.comet_hook = Some(target);
+                return;
+            }
+            if known_patches::find(patch.offset, value).is_none() && known_patches::is_spare_memory(patch.offset) {
+                self.spare.parts.push((patch.offset | 0x8000_0000, value.to_vec()));
+                return;
+            }
+        }
         if !patch.search && !patch.ocarina && patch.value_file.is_empty() {
             if let Some((dome, rows)) = known_patches::comet_table(patch.offset, &patch.value) {
                 self.plan.comet_schedule.insert(dome, rows);
@@ -397,6 +432,30 @@ impl Builder<'_> {
         }
     }
 
+    fn said(&mut self, what: &str) {
+        if !self.plan.known_patches.iter().any(|w| w == what) {
+            self.plan.known_patches.push(what.to_string());
+        }
+    }
+
+    /// What a mod's code in spare memory comes to. Whatever isn't understood stays on the list of code changes.
+    fn read_spare_memory(&mut self) {
+        let mut left: Vec<(u32, usize)> = self.spare.parts.iter().map(|(at, bytes)| (*at, bytes.len())).collect();
+        if let Some(target) = self.comet_hook.take() {
+            match self.spare.comet_limits(target) {
+                Some((rows, used)) => {
+                    self.plan.comet_limits.extend(rows);
+                    self.said("comet time limits");
+                    left.retain(|(at, size)| !used.iter().any(|(u, length)| u >= at && *u < at + *size as u32 && *length > 0));
+                }
+                None => self.plan.unknown_code.push(UnknownCode { address: target, bytes: 4, kind: "memory" }),
+            }
+        }
+        for (at, size) in left {
+            self.plan.unknown_code.push(UnknownCode { address: at, bytes: size, kind: "memory" });
+        }
+    }
+
     /// What one choice of one option does, on its own.
     fn fragment(&self, disc: &Disc, section: usize, option: usize, choice: usize, file: &PatchFile, game_id: &str) -> Plan {
         let mut alone = disc.clone();
@@ -404,7 +463,7 @@ impl Builder<'_> {
             each.selected = 0;
         }
         alone.sections[section].options[option].selected = choice + 1;
-        let mut part = Builder { plan: Plan::default(), store: self.store };
+        let mut part = Builder { plan: Plan::default(), store: self.store, spare: known_patches::SpareMemory::default(), comet_hook: None };
         for patch in alone.active_patches(game_id) {
             let patch_root = if patch.root.is_empty() {
                 file.xml.parent().unwrap_or(&file.sd_root).to_path_buf()
@@ -428,6 +487,7 @@ impl Builder<'_> {
                 }
             }
         }
+        part.read_spare_memory();
         part.plan
     }
 
@@ -460,6 +520,8 @@ impl Builder<'_> {
         self.take_notes(&part);
         self.plan.files.extend(part.files);
         self.plan.native_patches.extend(part.native_patches);
+        self.plan.object_changes.extend(part.object_changes);
+        self.plan.comet_limits.extend(part.comet_limits);
     }
 
     /// A question that only asks which version of the game this is. Nobody needs to answer it: what the versions share is
@@ -478,6 +540,8 @@ impl Builder<'_> {
         if let Some(best) = best {
             self.take_notes(&Plan { known_patches: best.known_patches, unknown_code: best.unknown_code, ..Default::default() });
             self.plan.native_patches.extend(best.native_patches);
+            self.plan.object_changes.extend(best.object_changes);
+            self.plan.comet_limits.extend(best.comet_limits);
         }
         let same = parts.windows(2).all(|w| w[0].1.files == w[1].1.files);
         let letters: Vec<char> = parts.iter().map(|(l, _)| *l).collect();
@@ -516,28 +580,90 @@ impl Builder<'_> {
         }
         let mut choices = vec![OptionChoice { id: "off".to_string(), name: "Off".to_string() }];
         let mut default = "off".to_string();
+        // Choices that only differ in where a console keeps its save come to the same here: Nebula keeps saves itself.
+        let parts: Vec<Plan> = (0..entry.choices.len()).map(|i| self.fragment(disc, section, option, i, file, game_id)).collect();
+        let the_same = parts.len() > 1
+            && parts.windows(2).all(|w| {
+                w[0].files == w[1].files && w[0].native_patches == w[1].native_patches && w[0].object_changes == w[1].object_changes && w[0].comet_limits == w[1].comet_limits
+            });
         for (i, choice) in entry.choices.iter().enumerate() {
+            if the_same && i != 0 {
+                continue;
+            }
             let mut choice_id = slug(&choice.name);
             if choice_id == "off" || choices.iter().any(|c| c.id == choice_id) {
                 choice_id = format!("choice-{}", i + 1);
             }
-            let mut part = self.fragment(disc, section, option, i, file, game_id);
+            let mut part = parts[i].clone();
             self.take_notes(&part);
-            if entry.selected == i + 1 {
+            if entry.selected == i + 1 || (the_same && entry.selected != 0) {
                 default.clone_from(&choice_id);
             }
             let when = When { option: BTreeMap::from([(id.clone(), vec![choice_id.clone()])]), ..Default::default() };
-            if !part.files.is_empty() || !part.native_patches.is_empty() {
+            if !part.files.is_empty() || !part.native_patches.is_empty() || !part.object_changes.is_empty() || !part.comet_limits.is_empty() {
                 self.plan.layers.push(Layer {
                     name: format!("{id}-{choice_id}"),
                     when,
                     files: std::mem::take(&mut part.files),
                     switches: std::mem::take(&mut part.native_patches),
+                    object_changes: std::mem::take(&mut part.object_changes),
+                    comet_limits: std::mem::take(&mut part.comet_limits),
                 });
             }
-            choices.push(OptionChoice { id: choice_id, name: choice.name.clone() });
+            // One choice left: "Off" and the mod's own name for being on.
+            let shown = if the_same { "On".to_string() } else { choice.name.clone() };
+            choices.push(OptionChoice { id: choice_id, name: shown });
         }
         self.plan.options.push(PlayerOption { id, name, default, choices });
+    }
+
+    /// A patch file for one other version of the game, beside one for the version the tables know: only the files it adds, on the same options as the main file.
+    fn version_file(&mut self, file: &PatchFile, letter: char) -> Result<()> {
+        let game_id = format!("RMG{letter}01");
+        let bytes = fs::read(&file.xml)?;
+        let Ok(mut disc) = riivolution::parse(&riivolution::decode(&bytes)) else {
+            return Ok(());
+        };
+        let saved = layout::Layout::saved_choices(file, &game_id);
+        disc.choose_defaults(&game_id, &saved);
+        for section in 0..disc.sections.len() {
+            for option in 0..disc.sections[section].options.len() {
+                let entry = &disc.sections[section].options[option];
+                let first = entry.selected.max(1) - 1;
+                if entry.choices.is_empty() {
+                    continue;
+                }
+                let mut part = self.fragment(&disc, section, option, first, file, &game_id);
+                // What the main file already brings stays its own; a version's own folders are what's left.
+                let main_has = |disc_path: &String| {
+                    self.plan.files.contains_key(disc_path) || self.plan.layers.iter().any(|l| l.files.contains_key(disc_path))
+                };
+                part.files.retain(|path, _| !main_has(path));
+                if part.files.is_empty() {
+                    continue;
+                }
+                let name = entry.name.trim_end_matches(':').trim().to_string();
+                let id = slug(&name);
+                let on: Vec<String> = self
+                    .plan
+                    .options
+                    .iter()
+                    .find(|o| o.id == id)
+                    .map(|o| o.choices.iter().filter(|c| c.id != "off").map(|c| c.id.clone()).collect())
+                    .unwrap_or_default();
+                let mut when = When { version: vec![letter], ..Default::default() };
+                if !on.is_empty() {
+                    when.option.insert(id.clone(), on);
+                }
+                self.plan.layers.push(Layer {
+                    name: format!("version-{}-{}", letter.to_ascii_lowercase(), slug(&name)),
+                    when,
+                    files: part.files,
+                    ..Default::default()
+                });
+            }
+        }
+        Ok(())
     }
 
     fn patch_file(&mut self, file: &PatchFile, game_id: &str) -> Result<bool> {
@@ -605,10 +731,29 @@ impl Builder<'_> {
 /// The plan for a mod on this disc. `store`, when given, is the player's imported game; without it some placements cannot
 /// be checked and bare file names cannot be placed.
 pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Result<Plan> {
-    let mut builder = Builder { plan: Plan { game_id: game_id.to_string(), ..Default::default() }, store };
+    let mut builder = Builder { plan: Plan { game_id: game_id.to_string(), ..Default::default() }, store, spare: known_patches::SpareMemory::default(), comet_hook: None };
     let mut used_patch = false;
+    // One file per version of the game is one mod: the file for this version says it all, the others add the files only their versions need.
+    let one_version = |file: &PatchFile| -> Option<char> {
+        let bytes = fs::read(&file.xml).ok()?;
+        let disc = riivolution::parse(&riivolution::decode(&bytes)).ok()?;
+        let wanted = disc.target.game.clone().unwrap_or_default();
+        if wanted.get(..3).unwrap_or(&wanted) != ANY_VERSION || disc.target.regions.len() != 1 {
+            return None;
+        }
+        disc.target.regions[0].chars().next()
+    };
+    let this_version = game_id.chars().nth(3);
+    let has_this_version = layout.patches.iter().any(|f| one_version(f) == this_version);
+    let mut other_versions = Vec::new();
     for file in &layout.patches {
-        used_patch |= builder.patch_file(file, game_id)?;
+        match one_version(file) {
+            Some(letter) if has_this_version && Some(letter) != this_version => other_versions.push((file, letter)),
+            _ => used_patch |= builder.patch_file(file, game_id)?,
+        }
+    }
+    for (file, letter) in other_versions {
+        builder.version_file(file, letter)?;
     }
     if !used_patch && !layout.patches.is_empty() {
         if let Some(wanted) = builder.plan.for_another_game.clone() {

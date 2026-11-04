@@ -20,6 +20,8 @@ serde_json = "1"
 walkdir = "2"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "lzma"] }
 sevenz-rust2 = "0.13"
+lzma-rs = "0.3"
+crc32fast = "1"
 tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 eframe = "0.31"
