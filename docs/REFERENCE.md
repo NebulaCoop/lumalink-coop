@@ -651,10 +651,10 @@ A name the game already uses takes that object's place. Each callback can be nul
 ### New power-ups
 
 ```c
-static NebulaPowerUpClass spring = { sizeof(NebulaPowerUpClass), "BGM_MUTEKI_A", 0, 0, start, update, end };
+static NebulaPowerUpClass super_jump = { sizeof(NebulaPowerUpClass), "SuperJump", 1800, "BGM_MUTEKI_A", 0, 0, start, update, end };
 ```
 
-`add_power_up` answers its number; give it with `set_value(NEBULA_SET_POWER_UP, number)`. `music`: while it lasts. `color_frame`: a frame of `Mario.arc`'s ColorChange (0 his own). The callbacks run as it starts, every frame, and as it ends.
+`add_power_up` answers its number; give it with `set_value(NEBULA_SET_POWER_UP, number)`, on any stage. `frames`: how long it lasts, at 60 a second; 0 until something ends it. `music`: while it lasts. `color_frame`: a frame of `Mario.arc`'s ColorChange (0 his own). The callbacks run as it starts, every frame, and as it ends.
 
 ## 12. Plugins: writing a whole boss
 
