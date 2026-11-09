@@ -226,8 +226,12 @@ fn is_extracted_disc(path: &Path) -> bool {
 /// The game as a disc or a folder: to compare a mod that's a whole changed game with.
 static BASE_GAME: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 
+/// The imported game, whose record of the disc's files (DiscFiles.tsv) a whole changed game is read against.
+static STORE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
 /// The disc files Setup keeps beside the imported game, as the base when none was named.
 pub fn base_from_store(store: &Path) {
+    *STORE.lock().unwrap_or_else(|e| e.into_inner()) = Some(store.to_path_buf());
     let inputs = store.parent().map(|p| p.join("game-inputs"));
     if let Some(inputs) = inputs.filter(|p| p.join("sys").join("main.dol").is_file()) {
         let mut base = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner());
@@ -242,56 +246,67 @@ pub fn set_base_game(path: Option<PathBuf>) {
     *BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()) = path;
 }
 
-/// A mod that's a whole changed game: only what differs from the game's own, in the folders of the disc, with its program beside them.
-fn changes_from_game(input: &Path, work: &Path) -> Result<PathBuf> {
-    use nebula_import::cook::store;
-    let Some(base) = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
-        bail!("{}: this is a whole game. To take only what the mod changes, name the game's own disc with --base", input.display());
-    };
-    let to_store = |from: &Path, name: &str| -> Result<PathBuf> {
-        let pak = work.join(name);
-        let mut partition = nebula_import::Partition::open(from).with_context(|| format!("{} can't be read as this game", from.display()))?;
-        partition.write_pak(&pak, &mut |_, _| true)?;
-        Ok(pak)
-    };
-    let changed = to_store(input, "changed.pak")?;
-    let original = to_store(&base, "original.pak")?;
-    let into = work.join("changes");
-    fs::create_dir_all(&into)?;
-    let mut count = 0usize;
-    for folder in crate::layout::DISC_FOLDERS {
-        let mut hashes = std::collections::BTreeMap::new();
-        let _ = store::visit_folder(&original, folder, &mut |path, bytes| {
-            hashes.insert(path.to_ascii_lowercase(), (bytes.len(), nebula_import::cook::texture::xxh64(&bytes)));
-        });
-        let _ = store::visit_folder(&changed, folder, &mut |path, bytes| {
-            let same = hashes.get(&path.to_ascii_lowercase()).is_some_and(|(size, hash)| *size == bytes.len() && *hash == nebula_import::cook::texture::xxh64(&bytes));
-            if !same {
-                let target = into.join(folder).join(path);
-                if let Some(parent) = target.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                if fs::write(target, &bytes).is_ok() {
-                    count += 1;
-                }
-            }
-        });
-    }
-    // The program, for what it changes.
-    for name in ["sys/main.dol", "main.dol"] {
-        if let (Ok(new), Ok(old)) = (store::read_file(&changed, name), store::read_file(&original, name)) {
-            if new != old {
-                fs::write(into.join("main.dol"), new)?;
-                let kept = work.join("original.dol");
-                fs::write(&kept, old)?;
-                crate::plan::set_base_program(Some(kept));
-                count += 1;
-            }
-            break;
+/// The player's game, file by file (lower-case path: size, XXH64): the record the import kept, or, for a game imported
+/// before Nebula kept one, the game's own disc named with --base, read once.
+fn original_files() -> Result<std::collections::HashMap<String, (u64, u64)>> {
+    use nebula_import::cook;
+    if let Some(store) = STORE.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        if let Ok(text) = cook::store::read_file(&store, cook::DISC_FILES_PATH) {
+            return Ok(cook::read_disc_files(&String::from_utf8_lossy(&text)));
         }
     }
-    fs::remove_file(changed).ok();
-    fs::remove_file(original).ok();
+    let Some(base) = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        bail!("this is a whole game. To take only what the mod changes, LumaLink needs your game imported by this Nebula, or your own disc named with --base");
+    };
+    let mut game = nebula_import::ChangedGame::open(&base).with_context(|| format!("{} can't be read as this game", base.display()))?;
+    let mut files = std::collections::HashMap::new();
+    game.visit_files(&mut |path, bytes| {
+        files.insert(path.to_ascii_lowercase(), (bytes.len() as u64, cook::texture::xxh64(&bytes)));
+        Ok(())
+    })?;
+    files.insert("sys/main.dol".to_string(), (game.dol.len() as u64, cook::texture::xxh64(&game.dol)));
+    Ok(files)
+}
+
+/// A mod that's a whole changed game: only the files that differ from the player's, in the folders of the disc, with its
+/// program beside them when that differs too. Files only a console reads are not taken.
+fn changes_from_game(input: &Path, work: &Path) -> Result<PathBuf> {
+    use nebula_import::cook;
+    let mut changed = nebula_import::ChangedGame::open(input).with_context(|| format!("{}", input.display()))?;
+    let original = original_files().with_context(|| format!("{}", input.display()))?;
+    let into = work.join("changes");
+    fs::create_dir_all(&into)?;
+    let same = |path: &str, bytes: &[u8]| {
+        original.get(&path.to_ascii_lowercase()).is_some_and(|(size, hash)| *size == bytes.len() as u64 && *hash == cook::texture::xxh64(bytes))
+    };
+    let mut count = 0usize;
+    changed.visit_files(&mut |path, bytes| {
+        if cook::console_only(path) || same(path, &bytes) {
+            return Ok(());
+        }
+        let Some(relative) = safe_relative(path) else {
+            return Ok(());
+        };
+        let target = into.join(relative);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&target, &bytes).with_context(|| format!("{} cannot be written", target.display()))?;
+        count += 1;
+        Ok(())
+    })?;
+    if !same("sys/main.dol", &changed.dol) {
+        fs::write(into.join("main.dol"), &changed.dol)?;
+        // The program it's compared with: the game's own disc when named, else the one Setup keeps (plan::base_program).
+        if let Some(base) = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+            if let Ok(game) = nebula_import::ChangedGame::open(&base) {
+                let kept = work.join("original.dol");
+                fs::write(&kept, &game.dol)?;
+                crate::plan::set_base_program(Some(kept));
+            }
+        }
+        count += 1;
+    }
     if count == 0 {
         bail!("{}: it's the same as the game's own disc", input.display());
     }
@@ -473,5 +488,62 @@ mod tests {
         fs::write(&text, b"x").unwrap();
         assert!(open(&text, dir.path()).is_err());
         assert!(open(&dir.path().join("none"), dir.path()).is_err());
+    }
+
+    /// An extracted game folder: boot header with `id`, a program, and a file table of `files` (each in its folder).
+    fn game_folder(root: &std::path::Path, id: &str, dol: &[u8], files: &[(&str, &str, &[u8])]) {
+        use std::fs;
+        let sys = root.join("sys");
+        fs::create_dir_all(&sys).unwrap();
+        let mut boot = vec![0u8; 0x440];
+        boot[..6].copy_from_slice(id.as_bytes());
+        fs::write(sys.join("boot.bin"), boot).unwrap();
+        fs::write(sys.join("main.dol"), dol).unwrap();
+        // The file table: the root, then each folder followed by its one file; names after the entries.
+        let mut entries: Vec<[u32; 3]> = Vec::new();
+        let mut names = Vec::new();
+        let name = |text: &str, names: &mut Vec<u8>| {
+            let at = names.len() as u32;
+            names.extend_from_slice(text.as_bytes());
+            names.push(0);
+            at
+        };
+        let count = 1 + files.len() as u32 * 2;
+        entries.push([0x0100_0000, 0, count]);
+        for (i, (folder, file, bytes)) in files.iter().enumerate() {
+            let folder_index = 1 + i as u32 * 2;
+            entries.push([0x0100_0000 | name(folder, &mut names), 0, folder_index + 2]);
+            entries.push([name(file, &mut names), 0x1000 * (i as u32 + 1), bytes.len() as u32]);
+            let dir = root.join("files").join(folder);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join(file), bytes).unwrap();
+        }
+        let mut fst = Vec::new();
+        for entry in entries {
+            for word in entry {
+                fst.extend_from_slice(&word.to_be_bytes());
+            }
+        }
+        fst.extend_from_slice(&names);
+        fs::write(sys.join("fst.bin"), fst).unwrap();
+    }
+
+    #[test]
+    fn a_whole_changed_game_gives_only_what_it_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (original, changed, work) = (dir.path().join("original"), dir.path().join("changed"), dir.path().join("work"));
+        game_folder(&original, "RMGE01", b"program", &[("StageData", "A.arc", b"same"), ("ObjectData", "B.arc", b"old")]);
+        game_folder(&changed, "RMGE01", b"program 2", &[("StageData", "A.arc", b"same"), ("ObjectData", "B.arc", b"new!")]);
+        super::set_base_game(Some(original.clone()));
+        let into = super::changes_from_game(&changed, &work).unwrap();
+        super::set_base_game(None);
+        crate::plan::set_base_program(None);
+        assert!(!into.join("StageData/A.arc").exists());
+        assert_eq!(std::fs::read(into.join("ObjectData/B.arc")).unwrap(), b"new!");
+        assert_eq!(std::fs::read(into.join("main.dol")).unwrap(), b"program 2");
+        let other = dir.path().join("other");
+        game_folder(&other, "SB4E01", b"x", &[("StageData", "A.arc", b"x")]);
+        let error = format!("{:#}", super::changes_from_game(&other, &work).unwrap_err());
+        assert!(error.contains("Super Mario Galaxy 2"), "{error}");
     }
 }

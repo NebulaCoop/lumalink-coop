@@ -450,10 +450,14 @@ fn check_when(when: &Value, name: &str, options: &BTreeMap<String, Vec<String>>,
     }
 }
 
-/// What a file in a layer's `files/` can be.
-const GAME_FILE_ENDINGS: [&str; 31] = ["json", "gltf", "glb", "bin", "png", "wav", "ogg", 
-    "arc", "szs", "bcsv", "tbl", "pa", "bcam", "banmt", "bmd", "bdl", "brk", "btk", "bck", "bpk", "btp", "bva", "blk", "brstm", "ast", "aw", "thp", "png", "bin", "bti", "brfnt",
-];
+/// What a file in a layer's `files/` can be: a kind of the game's that Nebula cooks, a modern file it converts (models,
+/// pictures, tables as JSON, music), or one the game reads as it is.
+fn game_reads(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    nebula_import::cook::cooks(&lower)
+        || nebula_import::cook::modern_audio::is_stream_source(&lower)
+        || [".json", ".gltf", ".glb", ".png", ".aw", ".bin", ".kcl"].iter().any(|e| lower.ends_with(e))
+}
 
 fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<String>>, found: &mut Findings) {
     let Some(layers) = manifest.get("layers").and_then(Value::as_array) else {
@@ -501,8 +505,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                     continue;
                 }
                 has_anything = true;
-                let ending = entry.path().extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-                if !GAME_FILE_ENDINGS.contains(&ending.as_str()) {
+                if !game_reads(&entry.file_name().to_string_lossy()) {
                     found.note(format!("{}: the game may not read this kind of file", entry.path().strip_prefix(&folder).unwrap_or(entry.path()).display()));
                 }
             }
