@@ -105,6 +105,12 @@ pub struct Plan {
     pub new_galaxies: Vec<String>,
 }
 
+/// A language's HOME menu layout (`UsEnglish/LayoutData/HomeButton.arc`), which console_only names by its
+/// store path.
+fn is_language_home_menu(disc: &str) -> bool {
+    disc.to_ascii_lowercase().ends_with("/layoutdata/homebutton.arc")
+}
+
 impl Plan {
     fn note(&mut self, level: Level, text: impl Into<String>) {
         self.notes.push(Note { level, text: text.into() });
@@ -118,6 +124,11 @@ impl Plan {
         }
         if disc.to_ascii_lowercase().starts_with("/nebuladata/") && !disc.eq_ignore_ascii_case("/NebulaData/GalaxyInfoTable.bcsv") {
             self.note(Level::Lost, format!("{disc}: Nebula's own tables are not set by mods"));
+            return;
+        }
+        // A console's own files (banner, HOME menu, module list): Nebula has none of those, so nothing is lost.
+        if nebula_import::cook::console_only(disc.trim_start_matches('/')) || is_language_home_menu(&disc) {
+            self.note(Level::Info, format!("{disc}: only the console reads this (its banner, HOME menu or module list); Nebula has none"));
             return;
         }
         // Keyed as the store names it: two of the mod's paths may be one place in the game (a zone's archive both at
@@ -995,6 +1006,15 @@ mod tests {
         let only = plan.files.values().next().unwrap();
         assert_eq!((only.disc.as_str(), only.host.as_path()), ("/StageData/KoopaBattleVs3BossZone.arc", Path::new("b")));
         assert_eq!(plan.notes.len(), 2, "{:?}", plan.notes);
+    }
+
+    #[test]
+    fn console_files_are_left_out_as_nothing_lost() {
+        let mut plan = Plan::default();
+        plan.set("/UsEnglish/LayoutData/HomeButton.arc", Path::new("a"));
+        plan.set("/opening.bnr", Path::new("b"));
+        assert!(plan.files.is_empty());
+        assert!(plan.notes.iter().all(|n| n.level == Level::Info), "{:?}", plan.notes);
     }
 
     #[test]
