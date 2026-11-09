@@ -111,17 +111,21 @@ enum Command {
         #[command(flatten)]
         game: Game,
     },
-    /// List what the game's names are: settings, player (its numbers), objects, rules, or tables (every table of your
-    /// imported game with its rows and columns: what a merge/ file can add to, remove from or change).
+    /// List what the game's names are: settings, player (its numbers), objects, rules, tables (every table of your
+    /// imported game with its rows and columns: what a merge/ file can add to, remove from or change), or messages (every
+    /// message id of a language with its words, tags in brackets, as a "text" row takes them).
     List {
-        /// settings, player, objects, rules, tables
+        /// settings, player, objects, rules, tables, messages
         what: String,
         /// Only names holding this (for tables: a path or a column name).
         #[arg(long)]
         filter: Option<String>,
-        /// Your imported game (Nebula's game.pak), for tables.
+        /// Your imported game (Nebula's game.pak), for tables and messages.
         #[arg(long, value_name = "FILE")]
         game: Option<PathBuf>,
+        /// The language folder of the messages: UsEnglish (the default), UsFrench, EuGerman, JpJapanese...
+        #[arg(long, default_value = "UsEnglish")]
+        language: String,
     },
     /// List the files of your imported game.
     Files {
@@ -335,7 +339,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             println!("wrote {}", output.display());
             Ok(ExitCode::SUCCESS)
         }
-        Command::List { what, filter, game } => {
+        Command::List { what, filter, game, language } => {
             let keep = |name: &str| filter.as_deref().is_none_or(|f| name.to_ascii_lowercase().contains(&f.to_ascii_lowercase()));
             match what.as_str() {
                 "settings" => {
@@ -371,7 +375,20 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     }
                     println!("{} tables", tables.len());
                 }
-                other => bail!("{other}: choose settings, player, objects, rules or tables"),
+                "messages" => {
+                    let game = game.context("messages are your game's: name its game.pak with --game")?;
+                    let messages = lumalink_core::inspect::list_messages(&game, &language)?;
+                    let mut shown = 0;
+                    for (id, text, _) in &messages {
+                        if keep(id) || keep(text) {
+                            println!("{id}\t{}", text.replace('\n', "\\n"));
+                            shown += 1;
+                        }
+                    }
+                    let same = messages.iter().filter(|m| m.2).count();
+                    println!("{shown} of {} messages; {same} read back as the game's own", messages.len());
+                }
+                other => bail!("{other}: choose settings, player, objects, rules, tables or messages"),
             }
             Ok(ExitCode::SUCCESS)
         }

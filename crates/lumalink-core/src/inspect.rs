@@ -187,6 +187,26 @@ pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListin
     Ok(found)
 }
 
+/// A language's messages of an imported game (`UsEnglish`, `EuFrench`...): (id, text with the game's tags in brackets,
+/// whether that text reads back as the game's own units).
+pub fn list_messages(store: &Path, language: &str) -> Result<Vec<(String, String, bool)>> {
+    use nebula_import::cook::store as game_store;
+    let folder = format!("{language}/MessageData/Message");
+    let files = game_store::read_folder(store, &folder).with_context(|| format!("the game has no {folder}"))?;
+    let find = |name: &str| files.iter().find(|(path, _)| path.eq_ignore_ascii_case(name)).map(|(_, bytes)| bytes.as_slice());
+    let (Some(message_file), Some(id_table)) = (find("message.bmg"), find("messageid.tbl")) else {
+        bail!("{folder} has no message.bmg and messageid.tbl");
+    };
+    Ok(crate::messages::read(message_file, id_table)?
+        .into_iter()
+        .map(|(id, units)| {
+            let text = crate::messages::decode(&units);
+            let same = crate::messages::encode(&text) == units;
+            (id, text, same)
+        })
+        .collect())
+}
+
 /// A table's words: as the game's own tables keep Japanese.
 fn text_of(bytes: &[u8]) -> String {
     encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned()
