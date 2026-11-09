@@ -1,0 +1,16 @@
+{
+  "rows": [
+    {
+      "GroupName": "Mario",
+      "UniqueName": "GoldFlowerAura",
+      "EffectName": "InvincibleMario",
+      "JointName": "Center",
+      "Affect": "T/R",
+      "Follow": "T/R",
+      "DrawOrder": "3D",
+      "EndFrame": -1,
+      "RateValue": 0.5,
+      "ScaleValue": 1.4
+    }
+  ]
+}

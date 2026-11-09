@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ],
+  "id": "new-talk",
+  "name": "A New Talk",
+  "description": "A Toad in the Comet Observatory asks you a question of his own, then talks on as before. All data, no code."
+}

@@ -459,7 +459,7 @@ fn game_reads(name: &str) -> bool {
         || [".json", ".gltf", ".glb", ".png", ".aw", ".bin", ".kcl"].iter().any(|e| lower.ends_with(e))
 }
 
-fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<String>>, found: &mut Findings) {
+fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<String>>, store: Option<&GameStore>, found: &mut Findings) {
     let Some(layers) = manifest.get("layers").and_then(Value::as_array) else {
         found.problem("it has no layers");
         return;
@@ -471,7 +471,11 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
         || ["music", "event_flags", "comet_schedule"].iter().any(|k| manifest.get(*k).and_then(Value::as_array).is_some_and(|l| !l.is_empty()));
     has_anything |= check_story(manifest, "the mod", found);
     let says_custom_shaders = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "custom-shaders"));
+    let says_player_animations = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "player-animations"));
     for (i, layer) in layers.iter().enumerate() {
+        if layer.get("player_animations").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !says_player_animations {
+            found.problem("a layer adds player_animations, so requires has to list player-animations");
+        }
         if let Some(materials) = layer.get("materials") {
             let Some(materials) = materials.as_object() else {
                 found.problem("materials is a set of material names and their shader files");
@@ -548,7 +552,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                 }
             }
         }
-        has_anything |= check_rows(folder, layer, &name, found);
+        has_anything |= check_rows(folder, layer, &name, store, found);
         has_anything |= check_story(layer, &name, found);
         // Rows a mod can have can also be in a layer, so that an option turns them on.
         check_galaxies(folder, layer, found);
@@ -587,7 +591,7 @@ fn check_story(value: &Value, name: &str, found: &mut Findings) -> bool {
 }
 
 /// A layer's rows that aren't files. Whether it has any.
-fn check_rows(folder: &Path, layer: &Value, name: &str, found: &mut Findings) -> bool {
+fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore>, found: &mut Findings) -> bool {
     let mut any = false;
     if let Some(rows) = layer.get("object_changes").and_then(Value::as_array) {
         any |= !rows.is_empty();
@@ -665,6 +669,52 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, found: &mut Findings) ->
             }
         }
     }
+    // The player's animations: a name, a bck of the player's (ObjectData/MarioAnime.arc: the layer's, or the game's), a
+    // rate over 0 up to 100 and whole blend frames up to 600, as Nebula reads them (luma.cpp).
+    if let Some(rows) = layer.get("player_animations") {
+        let Some(rows) = rows.as_array() else {
+            found.problem(format!("{name}: player_animations is a list of rows"));
+            return any;
+        };
+        any |= !rows.is_empty();
+        let arc = layer.get("path").and_then(Value::as_str).map(|path| folder.join(path).join("files").join("ObjectData").join("MarioAnime.arc"));
+        let has_modern = arc.as_ref().is_some_and(|arc| {
+            walkdir::WalkDir::new(arc).into_iter().filter_map(std::result::Result::ok).any(|e| {
+                let file = e.file_name().to_string_lossy().to_ascii_lowercase();
+                file.ends_with(".glb") || file.ends_with(".gltf")
+            })
+        });
+        for row in rows {
+            let animation = row.get("name").and_then(Value::as_str).unwrap_or_default();
+            let file = row.get("file").and_then(Value::as_str).unwrap_or_default();
+            if animation.is_empty() || file.is_empty() {
+                found.problem(format!("{name}: a row of player_animations needs name and file"));
+                continue;
+            }
+            if let Some(rate) = row.get("rate") {
+                if rate.as_f64().is_none_or(|r| r <= 0.0 || r > 100.0) {
+                    found.problem(format!("{name}: the player animation {animation}: rate is a number over 0, up to 100"));
+                }
+            }
+            if let Some(blend) = row.get("blend_frames") {
+                if blend.as_u64().is_none_or(|b| b > 600) {
+                    found.problem(format!("{name}: the player animation {animation}: blend_frames is a whole number up to 600"));
+                }
+            }
+            let in_layer = arc.as_ref().is_some_and(|arc| arc.join(format!("{file}.bck")).is_file() || arc.join(file).is_file());
+            let games = format!("objectdata/marioanime.arc/{}.bck", file.to_ascii_lowercase());
+            match store {
+                _ if in_layer || has_modern => {}
+                Some(store) if store.has(&games) => {}
+                Some(_) => found.problem(format!(
+                    "{name}: the player animation {animation}: {file} is neither in the layer's ObjectData/MarioAnime.arc nor the game's"
+                )),
+                None => found.note(format!(
+                    "{name}: the player animation {animation}: {file} isn't in the layer's ObjectData/MarioAnime.arc, so it has to be the game's (check with --game)"
+                )),
+            }
+        }
+    }
     if let Some(rows) = layer.get("sound_effects").and_then(Value::as_array) {
         any |= !rows.is_empty();
         for row in rows {
@@ -699,7 +749,13 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
             found.problem(format!("merge/{shown} can't be read"));
             continue;
         };
-        if name.ends_with(".json") {
+        let relative = shown.replace('\\', "/");
+        if let Some(language) = messages_language(&relative) {
+            // Lines and talk flows: checked as the cook checks them, the game's lines standing in.
+            if let Err(error) = nebula_import::cook::message_merge::check_shape(&bytes, &language) {
+                found.problem(format!("merge/{shown}: {error:#}"));
+            }
+        } else if name.ends_with(".json") {
             let parsed = serde_json::from_slice::<Value>(&bytes).ok();
             if let Some(root) = &parsed {
                 for row in root.get("remove").and_then(Value::as_array).map_or(&[][..], Vec::as_slice) {
@@ -730,10 +786,23 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
                 found.problem(format!("merge/{shown}: new particles need their names: ParticleNames.bcsv.json beside them"));
             }
         } else {
-            found.problem(format!("merge/{shown}: only tables (.bcsv.json) and particles (.jpc) can be added to"));
+            found.problem(format!(
+                "merge/{shown}: only tables (.bcsv.json), messages (MessageData/messages.json, <Language>/MessageData/Message.arc/message.bmg.json) and particles (.jpc) can be added to"
+            ));
         }
     }
     any
+}
+
+/// The language a messages merge is checked in: its folder's, or UsEnglish for every language's (where a new line
+/// needs a default). None: not a messages merge.
+fn messages_language(path: &str) -> Option<String> {
+    let lower = path.to_ascii_lowercase();
+    if lower == "messagedata/messages.json" {
+        return Some("UsEnglish".to_string());
+    }
+    let parts: Vec<&str> = path.split('/').collect();
+    (parts.len() == 4 && lower.ends_with("/messagedata/message.arc/message.bmg.json")).then(|| parts[0].to_string())
 }
 
 /// Galaxies beside the game's, and the hungry Lumas that open them.
@@ -1010,7 +1079,7 @@ fn check_shader_file(path: &Path, found: &mut Findings) {
     }
 }
 
-fn check_folder(folder: &Path, found: &mut Findings) {
+fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) {
     let manifest = match read_manifest(folder) {
         Ok(manifest) => manifest,
         Err(error) => {
@@ -1061,7 +1130,7 @@ fn check_folder(folder: &Path, found: &mut Findings) {
     }
     if let Some(requires) = manifest.get("requires") {
         for feature in string_list(requires, "requires", found) {
-            if feature != "custom-shaders" && feature != "tunables" {
+            if feature != "custom-shaders" && feature != "tunables" && feature != "player-animations" {
                 found.problem(format!("requires {feature}, a feature this version of LumaLink doesn't know"));
             }
         }
@@ -1138,7 +1207,7 @@ fn check_folder(folder: &Path, found: &mut Findings) {
             None => found.problem("text is a set of message ids and their words"),
         }
     }
-    check_layers(folder, &manifest, &options, found);
+    check_layers(folder, &manifest, &options, store, found);
     for name in ["dxil.shaders", "spirv.shaders"] {
         let path = folder.join("shaders").join(name);
         if path.exists() {
@@ -1148,10 +1217,10 @@ fn check_folder(folder: &Path, found: &mut Findings) {
 }
 
 /// Everything wrong with a project folder or `.luma`, before anyone else finds it.
-pub fn check(input: &Path, _store: Option<&GameStore>) -> Result<Vec<Finding>> {
+pub fn check(input: &Path, store: Option<&GameStore>) -> Result<Vec<Finding>> {
     let mut found = Findings::default();
     if input.is_dir() {
-        check_folder(input, &mut found);
+        check_folder(input, store, &mut found);
         return Ok(found.0);
     }
     // A folder of its own, with a name nobody can guess and put a link at first.
@@ -1162,7 +1231,7 @@ pub fn check(input: &Path, _store: Option<&GameStore>) -> Result<Vec<Finding>> {
         }
         unpack(input, work.path())
     }) {
-        Ok(()) => check_folder(work.path(), &mut found),
+        Ok(()) => check_folder(work.path(), store, &mut found),
         Err(error) => found.problem(format!("{error:#}")),
     }
     Ok(found.0)
@@ -1415,6 +1484,56 @@ mod tests {
         fs::remove_file(project.join(format!("{merge}Other.bin"))).unwrap();
         write(&project, &format!("{merge}Bad.bcsv.json"), r#"{ "rows": [] }"#);
         assert!(problems(&check(&project, None).unwrap()).iter().any(|t| t.contains("rows is a list")));
+    }
+
+    #[test]
+    fn check_reads_player_animations() {
+        let folder = std::env::temp_dir().join(format!("lumalink-anim-{}", std::process::id()));
+        let arc = folder.join("layers/base/files/ObjectData/MarioAnime.arc");
+        fs::create_dir_all(&arc).unwrap();
+        fs::write(arc.join("GoldSpin.bck"), b"J3D1bck1").unwrap();
+        let mut found = Findings::default();
+        let layer = serde_json::json!({"path": "layers/base", "player_animations": [
+            {"name": "GoldSpin", "file": "GoldSpin", "rate": 0.5, "blend_frames": 4},
+            {"name": "Jump", "file": "Jump2"},
+            {"name": "Bad", "file": "GoldSpin", "rate": 0, "blend_frames": 2.5},
+            {"name": "NoFile"}]});
+        assert!(check_rows(&folder, &layer, "base", None, &mut found));
+        let said = format!("{:?}", found.0);
+        assert!(said.contains("Jump2 isn't in the layer's"), "{said}");
+        assert!(!said.contains("GoldSpin isn't"), "{said}");
+        assert!(said.contains("rate is a number over 0"), "{said}");
+        assert!(said.contains("blend_frames is a whole number"), "{said}");
+        assert!(said.contains("needs name and file"), "{said}");
+        // With the game: its own bck is found, another is a problem.
+        let store = GameStore::from_paths("RMGE01", &["ObjectData/MarioAnime.arc/Jump2.bck"]);
+        let layer = serde_json::json!({"path": "layers/base", "player_animations": [{"name": "Jump", "file": "Jump2"}, {"name": "X", "file": "Nope"}]});
+        let mut found = Findings::default();
+        check_rows(&folder, &layer, "base", Some(&store), &mut found);
+        let said = format!("{:?}", found.0);
+        assert!(!said.contains("Jump2"), "{said}");
+        assert!(said.contains("Nope is neither"), "{said}");
+        fs::remove_dir_all(&folder).ok();
+    }
+
+    #[test]
+    fn check_reads_a_layers_messages_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        new_project(&project, "Talks").unwrap();
+        let all = "layers/base/merge/MessageData/messages.json";
+        write(&project, all, r#"{ "lines": { "MyLine": "Hi [player]!" }, "flows": { "AstroGalaxy_Kinopio012": "MyLine" } }"#);
+        let found = check(&project, None).unwrap();
+        assert!(problems(&found).is_empty(), "{found:?}");
+        write(&project, all, r#"{ "flows": { "AstroGalaxy_Kinopio012": { "ask": "maybe" } } }"#);
+        assert!(problems(&check(&project, None).unwrap()).iter().any(|t| t.contains("not one of")));
+        fs::remove_file(project.join(all)).unwrap();
+        // One language's: a new line needs that language's words.
+        let french = "layers/base/merge/UsFrench/MessageData/Message.arc/message.bmg.json";
+        write(&project, french, r#"{ "lines": { "MyLine": { "default": "Salut" } } }"#);
+        assert!(problems(&check(&project, None).unwrap()).is_empty());
+        write(&project, french, r#"{ "lines": { "MyLine": { "de": "Hallo", "like": "X" } }, "flows": { "X": { "ask": "select", "choices": { "yes": "a" } } } }"#);
+        assert!(problems(&check(&project, None).unwrap()).iter().any(|t| t.contains("choices need no")));
     }
 
     #[test]

@@ -1,0 +1,39 @@
+{
+  "rows": [
+    {
+      "name": "GoldFlowerItem",
+      "l_id": 3200,
+      "pos_x": -2064.6,
+      "pos_y": -12881.3,
+      "pos_z": -14532.0,
+      "dir_x": 0.0,
+      "dir_y": 0.0,
+      "dir_z": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "scale_z": 1.0,
+      "Obj_arg0": -1,
+      "Obj_arg1": -1,
+      "Obj_arg2": -1,
+      "Obj_arg3": -1,
+      "Obj_arg4": -1,
+      "Obj_arg5": -1,
+      "Obj_arg6": -1,
+      "Obj_arg7": -1,
+      "SW_APPEAR": -1,
+      "SW_DEAD": -1,
+      "SW_A": -1,
+      "SW_B": -1,
+      "SW_SLEEP": -1,
+      "CommonPath_ID": -1,
+      "ClippingGroupId": -1,
+      "GroupId": -1,
+      "DemoGroupId": -1,
+      "MapParts_ID": -1,
+      "ViewGroupId": -1,
+      "MessageId": -1,
+      "CastId": -1,
+      "ShapeModelNo": -1
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "lines": {
+    "NewTalk_Ask": {
+      "default": "Say, [player]...[wait 20] want to hear a secret?",
+      "fr": "Dis, [player]...[wait 20] tu veux connaître un secret ?",
+      "es": "Oye, [player]...[wait 20] ¿quieres saber un secreto?",
+      "like": "AstroGalaxy_Kinopio012"
+    },
+    "NewTalk_Secret": {
+      "default": "The Toad Brigade naps in shifts.[page]Don't tell the captain!",
+      "fr": "La Brigade Toad fait la sieste à tour de rôle.[page]Ne le dis pas au capitaine !",
+      "es": "La Brigada Toad duerme la siesta por turnos.[page]¡No se lo digas al capitán!",
+      "like": "AstroGalaxy_Kinopio012"
+    },
+    "NewTalk_Later": {
+      "default": "Suit yourself!",
+      "fr": "Comme tu veux !",
+      "es": "¡Como quieras!",
+      "like": "AstroGalaxy_Kinopio012"
+    }
+  },
+  "flows": {
+    "AstroGalaxy_Kinopio012": "NewTalk_Ask",
+    "NewTalk_Ask": {
+      "ask": "select",
+      "choices": {
+        "yes": { "default": "Yes!", "fr": "Oui !", "es": "¡Sí!" },
+        "no": { "default": "Not now", "fr": "Pas maintenant", "es": "Ahora no" }
+      },
+      "yes": "NewTalk_Secret",
+      "no": "NewTalk_Later"
+    },
+    "NewTalk_Secret": "AstroGalaxy_Kinopio013",
+    "NewTalk_Later": "AstroGalaxy_Kinopio013"
+  }
+}
