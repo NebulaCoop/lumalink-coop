@@ -1,24 +1,31 @@
 {
-  "format": 1,
-  "version": "1.0.0",
-  "game": "RMG",
   "authors": [
     "Nebula examples"
   ],
+  "description": "A track of the mod's, started by its code.",
+  "format": 1,
+  "game": "RMG",
+  "id": "boss-music",
   "layers": [
     {
       "path": "layers/base"
     }
   ],
-  "id": "boss-music",
   "name": "Boss Music",
-  "description": "A track of the mod's, started by its code.",
   "plugins": [
     {
       "api": 2,
       "binaries": {
-        "windows-x64": "plugins/boss_music.dll"
+        "android-arm64": "plugins/boss-music-android-arm64.so",
+        "android-x64": "plugins/boss-music-android-x64.so",
+        "linux-arm64": "plugins/boss-music-linux-arm64.so",
+        "linux-x64": "plugins/boss-music-linux-x64.so",
+        "macos-arm64": "plugins/boss-music-macos-arm64.dylib",
+        "macos-x64": "plugins/boss-music-macos-x64.dylib",
+        "windows-arm64": "plugins/boss-music-windows-arm64.dll",
+        "windows-x64": "plugins/boss-music-windows-x64.dll"
       }
     }
-  ]
+  ],
+  "version": "1.0.0"
 }

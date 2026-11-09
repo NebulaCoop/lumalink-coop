@@ -1,30 +1,37 @@
 {
-  "format": 1,
-  "version": "1.0.0",
-  "game": "RMG",
   "authors": [
     "Nebula examples"
   ],
+  "description": "A new enemy in Good Egg: its own model, music, health and behaviour.",
+  "format": 1,
+  "game": "RMG",
+  "id": "little-boss",
   "layers": [
     {
       "path": "layers/base"
     }
   ],
-  "id": "little-boss",
+  "music": [
+    {
+      "file": "AudioRes/Stream/LittleBossTheme.ogg",
+      "name": "LittleBossTheme"
+    }
+  ],
   "name": "A Little Boss",
-  "description": "A new enemy in Good Egg: its own model, music, health and behaviour.",
   "plugins": [
     {
       "api": 2,
       "binaries": {
-        "windows-x64": "plugins/little_boss.dll"
+        "android-arm64": "plugins/little-boss-android-arm64.so",
+        "android-x64": "plugins/little-boss-android-x64.so",
+        "linux-arm64": "plugins/little-boss-linux-arm64.so",
+        "linux-x64": "plugins/little-boss-linux-x64.so",
+        "macos-arm64": "plugins/little-boss-macos-arm64.dylib",
+        "macos-x64": "plugins/little-boss-macos-x64.dylib",
+        "windows-arm64": "plugins/little-boss-windows-arm64.dll",
+        "windows-x64": "plugins/little-boss-windows-x64.dll"
       }
     }
   ],
-  "music": [
-    {
-      "name": "LittleBossTheme",
-      "file": "AudioRes/Stream/LittleBossTheme.ogg"
-    }
-  ]
+  "version": "1.0.0"
 }

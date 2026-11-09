@@ -1,47 +1,60 @@
 {
-  "format": 1,
-  "version": "1.0.0",
-  "game": "RMG",
-  "requires": [
-    "player-animations"
-  ],
   "authors": [
     "Nebula examples"
   ],
+  "description": "A new power-up in Good Egg: a flower to pick up, a glow, its own sounds, and a spin that burns every enemy near.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gold-flower",
   "layers": [
     {
       "path": "layers/base",
       "player_animations": [
-        { "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }
+        {
+          "blend_frames": 3,
+          "file": "FireSpin",
+          "name": "GoldFlowerSpin",
+          "rate": 1.5
+        }
       ]
     }
   ],
-  "id": "gold-flower",
   "name": "The Gold Flower",
-  "description": "A new power-up in Good Egg: a flower to pick up, a glow, its own sounds, and a spin that burns every enemy near.",
   "options": [
     {
-      "id": "start",
-      "name": "Start with it",
-      "description": "Every stage starts with the Gold Flower.",
-      "default": "no",
       "choices": [
-        { "id": "no", "name": "No" },
-        { "id": "yes", "name": "Yes" }
-      ]
+        {
+          "id": "no",
+          "name": "No"
+        },
+        {
+          "id": "yes",
+          "name": "Yes"
+        }
+      ],
+      "default": "no",
+      "description": "Every stage starts with the Gold Flower.",
+      "id": "start",
+      "name": "Start with it"
     }
   ],
   "plugins": [
     {
       "api": 2,
       "binaries": {
-        "windows-x64": "plugins/windows-x64/gold_flower.dll",
-        "windows-arm64": "plugins/windows-arm64/gold_flower.dll",
-        "linux-x64": "plugins/linux-x64/libgold_flower.so",
-        "linux-arm64": "plugins/linux-arm64/libgold_flower.so",
-        "android-arm64": "plugins/android-arm64/libgold_flower.so",
-        "android-x64": "plugins/android-x64/libgold_flower.so"
+        "android-arm64": "plugins/gold-flower-android-arm64.so",
+        "android-x64": "plugins/gold-flower-android-x64.so",
+        "linux-arm64": "plugins/gold-flower-linux-arm64.so",
+        "linux-x64": "plugins/gold-flower-linux-x64.so",
+        "macos-arm64": "plugins/gold-flower-macos-arm64.dylib",
+        "macos-x64": "plugins/gold-flower-macos-x64.dylib",
+        "windows-arm64": "plugins/gold-flower-windows-arm64.dll",
+        "windows-x64": "plugins/gold-flower-windows-x64.dll"
       }
     }
-  ]
+  ],
+  "requires": [
+    "player-animations"
+  ],
+  "version": "1.0.0"
 }

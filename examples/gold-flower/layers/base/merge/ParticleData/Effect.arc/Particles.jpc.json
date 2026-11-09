@@ -1,0 +1,70 @@
+{
+  "textures": {
+    "GoldSpark": "gold_spark.png"
+  },
+  "particles": [
+    {
+      "name": "GoldFlowerAura00",
+      "like": "InvincibleMario00",
+      "textures": [
+        "GoldSpark",
+        "mr_noise00_i"
+      ],
+      "emitter": {
+        "rate": 1.2
+      },
+      "shape": {
+        "primary": "fff2b0ff",
+        "environment": "ffb020ff",
+        "size": [
+          2.4,
+          2.4
+        ]
+      }
+    },
+    {
+      "name": "GoldFlowerAura01",
+      "like": "InvincibleMario01",
+      "textures": [
+        "GoldSpark",
+        "mr_noise00_i"
+      ],
+      "emitter": {
+        "rate": 0.8
+      },
+      "shape": {
+        "primary": "fff2b0ff",
+        "environment": "ffb020ff",
+        "size": [
+          2.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "name": "GoldFlowerSparkle00",
+      "like": "InvincibleMario00",
+      "textures": [
+        "GoldSpark",
+        "mr_noise00_i"
+      ],
+      "emitter": {
+        "rate": 0.15,
+        "volume_size": 45,
+        "translation": [
+          0.0,
+          62.0,
+          0.0
+        ]
+      },
+      "shape": {
+        "primary": "fff2b0ff",
+        "environment": "ffb020ff",
+        "size": [
+          0.8,
+          0.8
+        ]
+      }
+    }
+  ]
+}

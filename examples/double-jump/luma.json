@@ -1,20 +1,27 @@
 {
-  "format": 1,
-  "version": "1.0.0",
-  "game": "RMG",
   "authors": [
     "Nebula examples"
   ],
-  "layers": [],
-  "id": "double-jump",
-  "name": "Double Jump",
   "description": "A second jump in the air.",
+  "format": 1,
+  "game": "RMG",
+  "id": "double-jump",
+  "layers": [],
+  "name": "Double Jump",
   "plugins": [
     {
       "api": 2,
       "binaries": {
-        "windows-x64": "plugins/double_jump.dll"
+        "android-arm64": "plugins/double-jump-android-arm64.so",
+        "android-x64": "plugins/double-jump-android-x64.so",
+        "linux-arm64": "plugins/double-jump-linux-arm64.so",
+        "linux-x64": "plugins/double-jump-linux-x64.so",
+        "macos-arm64": "plugins/double-jump-macos-arm64.dylib",
+        "macos-x64": "plugins/double-jump-macos-x64.dylib",
+        "windows-arm64": "plugins/double-jump-windows-arm64.dll",
+        "windows-x64": "plugins/double-jump-windows-x64.dll"
       }
     }
-  ]
+  ],
+  "version": "1.0.0"
 }

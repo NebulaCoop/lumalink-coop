@@ -1,0 +1,20 @@
+{
+  "rows": [
+    {
+      "PlanetName": "LanternGardenPlanet",
+      "LowFlag": 0,
+      "MiddleFlag": 0,
+      "BloomFlag": 0,
+      "WaterFlag": 0,
+      "IndirectFlag": 0,
+      "ForceLowScenarioName0": "",
+      "ForceLowScenarioName1": "",
+      "ForceLowScenarioName2": "",
+      "ForceLowScenarioName3": "",
+      "ForceLowScenarioName4": "",
+      "ForceLowScenarioName5": "",
+      "ForceLowScenarioName6": "",
+      "ForceLowScenarioName7": ""
+    }
+  ]
+}

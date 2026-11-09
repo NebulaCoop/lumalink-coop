@@ -1,0 +1,82 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "id": "new-galaxy",
+  "name": "Lantern Garden",
+  "description": "A galaxy of its own in the first dome: its own planet (model, textures, solid ground), a new enemy made like a Goomba (its own model, skeleton and animations), two missions, a cutscene with its own camera and its own theme. All data, no code. source/make_galaxy.py writes every file.",
+  "layers": [
+    {
+      "path": "layers/base",
+      "object_classes": [
+        {
+          "name": "Bramblet",
+          "like": "Kuribo"
+        },
+        {
+          "name": "ArrivalLantern",
+          "like": "FloaterLandPartsFrame"
+        }
+      ]
+    }
+  ],
+  "galaxies": [
+    {
+      "name": "LanternGardenGalaxy",
+      "dome": 1,
+      "map_position": [-150, -120],
+      "stars_to_open": 0
+    }
+  ],
+  "save": {
+    "mode": "own"
+  },
+  "music": [
+    {
+      "name": "LanternGardenTheme",
+      "file": "AudioRes/Stream/LanternGardenTheme.wav",
+      "stages": [
+        {
+          "stage": "LanternGardenGalaxy"
+        }
+      ]
+    }
+  ],
+  "text": {
+    "GalaxyName_LanternGardenGalaxy": {
+      "default": "Lantern Garden Galaxy",
+      "fr": "Galaxie Jardin-Lanterne",
+      "es": "Galaxia Jardín de Faroles",
+      "de": "Laternengarten-Galaxie",
+      "it": "Galassia Giardino delle Lanterne",
+      "ja": "ちょうちんガーデンギャラクシー"
+    },
+    "GalaxyNameShort_LanternGardenGalaxy": {
+      "default": "Lantern Garden",
+      "fr": "Jardin-Lanterne",
+      "es": "Jardín de Faroles",
+      "de": "Laternengarten",
+      "it": "Giardino delle Lanterne",
+      "ja": "ちょうちんガーデン"
+    },
+    "ScenarioName_LanternGardenGalaxy1": {
+      "default": "Under the Lanterns",
+      "fr": "Sous les lanternes",
+      "es": "Bajo los faroles",
+      "de": "Unter den Laternen",
+      "it": "Sotto le lanterne",
+      "ja": "ちょうちんの したで"
+    },
+    "ScenarioName_LanternGardenGalaxy2": {
+      "default": "The Bramblets' Hedge",
+      "fr": "La haie des Ronceaux",
+      "es": "El seto de los Zarzalitos",
+      "de": "Die Hecke der Dornlinge",
+      "it": "La siepe dei Rovetti",
+      "ja": "トゲッシュの いけがき"
+    }
+  }
+}

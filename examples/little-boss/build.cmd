@@ -1,3 +1,4 @@
 @echo off
-rem Builds plugins\little_boss.dll with clang, from https://llvm.org. It needs nothing else.
-clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NOENTRY -Isource -o plugins\little_boss.dll source\plugin.c
+rem Builds the plugin for every device the game runs on: Windows, Linux, Android and macOS, x64 and arm64 each.
+rem It needs clang and lld, from https://llvm.org; nothing else.
+lumalink build "%~dp0."

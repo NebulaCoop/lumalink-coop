@@ -1,0 +1,13 @@
+{
+  "rows": [
+    {
+      "PartName": "Look",
+      "CameraTargetName": "ArrivalLantern",
+      "CameraTargetCastID": -1,
+      "AnimCameraName": "ArrivalCamera.canm",
+      "AnimCameraStartFrame": 0,
+      "AnimCameraEndFrame": -1,
+      "IsContinuous": 0
+    }
+  ]
+}

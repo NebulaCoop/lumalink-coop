@@ -75,6 +75,34 @@ typedef enum NebulaModEvent {
     NEBULA_MOD_EVENT_GAME_SAVE,
     /* A power star comes into the stage. value: its number. */
     NEBULA_MOD_EVENT_POWER_STAR_APPEAR,
+    /* A line of talk opens in its balloon. actor: who talks. name: the line's message id, as luma.json "text" and
+       add_text name it (null for a line with no id). */
+    NEBULA_MOD_EVENT_TALK_LINE,
+    /* The player answered a talk's yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's
+       message id. */
+    NEBULA_MOD_EVENT_TALK_CHOICE,
+    /* A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the
+       cutscene's time sheet names it. */
+    NEBULA_MOD_EVENT_CUTSCENE_PART,
+    /* The camera changes. value: 0 an area's camera, 1 an event camera (a cutscene's, start_camera's). name: its
+       id, as the stage's camera table names it. */
+    NEBULA_MOD_EVENT_CAMERA_CHANGE,
+    /* A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another
+       sound's, or -1 for none. Subscribing costs a call per sound. */
+    NEBULA_MOD_EVENT_SOUND_START,
+    /* An object starts one of its effects. actor: the object. name: the effect, as the object's effect table names
+       it. Subscribing costs a call per effect. */
+    NEBULA_MOD_EVENT_EFFECT_START,
+    /* A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its
+       name in the game's code. */
+    NEBULA_MOD_EVENT_SCREEN,
+    /* An object gets a message from another: an attack, a stomp, a push, a grab (docs/modding/EVENTS.md lists the
+       numbers). actor: who gets it. name: its name. value: the message. Return -1 to refuse it: the object acts as if
+       it never came. Subscribing costs a call per message. */
+    NEBULA_MOD_EVENT_ACTOR_MESSAGE,
+    /* The player starts an action of their own: a swim, a hang, a slide, a fall (docs/modding/EVENTS.md lists the
+       numbers). value: the action. */
+    NEBULA_MOD_EVENT_PLAYER_ACTION,
     NEBULA_MOD_EVENT_COUNT
 } NebulaModEvent;
 
@@ -688,6 +716,14 @@ typedef struct NebulaModApi {
        that name: a name the game has (its own animation table's) is played from the mod's bck. Called from the plugin's
        entry, before the first stage: 0 done; -1 a bad name or file, or too late. */
     int32_t (*add_player_animation)(const char* name, const char* file, float rate, int32_t blend_frames);
+    /* Memory of the plugin's own, from the game's C library: a plugin built with none (as one built for every device
+       is) has no malloc. alloc: null for 0 bytes or when none is left; the memory is aligned for any type.
+       release(null) does nothing. Kept until released; a plugin's memory is never moved or reused under it. */
+    void* (*alloc)(uint64_t bytes);
+    void (*release)(void* memory);
+    /* printf's formatting into `buffer` of `size` bytes, always ended with a 0 when size is above 0: what snprintf
+       returns (the length the whole text needs; below 0 for a bad format). */
+    int32_t (*format)(char* buffer, uint64_t size, const char* format, ...);
 } NebulaModApi;
 
 /* The HUD's parts, for show_hud: any together. */

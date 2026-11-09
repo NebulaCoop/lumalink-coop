@@ -1,12 +1,13 @@
 /* The Gold Flower: a power-up the game doesn't have.
-   - The flower: GoldFlowerItem, placed in Good Egg (merge/.../objinfo.json), drawn with the game's fire flower; touching it
-     gives the power-up and it goes.
-   - The power-up: 20 seconds with the game's fire music and Fire Mario's colours; a glow of its own on the player
-     (merge/ParticleData/Effect.arc/AutoEffectList.bcsv.json adds GoldFlowerAura to Mario's effects); its own sounds
-     (the .wav files in AudioRes/Stream).
+   - The flower: GoldFlowerItem, placed in Good Egg (merge/.../objinfo.json), its own model (ObjectData/GoldFlowerItem.arc)
+     swaying and sparkling; touching it gives the power-up and it goes.
+   - The power-up: 20 seconds with the game's fire music and Fire Mario's colours; a gold glow of its own on the player;
+     its own sounds (the .wav files in AudioRes/Stream). The glow and the sparkle are particles of their own
+     (merge/ParticleData/Effect.arc: Particles.jpc.json, gold_spark.png).
+   source/make_gold_flower.py writes the model and the particle files.
    - Its spin: an animation of its own, GoldFlowerSpin (luma.json's player_animations: the game's fire spin, faster),
      that burns every enemy within 600 units, as fire does, with a burst of light and its sound.
-   Only the stable interface: it builds for every device Nebula runs on (build.cmd). */
+   Only the stable interface: it builds for every device Nebula runs on (build.cmd or build.sh: lumalink build). */
 #include "nebula_mod_api.h"
 
 static const NebulaModApi* game;
@@ -68,6 +69,13 @@ static int32_t on_spin(const NebulaModEventData* data, void* user) {
     return data->value;
 }
 
+/* The flower sways and sparkles. */
+static void flower_start(NebulaActor* actor, void* user) {
+    (void)user;
+    game->play(actor, NEBULA_PLAY_SKELETON, "Wait");
+    game->play(actor, NEBULA_PLAY_EFFECT, "Sparkle");
+}
+
 /* The flower: picked up on touch. */
 static void flower_touched(NebulaActor* actor, void* user) {
     (void)user;
@@ -100,7 +108,7 @@ NEBULA_PLUGIN_ENTRY(api, self) {
         0, NEBULA_POWER_UP_FIRE,
     };
     static const NebulaObjectClass flower = {
-        sizeof(NebulaObjectClass), "GoldFlowerItem", "PowerUpFire", 80.0f, 0, 0, 0, flower_touched, 0, 0,
+        sizeof(NebulaObjectClass), "GoldFlowerItem", "GoldFlowerItem", 80.0f, 0, flower_start, 0, flower_touched, 0, 0,
         NEBULA_OBJECT_MAP, 0, 60.0f, 2000.0f, 0, 0,
     };
     const char* start = 0;

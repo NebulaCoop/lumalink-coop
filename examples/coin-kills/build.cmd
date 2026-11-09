@@ -1,4 +1,4 @@
 @echo off
-rem Builds plugins\coin_kills.dll with clang, from https://llvm.org. It needs nothing else.
-if not exist plugins mkdir plugins
-clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NOENTRY -Isource -o plugins\coin_kills.dll source\plugin.c
+rem Builds the plugin for every device the game runs on: Windows, Linux, Android and macOS, x64 and arm64 each.
+rem It needs clang and lld, from https://llvm.org; nothing else.
+lumalink build "%~dp0."
