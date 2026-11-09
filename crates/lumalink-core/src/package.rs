@@ -229,11 +229,28 @@ fn copy_layer(files: &BTreeMap<String, PlannedFile>, failed: &[(String, String)]
     Ok(())
 }
 
-fn report_text(name: &str, plan: &Plan, outcome: &Outcome, textures: usize) -> String {
+fn report_text(name: &str, plan: &Plan, outcome: &Outcome, textures: &crate::texture_pack::Conversion) -> String {
     let mut text = String::new();
     let _ = writeln!(text, "{name}");
     let _ = writeln!(text, "Files: {} of {}", outcome.converted, outcome.total);
-    let _ = writeln!(text, "Textures: {textures}");
+    let _ = writeln!(text, "Textures: {}", textures.written);
+    if textures.dolphin != 0 {
+        let _ = writeln!(text, "  Dolphin files given the game's names: {} ({} textures)", textures.dolphin, textures.textures);
+    }
+    if textures.taken != 0 {
+        let _ = writeln!(text, "  Names an earlier file of the pack gave: {}", textures.taken);
+    }
+    if !textures.kept.is_empty() {
+        if textures.named {
+            let _ = writeln!(text, "  Dolphin files matching none of this game's textures (another release or edit), kept: {}", textures.kept.len());
+        } else {
+            let _ = writeln!(text, "  Dolphin files kept under their own names (no imported game with texture names): {}", textures.kept.len());
+        }
+        let _ = writeln!(text, "  Nebula converts kept files on each player's game when the mod is installed.");
+        for file in &textures.kept {
+            let _ = writeln!(text, "    {file}");
+        }
+    }
     let _ = writeln!(text, "Material programs: {} (Nebula builds any it lacks when the mod is first played)", outcome.programs);
     if !plan.known_patches.is_empty() {
         let _ = writeln!(text, "\nGameplay changes that work in Nebula:");
@@ -312,10 +329,11 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
 
     let mut layers = Vec::new();
     copy_layer(&plan.files, &failed, building, "layers/base")?;
-    let mut textures = 0;
+    let mut textures = crate::texture_pack::Conversion::default();
     if let Some(pack) = &layout.pack {
         let root = pack.folder.clone();
-        textures = copy_tree(&pack.folder, &building.join("layers/base/textures"), move |p| pack_file_wanted(p, &root))?;
+        let names = store.map(|s| crate::texture_pack::store_names(&s.path)).unwrap_or_default();
+        textures = crate::texture_pack::convert_into(&pack.folder, &names, &building.join("layers/base/textures"), move |p| pack_file_wanted(p, &root))?;
         if let Some(manifest) = walkdir::WalkDir::new(&pack.folder)
             .max_depth(3)
             .into_iter()
@@ -390,7 +408,7 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         failed,
         report: String::new(),
     };
-    outcome.report = report_text(name, plan, &outcome, textures);
+    outcome.report = report_text(name, plan, &outcome, &textures);
     fs::write(building.join("report.txt"), &outcome.report)?;
     pack_folder(building, file)?;
     Ok(outcome)
