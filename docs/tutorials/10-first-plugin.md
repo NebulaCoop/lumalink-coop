@@ -28,15 +28,18 @@ NEBULA_PLUGIN_ENTRY(api, self) {
 ```
 
 ```console
-clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NOENTRY -I sdk -o plugins/my.dll source/plugin.c
-cc -O2 -shared -fPIC -fvisibility=hidden -I sdk -o plugins/my.so source/plugin.c
+lumalink build .
 ```
+
+That builds the plugin for all eight devices from the one computer, with clang and its linker (lld) and no C library, and names every library in luma.json:
 
 ```json
-"plugins": [{ "api": 2, "binaries": { "windows-x64": "plugins/my.dll", "linux-x64": "plugins/my.so" } }]
+"plugins": [{ "api": 2, "binaries": { "windows-x64": "plugins/my-mod-windows-x64.dll", "android-arm64": "plugins/my-mod-android-arm64.so", "...": "..." } }]
 ```
 
-Devices: `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`, `android-arm64`, `android-x64`. A device with no library for a mod that has plugins says THIS MOD HAS NO VERSION FOR THIS DEVICE. A plugin's row takes a `when` as a layer does.
+Devices: `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`, `android-arm64`, `android-x64`. `lumalink check` names any device a plugin has no library for; on that device the game says THIS MOD HAS NO VERSION FOR THIS DEVICE. A plugin's row takes a `when` as a layer does.
+
+With no C library there's no `malloc` or `printf`: the interface has them. `game->alloc(bytes)` and `game->release(p)` for memory, `game->format(buffer, size, "%d coins", n)` for text, `game->log` to write it. If the linker stops on `memcpy` or `memset` (clang makes a large copy or clear into one), define it in your source.
 
 `game->log` writes to the game's log, with your mod's name on the line.
 
@@ -69,7 +72,7 @@ Return `data->value` to change nothing. For the events that ask, what you return
 | `STAGE_START` | A stage starts. `name`: the stage | Its mission | |
 | `STAGE_END` | It's ending. Every actor and layout of it goes after this. `name`: the stage | | |
 | `PLAYER_DAMAGE` | About to lose health | 1 | 0 refuses the hit |
-| `PLAYER_MISS` | About to die | How | |
+| `PLAYER_MISS` | About to die | How (0 a fall out of the level) | -1 refuses it: move the player somewhere safe yourself |
 | `PLAYER_SPIN` | A spin starts | | |
 | `PLAYER_JUMP` | Leaves the ground in a jump | | |
 | `PLAYER_LAND` | Lands | | |
@@ -82,6 +85,17 @@ Return `data->value` to change nothing. For the events that ask, what you return
 | `ACTOR_APPEAR`, `ACTOR_KILL` | Any object. `actor`, `name` | | |
 | `PAUSE` | The pause menu | 1 open, 0 closed | |
 | `GAME_SAVE` | About to write the save | | |
+| `TALK_LINE` | A line of talk opens. `actor`: who talks. `name`: the line's message id | | |
+| `TALK_CHOICE` | The player answered a yes/no question. `actor`, `name`: the question | 1 yes, 0 no | |
+| `CUTSCENE_PART` | A part of a cutscene starts. `name`: the part | Its number, from 0 | |
+| `CAMERA_CHANGE` | The camera changes. `name`: its id in the stage's camera table | 0 an area's, 1 an event's | |
+| `SOUND_START` | A sound effect is about to start. `name`: the sound | Its number | The sound that plays; -1 for none |
+| `EFFECT_START` | An object starts an effect. `actor`, `name`: the effect | | |
+| `SCREEN` | A screen layout is shown or goes away. `name`: the layout | 1 shown, 0 gone | |
+| `ACTOR_MESSAGE` | An object gets an attack, stomp, push or grab. `actor`: who gets it. `name`: the message | The message | -1 refuses it |
+| `PLAYER_ACTION` | The player starts a swim, hang, slide, fall and so on | The action | |
+
+`SOUND_START`, `EFFECT_START` and `ACTOR_MESSAGE` call you for every sound, effect or message while you're subscribed; subscribe to them only when you use them. The game's [EVENTS.md](../reference/events.md) lists every message and action number.
 
 Subscribing happens only in `nebula_plugin_start`, as do `register_object`, `hook` and the row calls (`add_*`, `set_stage_rules`, `set_object_class`, `set_story` and so on).
 

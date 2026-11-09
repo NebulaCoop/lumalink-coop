@@ -230,6 +230,12 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder. May be left out for a layer of settings alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](reference/settings.md)) |
 | `object_changes` | Objects changed or gone |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)) |
+| `player_constants` | The numbers of how the player moves, by name ([player numbers](reference/player-numbers.md)) |
+| `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
+| `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](tutorials/04-music-and-sound.md)) |
+| `stages` | Rules for stages ([stage rules](reference/stage-rules.md)) |
+| `text` | Messages for this layer alone, as the top-level `text` |
 | `comet_time_limits` | Comet missions' time limits |
 | `materials` | Hand-written shaders by material name |
 | `when` | When it's used. Left out: always |
@@ -318,11 +324,13 @@ Turned into the game's own forms when the player applies the mod.
 
 | Put in | Becomes | Notes |
 |---|---|---|
-| `.glb`, `.gltf` | Model `.bdl`/`.bmd`, one animation file per animation | glTF 2. Triangles and skins, up to the game's joints. One colour and one PNG per material. A metre is 100 units. The material's name is what `materials` uses |
+| `.glb`, `.gltf` | Model `.bdl`/`.bmd`; per animation `.bck` (joints), `.bpk` (material colour), `.btk` (texture matrix), `.btp` (texture swaps) | glTF 2. Triangles and skins, up to the game's joints. One colour and one PNG or JPEG per material, its `KHR_texture_transform` a texture matrix. Signed, normalized and sparse numbers (`KHR_mesh_quantization`). A metre is 100 units. The material's name is what `materials` uses. `KHR_animation_pointer` moves `baseColorFactor` and the base texture's `KHR_texture_transform`; `extras.nebula.texture_swaps` swaps textures. An animation loops unless its `extras.nebula.play` is `once`, `once_then_first`, `there_and_back` or `loop_there_and_back`. A file requiring any other extension is refused by name |
+| `.kcl.glb` | Solid ground `.kcl` and its surfaces `.pa` | Each material's `extras` are its surface's columns (`Floor_code`, `Wall_code`, `Sound_code`, `Camera_id`, `Camera_through`) |
 | `.png` | `.bti`; in an archive's `timg` folder, `.tpl` | Any size |
 | `.wav` | Music stream `.ast` | 16-bit PCM. Loop from the file's `smpl` chunk; without one the whole track loops |
 | `.ogg` | Music stream `.ast` | Vorbis. Loop from `LOOPSTART` with `LOOPEND` or `LOOPLENGTH` |
 | `.bcsv.json` | A table | See [Levels and tables](#8-levels-and-tables) |
+| `StageData/<zone>.arc/jmp/.../<table>.json`, `.bcam.json` | A zone's placement table, its cameras | The same JSON |
 
 ### Textures
 
@@ -395,6 +403,8 @@ A column is named, or written as `0x` and its hash. One left out is zero or empt
 { "columns": { "Speed": "float" }, "rows": [ { "Name": "Fast", "Speed": 2 } ] }
 ```
 
+A column whose name nobody knows is named by its hash, as `lumalink extract` writes it: `"0xe4ef3738"`.
+
 ### Placing objects
 
 Levels use the game's rows and names, from a level editor such as Whitehole. Every column of an object's row reaches a plugin's object by its name through `placement_number` and `placement_text` (`Obj_arg0` to `Obj_arg7`, `ShapeModelNo`, `MessageId`...); `SW_A`, `SW_B`, `SW_APPEAR`, `SW_DEAD` through its switches; `CommonPath_ID` as its rail.
@@ -464,12 +474,12 @@ Its files, `StageData/<name>/<name>Scenario.arc` and `StageData/<name>.arc`, and
 | `name` | Its folder's name |
 | `map_position` | `[right, up]` from the middle of its dome's page, or the grand map with no dome. The page is 608 by 456. The game makes the icon |
 | `map_pane` | A pane of `MapGrandGalaxy` showing it, instead |
-| `dome` | 1 to 6. 0: the grand map |
+| `dome` | 1 to 6; 7 to 16 for domes the mod builds ([tutorial](tutorials/09-new-galaxy.md#domes-past-six)). 0: the grand map |
 | `stars_to_open` | Power stars to open |
 | `open_conditions` | Up to three event flags |
 | `hungry_luma` | Placed as `TicoGalaxy` with `Obj_arg7` at `slot`. The game's are 0 to 6, and using one takes its place. `star_bits` is the price |
 
-A galaxy with no `GalaxyName_` message shows an empty name.
+A galaxy with no `GalaxyName_` message shows an empty name. A planet of its own needs a `PlanetMapDataTable` row ([tutorial](tutorials/09-new-galaxy.md#a-planet)).
 
 ### The game's progression
 

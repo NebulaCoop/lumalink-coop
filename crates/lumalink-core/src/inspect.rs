@@ -280,11 +280,37 @@ pub fn extract(store: &Path, path: &str, output: &Path) -> Result<usize> {
             let mut json = target.as_os_str().to_owned();
             json.push(".json");
             fs::write(&json, serde_json::to_vec_pretty(&table)?)?;
+        } else if let Ok(particles) = particles_to_json(store, &place, &bytes) {
+            let mut json = target.as_os_str().to_owned();
+            json.push(".json");
+            fs::write(&json, serde_json::to_vec_pretty(&particles)?)?;
         }
         fs::write(&target, &bytes)?;
         written += 1;
     }
     Ok(written)
+}
+
+/// The game's particles (ParticleData/Effect.arc/Particles.jpc) as a mod's Particles.jpc.json writes them, each with its
+/// name from ParticleNames beside it: one can be copied into a mod's file and changed.
+fn particles_to_json(store: &Path, place: &str, bytes: &[u8]) -> Result<serde_json::Value> {
+    use nebula_import::cook::{particle_json, particles, store as game_store};
+    let ir = particles::read_nptc(bytes)?;
+    let folder = place.rsplit_once('/').map_or("", |(folder, _)| folder);
+    let names = game_store::read_file(store, &format!("{folder}/ParticleNames.bcsv")).ok().and_then(|t| particle_json::names_index(&t).ok()).unwrap_or_default();
+    let name_of: std::collections::HashMap<u32, &str> = names.iter().map(|(name, n)| (*n, name.as_str())).collect();
+    let list: Vec<serde_json::Value> = ir
+        .resources
+        .iter()
+        .map(|res| {
+            let mut p = particle_json::write(&ir, res);
+            if let (Some(name), Some(fields)) = (name_of.get(&res.user_index), p.as_object_mut()) {
+                fields.insert("name".into(), serde_json::Value::from(*name));
+            }
+            p
+        })
+        .collect();
+    Ok(serde_json::json!({ "particles": list }))
 }
 
 /// A file a game's mod could use: what's in it, in one line.

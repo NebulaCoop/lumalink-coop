@@ -12,6 +12,44 @@ layers/base/files/StageData/MyPlanetZone.arc                 any other zones
 
 Levels come from a level editor such as Whitehole. You can also start from one of the game's: `lumalink extract StageData/EggStarGalaxy --game game.pak -o out` writes the scenario's tables as JSON.
 
+`examples/new-galaxy` is a whole one, every file written by `source/make_galaxy.py`: a planet, a new enemy, two missions, a cutscene and a theme.
+
+### A zone's tables as JSON
+
+Each of the zone's placement tables can be JSON, at its path with `.json` added:
+
+```text
+layers/base/files/StageData/MyGalaxy.arc/jmp/start/common/startinfo.json          where the player starts
+layers/base/files/StageData/MyGalaxy.arc/jmp/list/stageinfo.json
+layers/base/files/StageData/MyGalaxy.arc/jmp/placement/common/objinfo.json        objects in every mission
+layers/base/files/StageData/MyGalaxy.arc/jmp/placement/common/planetobjinfo.json  gravity
+layers/base/files/StageData/MyGalaxy.arc/jmp/placement/layera/objinfo.json        objects in layer A's missions
+layers/base/files/StageData/MyGalaxy.arc/camera/cameraparam.bcam.json             cameras, if any
+```
+
+A table is its rows. A column whose numbers have fractions is a float on its own; one whose values all happen to be whole says so in `columns`:
+
+```json
+{ "columns": { "pos_x": "float", "pos_y": "float", "pos_z": "float" },
+  "rows": [ { "name": "Kuribo", "l_id": 10, "pos_x": 0, "pos_y": 1510, "pos_z": 0 } ] }
+```
+
+A column nobody has a name for is written by its hash, as `lumalink extract` writes it: `"0xe4ef3738": "Normal"`. A zone without cameras uses the game's default camera.
+
+### A planet
+
+A planet is a model with solid ground, `ObjectData/MyPlanet.arc/MyPlanet.glb` and `MyPlanet.kcl.glb` ([models](02-models.md)), placed in `objinfo` by its name. The game makes planets of the names in `ObjectData/PlanetMapDataTable.arc/PlanetMapDataTable.bcsv`, so add a row:
+
+```text
+layers/base/merge/ObjectData/PlanetMapDataTable.arc/PlanetMapDataTable.bcsv.json
+```
+
+```json
+{ "rows": [ { "PlanetName": "MyPlanet", "LowFlag": 0, "MiddleFlag": 0, "BloomFlag": 0, "WaterFlag": 0, "IndirectFlag": 0 } ] }
+```
+
+The flags say it has other models of its own beside it (`MyPlanetBloom`, `MyPlanetWater`, ...). Its pull is a gravity in `planetobjinfo`: `GlobalPointGravity` at its middle pulls towards it, as far out as its `Range`.
+
 ### Missions
 
 `MyGalaxyScenario.arc` holds `ScenarioData.bcsv`, one row per mission, and `ZoneList.bcsv`, one row per zone. Either can be `.bcsv.json`:
@@ -49,7 +87,7 @@ There's no limit of eight stars. A galaxy with more shows six at a time on its s
 | Key | Meaning |
 |---|---|
 | `name` | Its folder's name |
-| `dome` | Its dome, 1 to 6, or more: see below. 0: the grand map |
+| `dome` | Its dome, 1 to 6, or up to 16: see below. 0: the grand map |
 | `map_position` | `[right, up]` from the middle of its dome's page, which is 608 by 456. The game makes the icon |
 | `map_pane` | A pane of `MapGrandGalaxy` showing it, instead |
 | `stars_to_open` | Power stars it takes |

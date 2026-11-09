@@ -13,11 +13,52 @@ Nebula turns it into the game's own model when the player applies the mod.
 | In the file | Becomes |
 |---|---|
 | Triangles | The model. A metre is 100 of the game's units |
-| One colour and one PNG per material | The material. The material's name is what [hand-written shaders](../reference/shaders.md) use |
+| One colour and one PNG or JPEG per material | The material. The material's name is what [hand-written shaders](../reference/shaders.md) use |
+| A texture's `KHR_texture_transform` | Its texture matrix |
 | A skin | Skinned joints |
-| Each animation | One `.bck` file named after it, beside the model |
+| Each animation | Files named after it, beside the model: `.bck` for what it does to the joints, and [for materials](#a-material-that-moves) `.bpk`, `.btk` and `.btp` |
 
 A game's object often asks for animations by name. Run `lumalink files ObjectData/Kuribo.arc --game game.pak` to see what the original has, and name yours the same.
+
+### How an animation plays
+
+An animation loops unless its `extras` say otherwise. In Blender, that's a custom property on the action, exported with it:
+
+```json
+{ "name": "FlatDown", "extras": { "nebula": { "play": "once" } }, "channels": [ ... ] }
+```
+
+| `play` | The animation |
+|---|---|
+| `loop` (or none) | Starts again at its end |
+| `once` | Stops on its last frame |
+| `once_then_first` | Plays once, then shows its first frame |
+| `there_and_back` | Plays once forwards, then backwards |
+| `loop_there_and_back` | Forwards and backwards, over and over |
+
+A model standing in for one of the game's ([a new object](08-new-objects.md)) plays each animation the original has as the original's does, whatever this says. Code that waits for an animation's end (a squashed Goomba waits for `FlatDown`) needs it to play once.
+
+### A material that moves
+
+An animation can change materials as well as joints, through `KHR_animation_pointer`:
+
+| The animation moves | Becomes | For |
+|---|---|---|
+| `/materials/<n>/pbrMetallicRoughness/baseColorFactor` | `.bpk`, the material's colour | A flash, a glow, fading out |
+| `/materials/<n>/pbrMetallicRoughness/baseColorTexture/extensions/KHR_texture_transform/offset`, `scale`, `rotation` | `.btk`, its texture's matrix | Flowing water, a scrolling belt, a spinning pattern |
+
+A texture that turns needs equal scales across and up: glTF scales before turning and the game after, which come out the same only then.
+
+Swapping one texture for another (eyes that blink, a face that changes) is the animation's `extras`:
+
+```json
+{ "name": "Blink",
+  "extras": { "nebula": { "texture_swaps": [ { "material": 0, "keys": [[0, 3], [0.1, 4], [0.2, 3]] } ] } } }
+```
+
+Each key is `[second, texture]`: from that second, the material's base colour texture is glTF texture `texture`. The textures swapped in become part of the model even if no material starts with them. That becomes `.btp`.
+
+An animation needs no joints to move: one with only these is only these files. The game's code asks for a material's animations by name as it does the joints': a Goomba's `Blink` is its `.btp`.
 
 You can use the game's own formats too (`.bdl`, `.bmd`, `.bck`, `.btk`, `.brk`, `.bpk`, `.btp`, `.bva`) from any tool that writes them.
 

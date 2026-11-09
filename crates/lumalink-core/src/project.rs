@@ -53,20 +53,107 @@ NEBULA_PLUGIN_ENTRY(api, self) {
 }
 "#;
 const PLUGIN_BUILD_CMD: &str = r#"@echo off
-rem Builds plugins\{id}.dll with clang, from https://llvm.org. It needs nothing else.
-clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NOENTRY -o plugins\{id}.dll source\plugin.c
+rem Builds the plugin for every device the game runs on: Windows, Linux, Android and macOS, x64 and arm64 each.
+rem It needs clang and lld, from https://llvm.org; nothing else.
+lumalink build "%~dp0."
 "#;
 const PLUGIN_BUILD_SH: &str = r#"#!/bin/sh
-# Builds this device's library with clang. Run it on each kind of computer the mod is for.
+# Builds the plugin for every device the game runs on: Windows, Linux, Android and macOS, x64 and arm64 each.
+# It needs clang and lld, from https://llvm.org (a Mac: brew install llvm lld); nothing else.
 set -e
-case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/{id}.so source/plugin.c ;;
-    Linux-aarch64) cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/{id}-arm64.so source/plugin.c ;;
-    Darwin-x86_64) cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/{id}-x64.dylib source/plugin.c ;;
-    Darwin-arm64) cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/{id}.dylib source/plugin.c ;;
-    *) echo "Run build.cmd on Windows." ;;
-esac
+lumalink build "$(dirname "$0")"
 "#;
+
+/// Every device a plugin is built for: its name in `binaries`, clang's target, and the library's ending. Android 7
+/// (API 24) is the oldest the game runs on.
+pub const BUILD_TARGETS: &[(&str, &str, &str)] = &[
+    ("windows-x64", "x86_64-pc-windows-msvc", "dll"),
+    ("windows-arm64", "aarch64-pc-windows-msvc", "dll"),
+    ("linux-x64", "x86_64-linux-gnu", "so"),
+    ("linux-arm64", "aarch64-linux-gnu", "so"),
+    ("android-x64", "x86_64-linux-android24", "so"),
+    ("android-arm64", "aarch64-linux-android24", "so"),
+    ("macos-x64", "x86_64-apple-macos10.15", "dylib"),
+    ("macos-arm64", "arm64-apple-macos11", "dylib"),
+];
+
+/// A library `lumalink build` made: its device and its path in the project.
+pub struct BuiltLibrary {
+    pub target: &'static str,
+    pub file: String,
+}
+
+/// The library a project's plugin has for a device: plugins/<id>-<device>.<ending>.
+fn library_path(id: &str, target: &str, ending: &str) -> String {
+    format!("plugins/{id}-{target}.{ending}")
+}
+
+/// clang: the one named, else the one on the PATH, else LLVM's usual places.
+pub fn find_clang(named: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = named {
+        return Some(path.to_path_buf());
+    }
+    let exe = if cfg!(windows) { "clang.exe" } else { "clang" };
+    let on_path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).map(|d| d.join(exe));
+    let usual = ["C:/Program Files/LLVM/bin/clang.exe", "/opt/homebrew/opt/llvm/bin/clang", "/usr/local/opt/llvm/bin/clang", "/usr/bin/clang"]
+        .into_iter()
+        .map(PathBuf::from);
+    on_path.chain(usual).find(|p| p.is_file())
+}
+
+/// Builds the project's plugin from source/*.c for every device in BUILD_TARGETS, with clang and lld alone: a plugin
+/// calls the game through the table it is given and links no library, not even the C runtime. An undefined symbol
+/// (a C library call, a compiler helper) stops the build, not the game. luma.json's first plugin then names each
+/// library (it is made when the project has none).
+pub fn build_plugin(folder: &Path, clang: Option<&Path>) -> Result<Vec<BuiltLibrary>> {
+    let mut manifest = read_manifest(folder)?;
+    let id = manifest.get("id").and_then(Value::as_str).context("the project has no id")?.to_string();
+    let mut sources: Vec<PathBuf> = fs::read_dir(folder.join("source"))
+        .with_context(|| format!("{} has no source folder", folder.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("c")))
+        .collect();
+    sources.sort();
+    if sources.is_empty() {
+        bail!("source/ has no .c file");
+    }
+    let clang = find_clang(clang).context("clang wasn't found: install LLVM (clang and lld) from https://llvm.org, or name it with --clang")?;
+    fs::create_dir_all(folder.join("plugins"))?;
+    let mut built = Vec::new();
+    for &(target, triple, ending) in BUILD_TARGETS {
+        let file = library_path(&id, target, ending);
+        let mut command = std::process::Command::new(&clang);
+        command
+            .arg(format!("--target={triple}"))
+            .args(["-O2", "-shared", "-nostdlib", "-ffreestanding", "-fno-stack-protector", "-fvisibility=hidden", "-fuse-ld=lld"])
+            .arg("-I")
+            .arg(folder.join("source"));
+        match ending {
+            "dll" => {
+                command.arg("-Wl,/NOENTRY");
+            }
+            "so" => {
+                command.args(["-fPIC", "-Wl,-z,defs"]);
+            }
+            _ => {}
+        }
+        command.arg("-o").arg(folder.join(&file)).args(&sources);
+        let output = command.output().with_context(|| format!("{} didn't start", clang.display()))?;
+        if !output.status.success() {
+            bail!("{target}: clang said:\n{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        }
+        built.push(BuiltLibrary { target, file });
+    }
+    let binaries: serde_json::Map<String, Value> = built.iter().map(|b| (b.target.to_string(), Value::from(b.file.clone()))).collect();
+    let plugins = manifest.as_object_mut().context("luma.json isn't an object")?.entry("plugins").or_insert_with(|| json!([]));
+    let list = plugins.as_array_mut().context("plugins is a list")?;
+    if list.is_empty() {
+        list.push(json!({ "api": PLUGIN_API }));
+    }
+    list[0]["binaries"] = Value::Object(binaries);
+    fs::write(folder.join("luma.json"), serde_json::to_string_pretty(&manifest)? + "\n")?;
+    Ok(built)
+}
 
 /// Adds code to a project just started: its source, what builds it, and the manifest's entry.
 pub fn add_plugin(folder: &Path) -> Result<()> {
@@ -78,10 +165,9 @@ pub fn add_plugin(folder: &Path) -> Result<()> {
     fs::write(folder.join("source/plugin.c"), PLUGIN_SOURCE)?;
     fs::write(folder.join("build.cmd"), PLUGIN_BUILD_CMD.replace("{id}", &id))?;
     fs::write(folder.join("build.sh"), PLUGIN_BUILD_SH.replace("{id}", &id))?;
-    manifest["plugins"] = json!([{
-        "api": PLUGIN_API,
-        "binaries": { "windows-x64": format!("plugins/{id}.dll") },
-    }]);
+    let binaries: serde_json::Map<String, Value> =
+        BUILD_TARGETS.iter().map(|&(target, _, ending)| (target.to_string(), Value::from(library_path(&id, target, ending)))).collect();
+    manifest["plugins"] = json!([{ "api": PLUGIN_API, "binaries": binaries }]);
     fs::write(folder.join("luma.json"), serde_json::to_string_pretty(&manifest)? + "\n")?;
     Ok(())
 }
@@ -781,7 +867,8 @@ fn compare_with_like(own: &Path, games: &[(String, Vec<u8>)], name: &str, object
     for entry in walkdir::WalkDir::new(own).into_iter().filter_map(std::result::Result::ok).filter(|e| e.file_type().is_file()) {
         let file = entry.file_name().to_string_lossy().to_string();
         let lower = file.to_ascii_lowercase();
-        if lower.ends_with(".glb") || lower.ends_with(".gltf") {
+        // A cutscene camera (Name.canm.glb) is no model.
+        if (lower.ends_with(".glb") || lower.ends_with(".gltf")) && !lower.contains(".canm.") {
             let Ok(bytes) = fs::read(entry.path()) else { continue };
             match nebula_import::cook::gltf::to_ir(&bytes, entry.path().parent()) {
                 Ok((ir, clips)) => {
@@ -830,6 +917,30 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
             if let Err(error) = nebula_import::cook::message_merge::check_shape(&bytes, &language) {
                 found.problem(format!("merge/{shown}: {error:#}"));
             }
+        } else if name.ends_with(".jpc.json") {
+            // Particles written as JSON: checked as the cook reads them, any name standing for one of the game's.
+            let names = entry.path().with_file_name("ParticleNames.bcsv.json");
+            if !names.is_file() {
+                found.problem(format!("merge/{shown}: new particles need their names: ParticleNames.bcsv.json beside them"));
+            }
+            match nebula_import::cook::particle_json::check(&bytes, entry.path().parent().unwrap_or(Path::new("."))) {
+                Ok(count) => {
+                    let named = fs::read(&names).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("rows").and_then(Value::as_array).map(Vec::len));
+                    if let Some(named) = named.filter(|&n| n != count) {
+                        found.problem(format!("merge/{shown}: {count} particles, and ParticleNames.bcsv.json names {named}: one name each, in order"));
+                    }
+                }
+                Err(error) => found.problem(format!("merge/{shown}: {error:#}")),
+            }
+        } else if [".png", ".jpg", ".jpeg"].iter().any(|ending| name.ends_with(ending)) {
+            let parent = entry.path().parent().unwrap_or(Path::new("."));
+            let named = fs::read_dir(parent).into_iter().flatten().filter_map(std::result::Result::ok).any(|e| {
+                e.file_name().to_string_lossy().to_ascii_lowercase().ends_with(".jpc.json")
+                    && fs::read_to_string(e.path()).is_ok_and(|text| text.contains(&*entry.file_name().to_string_lossy()))
+            });
+            if !named {
+                found.problem(format!("merge/{shown}: a picture in merge/ is a texture of particles written as JSON beside it (Particles.jpc.json), and none names it"));
+            }
         } else if name.ends_with(".json") {
             let parsed = serde_json::from_slice::<Value>(&bytes).ok();
             if let Some(root) = &parsed {
@@ -862,7 +973,7 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
             }
         } else {
             found.problem(format!(
-                "merge/{shown}: only tables (.bcsv.json), messages (MessageData/messages.json, <Language>/MessageData/Message.arc/message.bmg.json) and particles (.jpc) can be added to"
+                "merge/{shown}: only tables (.bcsv.json), messages (MessageData/messages.json, <Language>/MessageData/Message.arc/message.bmg.json) and particles (.jpc, or Particles.jpc.json with its pictures) can be added to"
             ));
         }
     }
@@ -905,8 +1016,8 @@ fn check_progression(manifest: &Value, found: &mut Findings) {
         match schedule.as_array() {
             Some(schedule) => {
                 for dome in schedule {
-                    if !dome.get("dome").and_then(Value::as_u64).is_some_and(|d| (1..=6).contains(&d)) {
-                        found.problem("comet_schedule: dome is from 1 to 6");
+                    if !dome.get("dome").and_then(Value::as_u64).is_some_and(|d| (1..=16).contains(&d)) {
+                        found.problem("comet_schedule: dome is from 1 to 16");
                     }
                     let comets = dome.get("comets").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
                     if comets.is_empty() || comets.iter().any(|c| c.get("galaxy").and_then(Value::as_str).is_none_or(str::is_empty)) {
@@ -1005,8 +1116,8 @@ fn check_galaxies(folder: &Path, manifest: &Value, found: &mut Findings) {
             _ => found.problem(format!("galaxy {name}: stars_to_open is from 0 to 255")),
         }
         match galaxy.get("dome").map(Value::as_u64) {
-            None | Some(Some(0..=6)) => {}
-            _ => found.problem(format!("galaxy {name}: dome is from 0 to 6")),
+            None | Some(Some(0..=16)) => {}
+            _ => found.problem(format!("galaxy {name}: dome is from 0 to 16")),
         }
         if let Some(conditions) = galaxy.get("open_conditions") {
             let names = string_list(conditions, &format!("galaxy {name}'s open_conditions"), found);
@@ -1128,9 +1239,10 @@ fn check_plugins(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec
                 found.problem(format!("{name}: {file} isn't a library for {target}"));
             }
         }
-        let missing: Vec<&str> = PLUGIN_TARGETS.iter().map(|(t, _, _)| *t).filter(|t| !binaries.contains_key(*t)).collect();
+        // A .luma is for every device the game runs on: one without a library for some can't be played there.
+        let missing: Vec<&str> = BUILD_TARGETS.iter().map(|(t, _, _)| *t).filter(|t| !binaries.contains_key(*t)).collect();
         if !missing.is_empty() {
-            found.note(format!("{name} can't run on: {}. Players there are told the mod has no version for their device.", missing.join(", ")));
+            found.problem(format!("{name} has no library for: {}. lumalink build makes every one from its source.", missing.join(", ")));
         }
     }
     if !plugins.is_empty() {
@@ -1483,11 +1595,13 @@ mod tests {
         fs::write(project.join("plugins/a.dll"), pe(0x8664)).unwrap();
         fs::write(project.join("plugins/arm.dll"), pe(0xAA64)).unwrap();
         fs::write(project.join("plugins/not.dll"), "text").unwrap();
+        let all = every_library(&project);
 
-        let good = with(r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/a.dll" } }]"#);
+        let good = with(&format!(r#"[{{ "api": 2, "binaries": {all} }}]"#));
         assert!(problems(&good).is_empty(), "{good:?}");
         assert!(good.iter().any(|f| f.text.contains("its own code")));
-        assert!(good.iter().any(|f| f.text.contains("linux-x64")));
+        let windows_only = with(r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/a.dll" } }]"#);
+        assert!(problems(&windows_only).iter().any(|t| t.contains("no library for") && t.contains("android-arm64")), "{windows_only:?}");
 
         for (plugins, says) in [
             (r#"[{ "binaries": { "windows-x64": "plugins/a.dll" } }]"#, "api is"),
@@ -1522,11 +1636,14 @@ mod tests {
         let own = r#"{ "mode": "own" }"#;
         let good = with(r#"[{ "name": "MyGalaxy", "dome": 1, "hungry_luma": { "slot": 7, "star_bits": 400 } }]"#, own);
         assert!(problems(&good).is_empty(), "{good:?}");
+        // A dome past the game's six is one the mod builds.
+        let past_six = with(r#"[{ "name": "MyGalaxy", "dome": 9 }]"#, own);
+        assert!(problems(&past_six).is_empty(), "{past_six:?}");
         for (galaxies, save, says) in [
             (r#"[{ "dome": 1 }]"#, own, "name is"),
             (r#"[{ "name": "Other" }]"#, own, "no layer has"),
             (r#"[{ "name": "MyGalaxy" }]"#, r#"{ "mode": "shared" }"#, "own saves"),
-            (r#"[{ "name": "MyGalaxy", "dome": 9 }]"#, own, "dome"),
+            (r#"[{ "name": "MyGalaxy", "dome": 17 }]"#, own, "dome"),
             (r#"[{ "name": "MyGalaxy", "stars_to_open": 999 }]"#, own, "stars_to_open"),
             (r#"[{ "name": "MyGalaxy", "hungry_luma": { "slot": 999, "star_bits": 1 } }]"#, own, "slot"),
             (r#"[{ "name": "MyGalaxy", "hungry_luma": { "slot": 7, "star_bits": 0 } }]"#, own, "star_bits"),
@@ -1725,12 +1842,64 @@ mod tests {
         new_project(&project, "Has Code").unwrap();
         add_plugin(&project).unwrap();
         assert!(project.join("source/nebula_mod_api.h").is_file());
-        assert!(fs::read_to_string(project.join("build.cmd")).unwrap().contains("plugins\\has-code.dll"));
+        assert!(fs::read_to_string(project.join("build.cmd")).unwrap().contains("lumalink build"));
         let found = check(&project, None).unwrap();
-        assert!(problems(&found).iter().any(|t| t.contains("plugins/has-code.dll isn't in the file")), "{found:?}");
-        fs::write(project.join("plugins/has-code.dll"), pe(0x8664)).unwrap();
+        assert!(problems(&found).iter().any(|t| t.contains("plugins/has-code-windows-x64.dll isn't in the file")), "{found:?}");
+        for &(target, _, ending) in BUILD_TARGETS {
+            fs::write(project.join(library_path("has-code", target, ending)), library_for(target)).unwrap();
+        }
         let found = check(&project, None).unwrap();
         assert!(problems(&found).is_empty(), "{found:?}");
+    }
+
+    /// A library header for a device, as check reads it.
+    fn library_for(target: &str) -> Vec<u8> {
+        let (_, kind, machine) = PLUGIN_TARGETS.iter().find(|(t, _, _)| *t == target).unwrap();
+        match kind {
+            BinaryKind::Pe => pe(*machine as u16),
+            BinaryKind::Elf => {
+                let mut bytes = vec![0u8; 64];
+                bytes[..4].copy_from_slice(b"\x7fELF");
+                bytes[18..20].copy_from_slice(&(*machine as u16).to_le_bytes());
+                bytes
+            }
+            BinaryKind::MachO => {
+                let mut bytes = vec![0u8; 64];
+                bytes[..4].copy_from_slice(&[0xCF, 0xFA, 0xED, 0xFE]);
+                bytes[4..8].copy_from_slice(&machine.to_le_bytes());
+                bytes
+            }
+        }
+    }
+
+    /// A library of each device under plugins/, and the binaries naming them.
+    fn every_library(project: &Path) -> String {
+        let mut names = Vec::new();
+        for &(target, _, ending) in BUILD_TARGETS {
+            let file = library_path("x", target, ending);
+            fs::write(project.join(&file), library_for(target)).unwrap();
+            names.push(format!(r#""{target}": "{file}""#));
+        }
+        format!("{{ {} }}", names.join(", "))
+    }
+
+    #[test]
+    fn build_makes_every_devices_library() {
+        // Only where clang is installed: the build is clang's.
+        if find_clang(None).is_none() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        new_project(&project, "Built").unwrap();
+        add_plugin(&project).unwrap();
+        let built = build_plugin(&project, None).unwrap();
+        assert_eq!(built.len(), BUILD_TARGETS.len());
+        let found = check(&project, None).unwrap();
+        assert!(problems(&found).is_empty(), "{found:?}");
+        // A call the C library would answer is refused when built, not when played.
+        fs::write(project.join("source/plugin.c"), "#include <stddef.h>\nvoid* malloc(size_t);\n__attribute__((visibility(\"default\"))) void* f(void) { return malloc(4); }\n").unwrap();
+        assert!(build_plugin(&project, None).is_err());
     }
 
     #[test]

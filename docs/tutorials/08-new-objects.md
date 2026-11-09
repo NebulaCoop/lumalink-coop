@@ -24,7 +24,20 @@ layers/base/files/ObjectData/BigStoneBlock.arc/BigStoneBlock.glb
 layers/base/files/ObjectData/BigStoneBlock.arc/BigStoneBlock.kcl.glb
 ```
 
-If the object it's like asks for a model by its own name (a `Kuribo` asks for `Kuribo`), it gets yours instead. Animations are asked for by name: copy the original's names, with `lumalink files ObjectData/Kuribo.arc --game game.pak` to see them.
+If the object it's like asks for a model by its own name (a `Kuribo` asks for `Kuribo`), it gets yours instead. Animations are asked for by name: copy the original's names, with `lumalink files ObjectData/Kuribo.arc --game game.pak` to see them. Its joints too, where the original's code holds something by a joint (a Goomba's `Head`).
+
+What your archive doesn't have comes from the original's:
+
+| Missing from yours | What happens |
+|---|---|
+| A table (`actoranimctrl.bcsv`, `storydemoshadow.bcsv`, ...) | The original's is read |
+| A sound animation (`walk.bas`: footsteps on frames) | The original's plays with your animation of that name |
+| Effects (no `AutoEffectList` row for your name) | The original's: a squashed Bramblet gives off a Goomba's puff |
+| An animation the code plays | Nothing plays for it, and nothing breaks: a model with no colour animations (`.brk`) is still a Toad |
+
+An animation standing for one of the original's plays as that one does: once (a Goomba's `FlatDown`), or looping (`Walk`). The code waits for the end of those it plays once, so this matters. To say it yourself, see [models](02-models.md#how-an-animation-plays).
+
+`examples/new-galaxy` makes a new enemy this way: `Bramblet`, like `Kuribo`, its model and 28 animations from one glTF file.
 
 ## 4. Place it
 
@@ -50,7 +63,7 @@ The player stands on it, and it draws, sounds and counts as what it's like.
 
 ## What it can and can't change
 
-The look, the shape, the sounds in its archive and any table in its archive are yours. What it does is the original's. Its arguments mean what the original's do. For behaviour of its own, [a plugin](10-first-plugin.md) makes a new object in a few lines.
+The look, the shape, the sounds in its archive and any table in its archive are yours, and so are effects given in an `AutoEffectList` row of its name. What it does is the original's. Its arguments mean what the original's do. For behaviour of its own, [a plugin](10-first-plugin.md) makes a new object in a few lines.
 
 ## If a file is missing
 

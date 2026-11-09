@@ -73,6 +73,14 @@ enum Command {
         #[arg(short, long, default_value = ".")]
         output: PathBuf,
     },
+    /// Build a project's plugin from source/*.c for every device the game runs on, with clang and lld.
+    Build {
+        /// A folder with a luma.json and a source folder.
+        folder: PathBuf,
+        /// clang, when it isn't on the PATH or in LLVM's usual place.
+        #[arg(long, value_name = "FILE")]
+        clang: Option<PathBuf>,
+    },
     /// Build a project folder into a .luma file.
     Pack {
         /// A folder with a luma.json.
@@ -305,11 +313,18 @@ fn run(cli: Cli) -> Result<ExitCode> {
             project::new_project(&folder, &name)?;
             if plugin {
                 project::add_plugin(&folder)?;
-                println!("Its code is in source/plugin.c. Build it with build.cmd on Windows, or build.sh elsewhere. See docs/plugins.md.");
+                println!("Its code is in source/plugin.c. Build it for every device with: lumalink build \"{}\"", folder.display());
             }
             println!("Started {name} in {}", folder.display());
             println!("Put files where they go in the game under layers/base/files/, and textures under layers/base/textures/.");
             println!("Then run: lumalink pack \"{}\"", folder.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Build { folder, clang } => {
+            for library in project::build_plugin(&folder, clang.as_deref())? {
+                println!("{}: {}", library.target, library.file);
+            }
+            println!("luma.json names each library. Then run: lumalink pack \"{}\"", folder.display());
             Ok(ExitCode::SUCCESS)
         }
         Command::Pack { folder, output, game } => {

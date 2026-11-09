@@ -126,7 +126,7 @@ Players choose in the game, on the Mods page, and can change their minds without
 
 ### Files
 
-`files/` holds files at the paths the game knows them by, in any case: `files/StageData/RedBlueExGalaxy/RedBlueExGalaxyMap.arc`. New paths are new files. Files stay in the form mods use: `.arc`, `.szs`, `.bcsv`, `.bmd`, `.brstm` and the rest. Files keep their game formats inside archives for now; loading PNG and glTF directly is planned, and would be added with `requires`.
+`files/` holds files at the paths the game knows them by, in any case: `files/StageData/RedBlueExGalaxy/RedBlueExGalaxyMap.arc`. New paths are new files. Files stay in the form mods use: `.arc`, `.szs`, `.bcsv`, `.bmd`, `.brstm` and the rest. Files can also be modern, turned into the game's forms when the player applies the mod: glTF models and solid ground (`.glb`, `.gltf`, `.kcl.glb`), PNG textures, WAV and Ogg music, and tables as JSON (`.bcsv.json`, a zone's `jmp` tables as `.json`). See [Modern files](REFERENCE.md#modern-files). They need no `requires`.
 
 Text for languages the mod leaves out: if a mod sets files in some language folders and not the one being played, Nebula shows the mod's text anyway, from the same language of another region, then English, then what it has. A player can turn this off for a mod.
 
@@ -325,7 +325,7 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 
 ## Later additions
 
-Planned, and the format is ready for them through `requires`: modern asset files, and custom shaders (`"requires": ["custom-shaders"]`, with a layer naming a material and an HLSL file that Nebula builds for every device).
+Added since version 1 began, each with its `requires` name: `tunables`, `custom-shaders` (a layer naming a material and an HLSL file that Nebula builds for every device) and `player-animations`. Modern asset files came without one.
 
 
 The format stays version 1 for as long as a change can be read safely by older games:

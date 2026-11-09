@@ -39,19 +39,30 @@ NEBULA_PLUGIN_ENTRY(api, self) {
 }
 ```
 
-Build it with any C compiler that targets the device. On Windows, with clang:
+Build it for every device at once:
 
 ```console
-clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NOENTRY -I <nebula>/native/include -o plugins/one_health.dll one_health.c
+lumalink build <project>
 ```
 
-List it in `luma.json`:
+`lumalink build` compiles `source/*.c` with clang and lld for all eight devices (Windows, Linux, Android and macOS,
+each x64 and arm64), links no library, and lists each one in `luma.json`:
 
 ```json
 "plugins": [
-  { "api": 2, "binaries": { "windows-x64": "plugins/one_health.dll" } }
+  { "api": 2, "binaries": { "windows-x64": "plugins/one-health-windows-x64.dll", "linux-x64": "plugins/one-health-linux-x64.so", "...": "..." } }
 ]
 ```
+
+`--clang <path>` names the compiler when it isn't on the PATH. By hand, one device:
+
+```console
+clang --target=aarch64-linux-android24 -O2 -shared -nostdlib -ffreestanding -fno-stack-protector -fvisibility=hidden -fuse-ld=lld -fPIC -Wl,-z,defs -I <nebula>/native/include -o plugins/one-health-android-arm64.so one_health.c
+```
+
+Windows targets take `-Wl,/NOENTRY` in place of `-fPIC -Wl,-z,defs`; macOS ones take neither. There is no C library:
+`game->alloc` and `game->release` give memory, `game->format` does printf's formatting. If the linker stops on
+`memcpy` or `memset` (clang turns a large copy or clear into one), define it in your source.
 
 Then `lumalink pack` checks that each library is really for the device it's listed under.
 
