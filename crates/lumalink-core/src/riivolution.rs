@@ -155,7 +155,7 @@ pub fn parse(text: &str) -> Result<Disc> {
     let document = roxmltree::Document::parse_with_options(
         text,
         // Some mods carry a DTD. Nested entities can't make more than a mod's XML ever needs.
-        roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: 2_000_000, ..Default::default() },
+        roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: 2_000_000 },
     )
     .map_err(|e| anyhow!("the XML cannot be read: {e}"))?;
     let root = document.root_element();

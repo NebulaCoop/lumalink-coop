@@ -404,7 +404,7 @@ fn check_when(when: &Value, name: &str, options: &BTreeMap<String, Vec<String>>,
     }
     if let Some(languages) = map.get("language") {
         for language in string_list(languages, &format!("{name}'s language"), found) {
-            if !crate::layout::LANGUAGE_FOLDERS.iter().any(|l| *l == language) {
+            if !crate::layout::LANGUAGE_FOLDERS.contains(&language) {
                 found.problem(format!("{name}: {language} isn't one of the game's language folders"));
             }
         }
@@ -745,7 +745,7 @@ fn check_progression(manifest: &Value, found: &mut Findings) {
                         continue;
                     };
                     for key in ["kind", "a", "b"] {
-                        if flag.get(key).is_some_and(|v| !v.as_u64().is_some_and(|n| n <= 255)) {
+                        if flag.get(key).is_some_and(|v| v.as_u64().is_none_or(|n| n > 255)) {
                             found.problem(format!("event_flags {name}: {key} is from 0 to 255"));
                         }
                     }

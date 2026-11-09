@@ -274,6 +274,9 @@ pub fn display_model_write(address: u32, value: &[u8]) -> Option<ObjectChangeRow
     Some(ObjectChangeRow { object: (*from).to_string(), becomes: Some((*to).to_string()), within: Some("display_models") })
 }
 
+/// The time limits a comet patch adds, and the parts of the patches read to find them.
+pub type CometLimits = (Vec<CometLimitRow>, Vec<(u32, usize)>);
+
 /// A comet mission's time limit.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CometLimitRow {
@@ -333,7 +336,7 @@ impl SpareMemory {
     }
 
     /// The time limits added by code at `target`: every call in it to the game's lookup with a table of the mod's own. What's read of the patches comes back so the caller knows what's left over.
-    pub fn comet_limits(&self, target: u32) -> Option<(Vec<CometLimitRow>, Vec<(u32, usize)>)> {
+    pub fn comet_limits(&self, target: u32) -> Option<CometLimits> {
         let code = self.bytes_at(target)?;
         let mut rows = Vec::new();
         let mut used = Vec::new();

@@ -122,7 +122,7 @@ fn about(layout: &Layout, plan: &Plan) -> String {
         parts.push(counted(Word::Files, files));
     }
     if let Some(pack) = layout.pack.as_ref().filter(|p| p.textures != 0) {
-        parts.push(counted(Word::Textures, pack.textures as usize));
+        parts.push(counted(Word::Textures, pack.textures));
     }
     if !plan.known_patches.is_empty() {
         parts.push(counted(Word::GameplayChanges, plan.known_patches.len()));

@@ -163,10 +163,13 @@ fn pack_file_wanted(path: &Path, pack_root: &Path) -> bool {
     })
 }
 
+/// What checking the layers found: the pixel programs the materials use, (file, problem) pairs, and files converted.
+type LayerCheck = (usize, Vec<(String, String)>, usize);
+
 /// Converts every layer as Nebula will, to find files it can't use and to count the programs its models' materials use.
 /// Nebula builds any of those it lacks on the player's device from the texts its own conversion writes (mods.sources): a
 /// compiled program fits one build of Nebula only, so a `.luma` carries none.
-pub(crate) fn check_layers(layers: &[(String, Vec<Change>)], game_id: &str, store: Option<&GameStore>, building: &Path) -> Result<(usize, Vec<(String, String)>, usize)> {
+pub(crate) fn check_layers(layers: &[(String, Vec<Change>)], game_id: &str, store: Option<&GameStore>, building: &Path) -> Result<LayerCheck> {
     // One at a time: the collector below is the converter's, for the whole program.
     static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());

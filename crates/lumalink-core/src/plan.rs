@@ -879,11 +879,27 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                 }
                 if lower.ends_with(".ini") {
                     if let Ok(text) = fs::read_to_string(code) {
-                        let list = crate::gecko::from_ini(&text);
-                        for _ in 0..list.other {
-                            builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                        // A popular code by its name is one of Nebula's own samples: its memory writes mean nothing to the native
+                        // game, so they are not read; the player is told which sample does it.
+                        let mut writes = Vec::new();
+                        for one in crate::gecko::ini_codes(&text).into_iter().filter(|c| c.enabled) {
+                            if let Some(known) = crate::gecko::known_code(&one.name) {
+                                builder.plan.note(
+                                    Level::Lost,
+                                    format!(
+                                        "Code \"{}\": Nebula does this natively ({}). Turn on its sample mod, gecko/{} in Nebula's plugin examples, in place of the code.",
+                                        one.name, known.what, known.sample
+                                    ),
+                                );
+                                continue;
+                            }
+                            let list = crate::gecko::from_pairs(&one.pairs);
+                            for _ in 0..list.other {
+                                builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                            }
+                            writes.extend(list.writes);
                         }
-                        builder.writes(&layout.root, &layout.root, list.writes);
+                        builder.writes(&layout.root, &layout.root, writes);
                     }
                     continue;
                 }
@@ -985,6 +1001,20 @@ mod tests {
 
     fn store() -> GameStore {
         GameStore::from_paths("RMGE01", &["ObjectData", "ObjectData/Kuribo.arc", "StageData", "UsEnglish"])
+    }
+
+    #[test]
+    fn a_popular_code_names_the_sample_that_does_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let ini = ["[Gecko]", "$Moon Jump [someone]", "C0000000 00000003", "$Hide HUD", "04001000 00000001", "[Gecko_Enabled]", "$Moon Jump"].join("
+");
+        write(dir.path(), "RMGE01.ini", &ini);
+        let store = store();
+        let plan = build(&Layout::of(dir.path()), "RMGE01", Some(&store)).unwrap();
+        let text: Vec<_> = plan.notes.iter().map(|n| n.text.as_str()).collect();
+        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("gecko/moon_jump")), "{text:?}");
+        assert!(!text.iter().any(|t| t.contains("hide_hud")), "a code that is off says nothing: {text:?}");
+        assert!(plan.unknown_code.is_empty(), "{:?}", plan.unknown_code);
     }
 
     #[test]

@@ -75,13 +75,69 @@ pub fn from_gct(bytes: &[u8]) -> CodeList {
     read_pairs(&pairs)
 }
 
-/// Dolphin's game settings: lines of two hex words under `[Gecko]`, and `[Gecko_Enabled]` saying which by their `$name`. A list with no enabled section has all on.
-pub fn from_ini(text: &str) -> CodeList {
+/// A popular code Nebula does natively: the sample mod that does what it did (Nebula's
+/// native/plugin_sdk/examples/gecko/<sample>, MOD-PLAN M9) and what that is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KnownCode {
+    pub sample: &'static str,
+    pub what: &'static str,
+}
+
+/// Popular codes by the words their names use in shared lists (all of a row's words, in any case and order).
+const KNOWN: &[(&[&str], KnownCode)] = &[
+    (&["moon", "jump"], KnownCode { sample: "moon_jump", what: "rise while jump is held" }),
+    (&["infinite", "health"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
+    (&["inf", "health"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
+    (&["invincib"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
+    (&["lives"], KnownCode { sample: "infinite_lives", what: "lives stay at 99" }),
+    (&["star", "bit"], KnownCode { sample: "max_star_bits", what: "star bits filled, coins added" }),
+    (&["coin"], KnownCode { sample: "max_star_bits", what: "star bits filled, coins added" }),
+    (&["gravity"], KnownCode { sample: "low_gravity", what: "a scale on gravity's pull (set_gravity_scale)" }),
+    (&["rainbow"], KnownCode { sample: "rainbow_forever", what: "the star power that never ends" }),
+    (&["power", "up", "never"], KnownCode { sample: "power_ups_last", what: "power-ups that never run out" }),
+    (&["infinite", "power"], KnownCode { sample: "power_ups_last", what: "power-ups that never run out" }),
+    (&["fire", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
+    (&["bee", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
+    (&["boo", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
+    (&["ice", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
+    (&["power", "up", "anywhere"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
+    (&["timer"], KnownCode { sample: "freeze_timer", what: "countdowns held (pause_timer)" }),
+    (&["free", "cam"], KnownCode { sample: "free_camera", what: "a camera the d-pad moves (set_camera)" }),
+    (&["fov"], KnownCode { sample: "wide_fov", what: "the camera's angle of view (set_camera)" }),
+    (&["hud"], KnownCode { sample: "hide_hud", what: "the HUD hidden (show_hud)" }),
+    (&["fall"], KnownCode { sample: "no_fall_death", what: "a fall out of the level puts the player back" }),
+    (&["slow", "motion"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
+    (&["frame", "advance"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
+    (&["speed", "hack"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
+    (&["position"], KnownCode { sample: "position_display", what: "the player's place and speed on the screen (draw_text)" }),
+    (&["coordinates"], KnownCode { sample: "position_display", what: "the player's place and speed on the screen (draw_text)" }),
+    (&["freeze", "enem"], KnownCode { sample: "freeze_enemies", what: "enemies held still (hook_nerve)" }),
+    (&["stage", "select"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
+    (&["level", "select"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
+    (&["warp"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
+];
+
+/// The native sample a code's name says it is, if it is one of the popular codes.
+pub fn known_code(name: &str) -> Option<KnownCode> {
+    let lower = name.to_ascii_lowercase();
+    KNOWN.iter().find(|(words, _)| words.iter().all(|w| lower.contains(w))).map(|(_, code)| *code)
+}
+
+/// One code of Dolphin's game settings: its `$name` (without any `[author]` after it), its pairs, and whether it is on.
+#[derive(Debug, PartialEq)]
+pub struct NamedCode {
+    pub name: String,
+    pub pairs: Vec<(u32, u32)>,
+    pub enabled: bool,
+}
+
+/// Dolphin's game settings, code by code.
+pub fn ini_codes(text: &str) -> Vec<NamedCode> {
     let mut section = String::new();
-    let mut current = String::new();
-    let mut codes: Vec<(String, Vec<(u32, u32)>)> = Vec::new();
+    let mut codes: Vec<NamedCode> = Vec::new();
     let mut enabled: Vec<String> = Vec::new();
     let mut says_enabled = false;
+    let name_of = |line: &str| line.split('[').next().unwrap_or(line).trim().to_string();
     for line in text.lines() {
         let line = line.trim();
         if line.starts_with('[') {
@@ -93,31 +149,43 @@ pub fn from_ini(text: &str) -> CodeList {
         }
         if section == "gecko_enabled" {
             if let Some(name) = line.strip_prefix('$') {
-                enabled.push(name.to_string());
+                enabled.push(name_of(name));
             }
         } else if section == "gecko" {
             if let Some(name) = line.strip_prefix('$') {
-                current = name.to_string();
-                codes.push((current.clone(), Vec::new()));
+                codes.push(NamedCode { name: name_of(name), pairs: Vec::new(), enabled: true });
             } else if let Some((a, b)) = line.split_once(' ') {
                 if let (Ok(a), Ok(b)) = (u32::from_str_radix(a.trim(), 16), u32::from_str_radix(b.trim(), 16)) {
                     if codes.is_empty() {
-                        codes.push((current.clone(), Vec::new()));
+                        codes.push(NamedCode { name: String::new(), pairs: Vec::new(), enabled: true });
                     }
                     if let Some(last) = codes.last_mut() {
-                        last.1.push((a, b));
+                        last.pairs.push((a, b));
                     }
                 }
             }
         }
     }
-    let mut list = CodeList::default();
-    for (name, pairs) in codes {
-        if !says_enabled || enabled.contains(&name) {
-            let one = read_pairs(&pairs);
-            list.writes.extend(one.writes);
-            list.other += one.other;
+    if says_enabled {
+        for code in &mut codes {
+            code.enabled = enabled.contains(&code.name);
         }
+    }
+    codes
+}
+
+/// The writes of a list of pairs.
+pub fn from_pairs(pairs: &[(u32, u32)]) -> CodeList {
+    read_pairs(pairs)
+}
+
+/// Dolphin's game settings: lines of two hex words under `[Gecko]`, and `[Gecko_Enabled]` saying which by their `$name`. A list with no enabled section has all on.
+pub fn from_ini(text: &str) -> CodeList {
+    let mut list = CodeList::default();
+    for code in ini_codes(text).into_iter().filter(|c| c.enabled) {
+        let one = read_pairs(&code.pairs);
+        list.writes.extend(one.writes);
+        list.other += one.other;
     }
     list
 }
@@ -187,6 +255,21 @@ mod tests {
         let text = "[Gecko]\n$High jump [someone]\n045B0678 42700000\n$Other\n04000000 00000001\n[Gecko_Enabled]\n$High jump [someone]\n";
         let list = from_ini(text);
         assert_eq!(list.writes, vec![(0x805B_0678, vec![0x42, 0x70, 0, 0])]);
+    }
+
+    #[test]
+    fn popular_codes_are_known_by_their_names() {
+        assert_eq!(known_code("Moon Jump [Ralf]").map(|c| c.sample), Some("moon_jump"));
+        assert_eq!(known_code("INFINITE HEALTH").map(|c| c.sample), Some("infinite_health"));
+        assert_eq!(known_code("Low Gravity (hold Z)").map(|c| c.sample), Some("low_gravity"));
+        assert_eq!(known_code("Stage Select").map(|c| c.sample), Some("warp_anywhere"));
+        assert_eq!(known_code("Freeze Enemies").map(|c| c.sample), Some("freeze_enemies"));
+        assert_eq!(known_code("Hide HUD").map(|c| c.sample), Some("hide_hud"));
+        assert_eq!(known_code("Widescreen Fix"), None);
+        let codes = ini_codes("[Gecko]\n$Moon Jump [someone]\n04001000 00000001\n$Other\n04001004 00000002\n[Gecko_Enabled]\n$Moon Jump\n");
+        assert_eq!(codes.len(), 2);
+        assert_eq!((codes[0].name.as_str(), codes[0].enabled, codes[0].pairs.len()), ("Moon Jump", true, 1));
+        assert_eq!((codes[1].name.as_str(), codes[1].enabled), ("Other", false));
     }
 
     #[test]
