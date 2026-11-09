@@ -48,6 +48,9 @@ enum Command {
         /// The folder to write to.
         #[arg(short, long, value_name = "FOLDER", default_value = ".")]
         output: PathBuf,
+        /// Build it even though files the game can't use are left out (they are listed first).
+        #[arg(long)]
+        accept_losses: bool,
         #[command(flatten)]
         game: Game,
     },
@@ -171,6 +174,9 @@ enum Command {
         /// The folder to write to.
         #[arg(short, long, value_name = "FOLDER", default_value = ".")]
         output: PathBuf,
+        /// Build it even though files the game can't use are left out (they are listed first).
+        #[arg(long)]
+        accept_losses: bool,
         #[command(flatten)]
         game: Game,
     },
@@ -240,14 +246,14 @@ fn print_plan(name: &str, layout: &Layout, plan: &Plan) {
     }
 }
 
-fn convert_one(input: &Path, output: &Path, store: Option<&GameStore>, game_id: &str) -> Result<package::Outcome> {
+fn convert_one(input: &Path, output: &Path, store: Option<&GameStore>, game_id: &str, accept_losses: bool) -> Result<package::Outcome> {
     let work = tempfile::tempdir().context("no temporary folder")?;
     let root = source::open(input, work.path())?;
     let layout = Layout::of(&root);
     let plan = plan::build(&layout, game_id, store)?;
     let name = source::mod_name(input);
     print_plan(&name, &layout, &plan);
-    let outcome = package::write(&name, &layout, &plan, store, output)?;
+    let outcome = package::write(&name, &layout, &plan, store, output, accept_losses)?;
     for (path, why) in &outcome.failed {
         println!("  left out: {path}: {why}");
     }
@@ -271,9 +277,9 @@ fn run(cli: Cli) -> Result<ExitCode> {
             }
             Ok(if plan.blocked() { ExitCode::from(2) } else { ExitCode::SUCCESS })
         }
-        Command::Convert { input, output, game } => {
+        Command::Convert { input, output, game, accept_losses } => {
             let (store, game_id) = open_store(&game)?;
-            convert_one(&input, &output, store.as_ref(), &game_id)?;
+            convert_one(&input, &output, store.as_ref(), &game_id, accept_losses)?;
             Ok(ExitCode::SUCCESS)
         }
         Command::Shader { model, output } => {
@@ -396,7 +402,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             std::process::Command::new(&nebula).arg("--open-mod").arg(&outcome.file).spawn().with_context(|| format!("{} can't be started", nebula.display()))?;
             Ok(ExitCode::SUCCESS)
         }
-        Command::Batch { folder, output, game } => {
+        Command::Batch { folder, output, game, accept_losses } => {
             let (store, game_id) = open_store(&game)?;
             let mut inputs: Vec<PathBuf> = std::fs::read_dir(&folder)
                 .with_context(|| format!("{} cannot be read", folder.display()))?
@@ -410,7 +416,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             }
             let mut failed = 0;
             for input in &inputs {
-                if let Err(error) = convert_one(input, &output, store.as_ref(), &game_id) {
+                if let Err(error) = convert_one(input, &output, store.as_ref(), &game_id, accept_losses) {
                     failed += 1;
                     println!("  FAILED: {error:#}");
                 }

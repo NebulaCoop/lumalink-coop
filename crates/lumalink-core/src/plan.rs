@@ -120,7 +120,20 @@ impl Plan {
             self.note(Level::Lost, format!("{disc}: Nebula's own tables are not set by mods"));
             return;
         }
-        self.files.insert(disc.to_ascii_lowercase(), PlannedFile { disc, host: host.to_path_buf() });
+        // Keyed as the store names it: two of the mod's paths may be one place in the game (a zone's archive both at
+        // StageData/ and in a galaxy's folder). The game reads the one where its own file is, the shallower.
+        let key = format!("/{}", nebula_import::cook::store::store_path(disc.trim_start_matches('/')).to_ascii_lowercase());
+        if let Some(have) = self.files.get(&key) {
+            if !have.disc.eq_ignore_ascii_case(&disc) {
+                let depth = |path: &str| path.matches('/').count();
+                let (kept, dropped) = if depth(&have.disc) <= depth(&disc) { (have.disc.clone(), disc.clone()) } else { (disc.clone(), have.disc.clone()) };
+                self.note(Level::Info, format!("{dropped}: the same file of the game as {kept}, which the game reads; left out"));
+                if kept != disc {
+                    return;
+                }
+            }
+        }
+        self.files.insert(key, PlannedFile { disc, host: host.to_path_buf() });
     }
 
     pub fn blocked(&self) -> bool {
@@ -970,6 +983,18 @@ mod tests {
         assert!(plan.files.is_empty(), "{:?}", plan.files.keys().collect::<Vec<_>>());
         plan.set("/StageData/Good.arc", Path::new("x"));
         assert_eq!(plan.files.len(), 1);
+    }
+
+    #[test]
+    fn two_paths_of_one_game_file_keep_the_one_the_game_reads() {
+        let mut plan = Plan::default();
+        plan.set("/StageData/CubeBubbleExLv2Galaxy/KoopaBattleVs3BossZone.arc", Path::new("a"));
+        plan.set("/StageData/KoopaBattleVs3BossZone.arc", Path::new("b"));
+        plan.set("/StageData/Other/KoopaBattleVs3BossZone.arc", Path::new("c"));
+        assert_eq!(plan.files.len(), 1);
+        let only = plan.files.values().next().unwrap();
+        assert_eq!((only.disc.as_str(), only.host.as_path()), ("/StageData/KoopaBattleVs3BossZone.arc", Path::new("b")));
+        assert_eq!(plan.notes.len(), 2, "{:?}", plan.notes);
     }
 
     #[test]

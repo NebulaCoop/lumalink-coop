@@ -9,14 +9,26 @@ use std::path::{Path, PathBuf};
 
 const NODE: usize = 40;
 
-/// The paths in a store, from its index.
+/// The paths in a store, from its index. The store names a disc's archive as a folder without its ending
+/// (`ObjectData/Kuribo.arc` is `ObjectData/Kuribo`, store::store_path); every question here is asked in those names.
 pub struct GameStore {
     pub path: PathBuf,
     pub game_id: String,
-    /// Lower-case paths without a leading '/': files and folders, the insides of archives too.
+    /// Lower-case store paths without a leading '/': files and folders, the insides of archives too.
     paths: BTreeSet<String>,
-    /// The paths a lower-case file name has. Archives count as files.
-    by_name: BTreeMap<String, Vec<String>>,
+    /// Outside archives, a lower-case store name's paths, each with whether it is an archive.
+    by_name: BTreeMap<String, Vec<(String, bool)>>,
+}
+
+/// A disc or mod path as the store names it, lower-case, without a leading '/'.
+fn key(path: &str) -> String {
+    nebula_import::cook::store::store_path(path.trim_start_matches('/')).to_ascii_lowercase()
+}
+
+/// Whether a file name is an archive's on the disc (the store drops the ending).
+fn is_archive_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.len() > 4 && (lower.ends_with(".arc") || lower.ends_with(".szs"))
 }
 
 impl GameStore {
@@ -40,47 +52,57 @@ impl GameStore {
         pak.read_exact(&mut names).context("the store's names are cut short")?;
 
         let mut full: Vec<String> = Vec::with_capacity(count);
+        // Whether a node is an archive, or inside one.
+        let mut in_archive: Vec<bool> = Vec::with_capacity(count);
         let mut paths = BTreeSet::new();
-        let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut by_name: BTreeMap<String, Vec<(String, bool)>> = BTreeMap::new();
         for i in 0..count {
             let node = &nodes[i * NODE..(i + 1) * NODE];
             let name_at = u32::from_le_bytes(node[16..20].try_into().unwrap()) as usize;
             let parent = u32::from_le_bytes(node[20..24].try_into().unwrap()) as usize;
+            let archive = u32::from_le_bytes(node[24..28].try_into().unwrap()) & 2 != 0;
             let tail = names.get(name_at..).unwrap_or(&[]);
             let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
             let name = String::from_utf8_lossy(&tail[..end]).to_string();
             if i == 0 {
                 full.push(String::new());
+                in_archive.push(false);
                 continue;
             }
             let path = match full.get(parent).map(String::as_str) {
                 Some("") | None => name.clone(),
                 Some(parent) => format!("{parent}/{name}"),
             };
+            let inside = in_archive.get(parent).copied().unwrap_or(false);
             paths.insert(path.to_ascii_lowercase());
-            by_name.entry(name.to_ascii_lowercase()).or_default().push(path.clone());
+            if !inside {
+                by_name.entry(name.to_ascii_lowercase()).or_default().push((path.clone(), archive));
+            }
             full.push(path);
+            in_archive.push(inside || archive);
         }
         Ok(Self { path: path.to_path_buf(), game_id, paths, by_name })
     }
 
-    /// A store for the tests.
+    /// A store for the tests, from disc paths (`ObjectData/Kuribo.arc`), named as an imported store names them.
     pub fn from_paths(game_id: &str, list: &[&str]) -> Self {
-        let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut by_name: BTreeMap<String, Vec<(String, bool)>> = BTreeMap::new();
         for path in list {
-            let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
-            by_name.entry(name).or_default().push(path.to_string());
+            let parts: Vec<&str> = path.split('/').collect();
+            // Inside an archive: some part before the last is one.
+            if parts[..parts.len() - 1].iter().any(|p| is_archive_name(p)) {
+                continue;
+            }
+            let store = nebula_import::cook::store::store_path(path);
+            let name = store.rsplit('/').next().unwrap_or(&store).to_ascii_lowercase();
+            by_name.entry(name).or_default().push((store.clone(), is_archive_name(parts[parts.len() - 1])));
         }
-        Self {
-            path: PathBuf::new(),
-            game_id: game_id.to_string(),
-            paths: list.iter().map(|p| p.to_ascii_lowercase()).collect(),
-            by_name,
-        }
+        Self { path: PathBuf::new(), game_id: game_id.to_string(), paths: list.iter().map(|p| key(p)).collect(), by_name }
     }
 
+    /// Whether the game has this disc or store path.
     pub fn has(&self, path: &str) -> bool {
-        self.paths.contains(&path.trim_start_matches('/').to_ascii_lowercase())
+        self.paths.contains(&key(path))
     }
 
     /// A top-level folder of the game, in any case.
@@ -88,15 +110,18 @@ impl GameStore {
         self.paths.contains(&name.to_ascii_lowercase())
     }
 
-    /// Paths of a file named this anywhere outside an archive.
+    /// Where a file of this disc name is, outside archives, as disc paths (an archive gets back the ending it was asked
+    /// with: `IceMario.arc` is `ObjectData/IceMario.arc`).
     pub fn named(&self, name: &str) -> Vec<String> {
+        let archive = is_archive_name(name);
+        let stem = if archive { &name[..name.len() - 4] } else { name };
         self.by_name
-            .get(&name.to_ascii_lowercase())
+            .get(&stem.to_ascii_lowercase())
             .map(|paths| {
                 paths
                     .iter()
-                    .filter(|p| !p.to_ascii_lowercase().contains(".arc/"))
-                    .cloned()
+                    .filter(|(_, is_archive)| *is_archive == archive)
+                    .map(|(path, _)| if archive { format!("{path}{}", &name[name.len() - 4..]) } else { path.clone() })
                     .collect()
             })
             .unwrap_or_default()
@@ -113,8 +138,11 @@ mod tests {
         assert!(store.has("/objectdata/KURIBO.arc"));
         assert!(!store.has("/StageData/a.arc"));
         assert!(store.has_folder("objectdata"));
-        assert_eq!(store.named("kuribo.ARC"), ["ObjectData/Kuribo.arc"]);
+        assert_eq!(store.named("kuribo.ARC"), ["ObjectData/Kuribo.ARC"]);
         assert!(store.named("x.bdl").is_empty());
+        assert!(store.named("Kuribo").is_empty());
+        // As an imported store names them: the archive is a folder without its ending.
+        assert!(store.has("ObjectData/Kuribo") && store.has("objectdata/kuribo/X.BDL"));
     }
 
     #[test]

@@ -101,6 +101,26 @@ pub struct Outcome {
     pub report: String,
 }
 
+/// A conversion that would leave files out: no package is written until its maker accepts the losses
+/// (`write`'s `accept_losses`). Each file with why.
+#[derive(Debug)]
+pub struct Losses(pub Vec<(String, String)>);
+
+impl std::fmt::Display for Losses {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} files would be left out", self.0.len())?;
+        for (path, why) in self.0.iter().take(12) {
+            write!(f, "\n  {path}: {why}")?;
+        }
+        if self.0.len() > 12 {
+            write!(f, "\n  and {} more", self.0.len() - 12)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for Losses {}
+
 fn copy_tree(from: &Path, to: &Path, keep: impl Fn(&Path) -> bool) -> Result<usize> {
     let mut count = 0;
     for entry in walkdir::WalkDir::new(from) {
@@ -188,8 +208,10 @@ pub(crate) fn check_layers(layers: &[(String, Vec<Change>)], game_id: &str, stor
                 converted += changes.len() - bad.len();
                 failed.extend(bad);
             }
-            Err(_) => {
-                failed.extend(changes.iter().map(|c| (c.path.clone(), "the game can't use this file".to_string())));
+            Err(error) => {
+                // The whole layer stopped: say why once, on each of its files.
+                let why = format!("the layer could not be converted: {error:#}");
+                failed.extend(changes.iter().map(|c| (c.path.clone(), why.clone())));
             }
         }
     }
@@ -306,7 +328,9 @@ pub(crate) fn file_stem_for(name: &str) -> String {
 }
 
 /// Writes the `.luma` for a plan. An existing file of the name is replaced only when the new one is complete.
-pub fn write(name: &str, layout: &Layout, plan: &Plan, store: Option<&GameStore>, output: &Path) -> Result<Outcome> {
+/// Writes the `.luma`. A file the game can't use stops it with `Losses` unless `accept_losses`; a mod of which nothing
+/// converts is never written.
+pub fn write(name: &str, layout: &Layout, plan: &Plan, store: Option<&GameStore>, output: &Path, accept_losses: bool) -> Result<Outcome> {
     if plan.blocked() {
         bail!("{}", plan.notes.iter().find(|n| n.level == Level::Blocked).map_or("the mod cannot be used", |n| n.text.as_str()));
     }
@@ -320,15 +344,19 @@ pub fn write(name: &str, layout: &Layout, plan: &Plan, store: Option<&GameStore>
         fs::remove_dir_all(&building)?;
     }
     fs::create_dir_all(&building)?;
-    let result = write_inside(name, version.as_deref(), layout, plan, store, &building, &file);
+    let result = write_inside(name, version.as_deref(), layout, plan, store, &building, &file, accept_losses);
     let _ = fs::remove_dir_all(&building);
     result
 }
 
-fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan, store: Option<&GameStore>, building: &Path, file: &Path) -> Result<Outcome> {
+#[allow(clippy::too_many_arguments)]
+fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan, store: Option<&GameStore>, building: &Path, file: &Path, accept_losses: bool) -> Result<Outcome> {
     let mut jobs: Vec<(String, Vec<Change>)> = vec![("base".to_string(), changes(&plan.files))];
     jobs.extend(plan.layers.iter().map(|l: &Layer| (l.name.clone(), changes(&l.files))));
     let (programs, failed, converted) = check_layers(&jobs, &plan.game_id, store, building)?;
+    if !failed.is_empty() && !accept_losses {
+        return Err(Losses(failed).into());
+    }
 
     let mut layers = Vec::new();
     copy_layer(&plan.files, &failed, building, "layers/base")?;
@@ -401,6 +429,9 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         comet_schedule: plan.comet_schedule.iter().map(|(dome, comets)| ManifestComets { dome: *dome, comets: comets.clone() }).collect(),
         tool: format!("LumaLink {}", env!("CARGO_PKG_VERSION")),
     };
+    if manifest.layers.is_empty() && manifest.save.is_none() && manifest.galaxies.is_empty() && manifest.comet_schedule.is_empty() {
+        bail!("nothing of the mod could be converted");
+    }
     fs::write(building.join("luma.json"), serde_json::to_vec_pretty(&manifest)?)?;
 
     let mut outcome = Outcome {
@@ -437,7 +468,7 @@ mod tests {
         write_file(&source, "Load/Textures/SB4E01/tex1_8x8_0123456789abcdef_14.png", "other");
         let layout = Layout::of(&source);
         let plan = build(&layout, "RMGE01", None).unwrap();
-        let outcome = write("My: Mod", &layout, &plan, None, &dir.path().join("out")).unwrap();
+        let outcome = write("My: Mod", &layout, &plan, None, &dir.path().join("out"), false).unwrap();
         assert_eq!(outcome.converted, 1);
         assert!(outcome.file.ends_with("My_ Mod.luma"));
         let unpacked = dir.path().join("unpacked");
@@ -465,10 +496,26 @@ mod tests {
             write_file(&source, "StageData/note.txt.bin", "hello");
             let layout = Layout::of(&source);
             let plan = build(&layout, "RMGE01", None).unwrap();
-            let outcome = write(name, &layout, &plan, None, &dir.path().join("out")).unwrap();
+            let outcome = write(name, &layout, &plan, None, &dir.path().join("out"), false).unwrap();
             assert!(outcome.file.is_file(), "{name:?}");
             assert!(crate::source::safe_relative(&outcome.file.file_name().unwrap().to_string_lossy()).is_some(), "{name:?}");
         }
+    }
+
+    #[test]
+    fn losses_stop_the_package_until_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("mod");
+        write_file(&source, "ObjectData/Kuribo.arc", "an archive in name only");
+        write_file(&source, "StageData/note.txt.bin", "hello");
+        let layout = Layout::of(&source);
+        let plan = build(&layout, "RMGE01", None).unwrap();
+        let error = write("m", &layout, &plan, None, &dir.path().join("out"), false).unwrap_err();
+        let losses = error.downcast_ref::<Losses>().expect("a Losses error");
+        assert!(losses.0.iter().any(|(path, _)| path.contains("Kuribo")), "{losses}");
+        assert!(!dir.path().join("out/m.luma").exists());
+        let outcome = write("m", &layout, &plan, None, &dir.path().join("out"), true).unwrap();
+        assert!(outcome.file.is_file() && !outcome.failed.is_empty());
     }
 
     #[test]
@@ -478,7 +525,7 @@ mod tests {
         write_file(&source, "readme.txt", "x");
         let layout = Layout::of(&source);
         let plan = build(&layout, "RMGE01", None).unwrap();
-        assert!(write("m", &layout, &plan, None, &dir.path().join("out")).is_err());
+        assert!(write("m", &layout, &plan, None, &dir.path().join("out"), true).is_err());
         assert!(!dir.path().join("out/m.luma").exists());
     }
 }

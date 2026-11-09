@@ -10,7 +10,7 @@ use lumalink_core::game_store::GameStore;
 use lumalink_core::layout::Layout;
 use lumalink_core::plan::{self, Level, Plan, PlayerOption};
 use lumalink_core::{package, source};
-use sky::{BLUE_INK, GREEN, INK, RED, SOFT};
+use sky::{AMBER, BLUE_INK, GREEN, INK, RED, SOFT};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use words::{counted, word, Word};
@@ -31,6 +31,8 @@ enum State {
     Converting,
     Done { file: PathBuf, summary: String },
     Failed(String),
+    /// Converting would leave these files out: nothing is written until the person says to build it without them.
+    Losses(String),
 }
 
 impl State {
@@ -42,6 +44,7 @@ impl State {
             State::Converting => (word(Word::Converting), SOFT),
             State::Done { .. } => (word(Word::Done), GREEN),
             State::Failed(_) => (word(Word::DidntWork), RED),
+            State::Losses(_) => (word(Word::LeavesFilesOut), AMBER),
         }
     }
 }
@@ -68,7 +71,7 @@ struct ModRow {
 
 enum Event {
     Read { id: u64, about: String, notes: Vec<(Level, String)>, options: Vec<PlayerOption>, blocked: Option<String> },
-    Converted { id: u64, result: Result<(PathBuf, String), String> },
+    Converted { id: u64, result: Result<(PathBuf, String), Refused> },
 }
 
 struct App {
@@ -151,9 +154,21 @@ fn not_a_mod(path: &Path) -> Option<State> {
 
 type ReadMod = (Layout, Plan, Option<GameStore>, tempfile::TempDir);
 
+/// Why a conversion wrote nothing: files it would leave out, for the person to accept, or an error.
+enum Refused {
+    Losses(String),
+    Error(String),
+}
+
+impl From<String> for Refused {
+    fn from(error: String) -> Self {
+        Refused::Error(error)
+    }
+}
+
 /// A mod that breaks the tool in a way nobody foresaw is that mod's tile saying so, not a tile waiting for ever.
-fn guarded<T>(job: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).unwrap_or_else(|_| Err(word(Word::SomethingWrong).to_string()))
+fn guarded<T, E: From<String>>(job: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).unwrap_or_else(|_| Err(E::from(word(Word::SomethingWrong).to_string())))
 }
 
 fn read_mod(input: &Path, game: Option<&Path>) -> Result<ReadMod, String> {
@@ -335,15 +350,22 @@ impl App {
         let (game, output, sender) = (self.game.clone(), self.output.clone(), self.sender.clone());
         let mut jobs = Vec::new();
         for row in self.mods.iter_mut().filter(|m| which.contains(&m.id)) {
-            jobs.push((row.id, row.input.clone(), row.name.clone()));
+            // A mod whose losses were shown and converted again is built without those files.
+            let accept_losses = matches!(row.state, State::Losses(_));
+            jobs.push((row.id, row.input.clone(), row.name.clone(), accept_losses));
             row.state = State::Converting;
         }
         // One at a time: a conversion's shader compile already uses every core.
         std::thread::spawn(move || {
-            for (id, input, name) in jobs {
+            for (id, input, name, accept_losses) in jobs {
                 let result = guarded(|| {
-                    let (layout, plan, store, _work) = read_mod(&input, game.as_deref())?;
-                    package::write(&name, &layout, &plan, store.as_ref(), &output).map(|outcome| (outcome.file, outcome.total, outcome.converted)).map_err(|e| format!("{e:#}"))
+                    let (layout, plan, store, _work) = read_mod(&input, game.as_deref()).map_err(Refused::Error)?;
+                    package::write(&name, &layout, &plan, store.as_ref(), &output, accept_losses)
+                        .map(|outcome| (outcome.file, outcome.total, outcome.converted))
+                        .map_err(|e| match e.downcast_ref::<package::Losses>() {
+                            Some(losses) => Refused::Losses(losses.to_string()),
+                            None => Refused::Error(format!("{e:#}")),
+                        })
                 });
                 let result = result.map(|(file, total, converted)| {
                     let summary = if converted == total {
@@ -377,7 +399,8 @@ impl App {
                                 row.ticked = false;
                                 State::Done { file, summary }
                             }
-                            Err(error) => State::Failed(error),
+                            Err(Refused::Losses(list)) => State::Losses(list),
+                            Err(Refused::Error(error)) => State::Failed(error),
                         };
                     }
                 }
@@ -494,6 +517,7 @@ impl App {
                 ui.label(RichText::new(state_word).font(bold(14.5)).color(color));
                 let line = match &row.state {
                     State::CantConvert(why) | State::Failed(why) => why.clone(),
+                    State::Losses(list) => format!("{list}\n\n{}", word(Word::BuildWithout)),
                     State::Done { summary, .. } => summary.clone(),
                     _ => row.about.clone(),
                 };
@@ -541,7 +565,7 @@ impl App {
                     show_file(&file);
                 }
             }
-            State::Ready => {
+            State::Ready | State::Losses(_) => {
                 if capsule_at(ui, place(2), "page-convert", word(Word::Convert), &font, true) {
                     self.convert(vec![id]);
                 }

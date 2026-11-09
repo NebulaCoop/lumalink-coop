@@ -12,6 +12,8 @@ pub const BLUE_INK: Color32 = Color32::from_rgb(20, 126, 186);
 pub const BLUE_EDGE: Color32 = Color32::from_rgb(150, 212, 240);
 pub const RED: Color32 = Color32::from_rgb(208, 76, 76);
 pub const GREEN: Color32 = Color32::from_rgb(40, 158, 100);
+/// A state that waits for the person.
+pub const AMBER: Color32 = Color32::from_rgb(196, 128, 24);
 pub const GOLD: Color32 = Color32::from_rgb(255, 208, 40);
 pub const LINE: Color32 = Color32::from_rgb(198, 204, 212);
 const BACKDROP_TOP: Color32 = Color32::from_rgb(252, 253, 254);
