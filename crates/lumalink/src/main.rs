@@ -111,13 +111,17 @@ enum Command {
         #[command(flatten)]
         game: Game,
     },
-    /// List what the game's names are: settings, player (its numbers), objects, stages, or rules.
+    /// List what the game's names are: settings, player (its numbers), objects, rules, or tables (every table of your
+    /// imported game with its rows and columns: what a merge/ file can add to, remove from or change).
     List {
-        /// settings, player, objects, rules
+        /// settings, player, objects, rules, tables
         what: String,
-        /// Only names holding this.
+        /// Only names holding this (for tables: a path or a column name).
         #[arg(long)]
         filter: Option<String>,
+        /// Your imported game (Nebula's game.pak), for tables.
+        #[arg(long, value_name = "FILE")]
+        game: Option<PathBuf>,
     },
     /// List the files of your imported game.
     Files {
@@ -331,7 +335,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             println!("wrote {}", output.display());
             Ok(ExitCode::SUCCESS)
         }
-        Command::List { what, filter } => {
+        Command::List { what, filter, game } => {
             let keep = |name: &str| filter.as_deref().is_none_or(|f| name.to_ascii_lowercase().contains(&f.to_ascii_lowercase()));
             match what.as_str() {
                 "settings" => {
@@ -358,7 +362,16 @@ fn run(cli: Cli) -> Result<ExitCode> {
                         println!("{name}: {words}");
                     }
                 }
-                other => bail!("{other}: choose settings, player, objects or rules"),
+                "tables" => {
+                    let game = game.context("tables are your game's: name its game.pak with --game")?;
+                    let tables = lumalink_core::inspect::list_tables(&game, filter.as_deref())?;
+                    for table in &tables {
+                        let columns: Vec<String> = table.columns.iter().map(|(name, kind)| format!("{name}:{kind}")).collect();
+                        println!("{} ({} rows): {}", table.path, table.rows, columns.join(" "));
+                    }
+                    println!("{} tables", tables.len());
+                }
+                other => bail!("{other}: choose settings, player, objects, rules or tables"),
             }
             Ok(ExitCode::SUCCESS)
         }

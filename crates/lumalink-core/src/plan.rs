@@ -147,6 +147,34 @@ impl Plan {
         self.files.insert(key, PlannedFile { disc, host: host.to_path_buf() });
     }
 
+    /// An empty file where the game's own is empty too (`AudioRes/Waves/B109take_0.aw`, which mods that copy the
+    /// whole wave folder carry) changes nothing. `empty_in_game` says, by lower-case path without the leading slash.
+    fn leave_out_empty_as_in_game(&mut self, empty_in_game: &dyn Fn(&str) -> bool) {
+        let empty = |file: &PlannedFile| fs::metadata(&file.host).is_ok_and(|m| m.is_file() && m.len() == 0) && empty_in_game(&file.disc.trim_start_matches('/').to_ascii_lowercase());
+        let mut left = Vec::new();
+        self.files.retain(|_, file| {
+            let keep = !empty(file);
+            if !keep {
+                left.push(file.disc.clone());
+            }
+            keep
+        });
+        for layer in &mut self.layers {
+            layer.files.retain(|_, file| {
+                let keep = !empty(file);
+                if !keep {
+                    left.push(file.disc.clone());
+                }
+                keep
+            });
+        }
+        left.sort();
+        left.dedup();
+        for disc in left {
+            self.note(Level::Info, format!("{disc}: empty, as the game's own is; nothing to change"));
+        }
+    }
+
     pub fn blocked(&self) -> bool {
         self.notes.iter().any(|n| n.level == Level::Blocked)
     }
@@ -970,6 +998,11 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
             }
         }
     }
+    // The game's own sizes: the import's record, else the disc named with --base. Without either an empty file
+    // stays, and the package says it is empty.
+    if let Ok(original) = crate::source::original_files() {
+        builder.plan.leave_out_empty_as_in_game(&|path| original.get(path).is_some_and(|(size, _)| *size == 0));
+    }
     if builder.plan.file_count() == 0 && builder.plan.native_patches.is_empty() && builder.plan.player_constants.is_empty() && builder.plan.object_changes.is_empty() && builder.plan.comet_limits.is_empty() && builder.plan.event_flags.is_empty() && layout.pack.as_ref().is_none_or(|p| p.textures == 0) && !builder.plan.blocked() {
         let other = layout.pack.as_ref().and_then(|p| p.other_games.keys().next().cloned());
         match other {
@@ -1060,6 +1093,23 @@ mod tests {
         assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("gecko/moon_jump")), "{text:?}");
         assert!(!text.iter().any(|t| t.contains("hide_hud")), "a code that is off says nothing: {text:?}");
         assert!(plan.unknown_code.is_empty(), "{:?}", plan.unknown_code);
+    }
+
+    #[test]
+    fn an_empty_file_the_game_has_empty_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.aw", "");
+        write(dir.path(), "b.aw", "");
+        write(dir.path(), "c.aw", "x");
+        let mut plan = Plan::default();
+        for name in ["a.aw", "b.aw", "c.aw"] {
+            plan.set(&format!("/AudioRes/Waves/{name}"), &dir.path().join(name));
+        }
+        // a.aw and c.aw are empty in the game; b.aw is not, so an empty one is the mod's change (and a loss later).
+        plan.leave_out_empty_as_in_game(&|path| path == "audiores/waves/a.aw" || path == "audiores/waves/c.aw");
+        let left: Vec<_> = plan.files.values().map(|f| f.disc.as_str()).collect();
+        assert_eq!(left, ["/AudioRes/Waves/b.aw", "/AudioRes/Waves/c.aw"]);
+        assert!(plan.notes.iter().any(|n| n.level == Level::Info && n.text.starts_with("/AudioRes/Waves/a.aw: empty")), "{:?}", plan.notes);
     }
 
     #[test]

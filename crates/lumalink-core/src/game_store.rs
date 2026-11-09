@@ -32,6 +32,48 @@ fn is_archive_name(name: &str) -> bool {
 }
 
 impl GameStore {
+    /// Every file of a store with where its bytes are: (path as the store names it, position, size), in index order.
+    pub fn files(path: &Path) -> Result<Vec<(String, u64, u64)>> {
+        let mut pak = File::open(path).with_context(|| format!("{} cannot be read", path.display()))?;
+        let mut header = [0u8; 64];
+        pak.read_exact(&mut header).with_context(|| format!("{} is too short to be a game store", path.display()))?;
+        if &header[..8] != b"NBSTORE\0" {
+            bail!("{} is not a Nebula game store", path.display());
+        }
+        let word = |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap());
+        let count = u32::from_le_bytes(header[12..16].try_into().unwrap()) as usize;
+        let (nodes_at, names_at, names_size) = (word(16), word(32), word(40));
+        let mut nodes = vec![0u8; count.checked_mul(NODE).context("the store's index is too large")?];
+        pak.seek(SeekFrom::Start(nodes_at))?;
+        pak.read_exact(&mut nodes).context("the store's index is cut short")?;
+        let mut names = vec![0u8; names_size as usize];
+        pak.seek(SeekFrom::Start(names_at))?;
+        pak.read_exact(&mut names).context("the store's names are cut short")?;
+        let mut full: Vec<String> = Vec::with_capacity(count);
+        let mut files = Vec::new();
+        for i in 0..count {
+            let node = &nodes[i * NODE..(i + 1) * NODE];
+            let position = u64::from_le_bytes(node[0..8].try_into().unwrap());
+            let size = u64::from_le_bytes(node[8..16].try_into().unwrap());
+            let name_at = u32::from_le_bytes(node[16..20].try_into().unwrap()) as usize;
+            let parent = u32::from_le_bytes(node[20..24].try_into().unwrap()) as usize;
+            let folder = u32::from_le_bytes(node[24..28].try_into().unwrap()) & 1 != 0;
+            let tail = names.get(name_at..).unwrap_or(&[]);
+            let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+            let name = String::from_utf8_lossy(&tail[..end]).to_string();
+            let path = match full.get(parent).map(String::as_str) {
+                _ if i == 0 => String::new(),
+                Some("") | None => name,
+                Some(parent) => format!("{parent}/{name}"),
+            };
+            if i != 0 && !folder {
+                files.push((path.clone(), position, size));
+            }
+            full.push(path);
+        }
+        Ok(files)
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let mut pak = File::open(path).with_context(|| format!("{} cannot be read", path.display()))?;
         let mut header = [0u8; 64];

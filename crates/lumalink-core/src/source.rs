@@ -248,7 +248,7 @@ pub fn set_base_game(path: Option<PathBuf>) {
 
 /// The player's game, file by file (lower-case path: size, XXH64): the record the import kept, or, for a game imported
 /// before Nebula kept one, the game's own disc named with --base, read once.
-fn original_files() -> Result<std::collections::HashMap<String, (u64, u64)>> {
+pub(crate) fn original_files() -> Result<std::collections::HashMap<String, (u64, u64)>> {
     use nebula_import::cook;
     if let Some(store) = STORE.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         if let Ok(text) = cook::store::read_file(&store, cook::DISC_FILES_PATH) {

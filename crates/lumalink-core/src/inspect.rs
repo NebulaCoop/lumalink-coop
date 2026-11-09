@@ -18,6 +18,9 @@ fn column_names() -> BTreeMap<u32, &'static str> {
 
 /// A table of the game, disc or cooked, as the JSON a mod writes.
 pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
+    if bytes.starts_with(nebula_import::cook::table::MAGIC) {
+        return cooked_table_to_json(bytes);
+    }
     if bytes.len() < 16 {
         bail!("too short to be a table");
     }
@@ -97,6 +100,91 @@ pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
         .map(|c| (c.name.clone(), Value::String("float".to_string())))
         .collect();
     Ok(if kinds.is_empty() { json!({ "rows": out }) } else { json!({ "columns": kinds, "rows": out }) })
+}
+
+/// A cooked table (the imported game's, or Nebula's own) as the JSON a mod writes: an int as the game reads it (signed,
+/// at its width), a float marked in `columns`, words as UTF-8.
+fn cooked_table_to_json(bytes: &[u8]) -> Result<Value> {
+    use nebula_import::cook::table::{Cell, Kind, TableIr};
+    let table = TableIr::from_ntbl(bytes)?;
+    let names = column_names();
+    let named: Vec<String> = table.columns.iter().map(|c| names.get(&c.hash).map_or_else(|| format!("0x{:08x}", c.hash), |n| (*n).to_string())).collect();
+    let mut out = Vec::with_capacity(table.rows.len());
+    for row in &table.rows {
+        let mut fields = Map::new();
+        for ((column, name), cell) in table.columns.iter().zip(&named).zip(row) {
+            let value = match (column.kind, cell) {
+                (Kind::Text, Cell::Text(word)) => Value::String(String::from_utf8_lossy(word).into_owned()),
+                (Kind::Float, Cell::Bits(bits)) => json!(f64::from(f32::from_bits(*bits))),
+                (Kind::Int, Cell::Bits(bits)) => match column.width {
+                    8 => json!(i64::from(*bits as u8 as i8)),
+                    16 => json!(i64::from(*bits as u16 as i16)),
+                    _ => json!(i64::from(*bits as i32)),
+                },
+                (_, Cell::Bits(bits)) => json!(*bits),
+                (_, Cell::Text(_)) => bail!("column {name} holds a word where a number belongs"),
+            };
+            fields.insert(name.clone(), value);
+        }
+        out.push(Value::Object(fields));
+    }
+    let kinds: Map<String, Value> =
+        table.columns.iter().zip(&named).filter(|(c, _)| c.kind == Kind::Float).map(|(_, n)| (n.clone(), Value::String("float".to_string()))).collect();
+    Ok(if kinds.is_empty() { json!({ "rows": out }) } else { json!({ "columns": kinds, "rows": out }) })
+}
+
+/// One table of an imported game: its path, how many rows, and its columns (name, and int, float, field or string).
+pub struct TableListing {
+    pub path: String,
+    pub rows: usize,
+    pub columns: Vec<(String, &'static str)>,
+}
+
+/// Every table of an imported game, in the store's order: what a mod's `merge/` file can add rows to, remove rows from
+/// or change. `filter` keeps those whose path or a column name holds it.
+pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListing>> {
+    use nebula_import::cook::table::{Kind, TableIr, MAGIC};
+    use std::io::{Read, Seek, SeekFrom};
+    let names = column_names();
+    let wanted = filter.map(str::to_ascii_lowercase);
+    let mut pak = fs::File::open(store).with_context(|| format!("{} cannot be read", store.display()))?;
+    let mut found = Vec::new();
+    for (path, position, size) in crate::game_store::GameStore::files(store)? {
+        if size < 32 {
+            continue;
+        }
+        let mut magic = [0u8; 4];
+        pak.seek(SeekFrom::Start(position))?;
+        pak.read_exact(&mut magic)?;
+        if &magic != MAGIC {
+            continue;
+        }
+        let mut bytes = vec![0u8; size as usize];
+        pak.seek(SeekFrom::Start(position))?;
+        pak.read_exact(&mut bytes)?;
+        let table = TableIr::from_ntbl(&bytes).with_context(|| format!("{path}: table"))?;
+        let columns: Vec<(String, &'static str)> = table
+            .columns
+            .iter()
+            .map(|c| {
+                let name = names.get(&c.hash).map_or_else(|| format!("0x{:08x}", c.hash), |n| (*n).to_string());
+                let kind = match c.kind {
+                    Kind::Int => "int",
+                    Kind::Field => "field",
+                    Kind::Float => "float",
+                    Kind::Text => "string",
+                };
+                (name, kind)
+            })
+            .collect();
+        if let Some(wanted) = &wanted {
+            if !path.to_ascii_lowercase().contains(wanted) && !columns.iter().any(|(n, _)| n.to_ascii_lowercase().contains(wanted)) {
+                continue;
+            }
+        }
+        found.push(TableListing { path, rows: table.rows.len(), columns });
+    }
+    Ok(found)
 }
 
 /// A table's words: as the game's own tables keep Japanese.
@@ -237,3 +325,25 @@ pub const STAGE_RULES: &[(&str, &str)] = &[
     ("SurfingLv1Galaxy", "The surfing race's restart"),
     ("SurfingLv2Galaxy", "The same, harder"),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cooked_table_reads_back_as_the_json_that_made_it() {
+        let source = br#"{"columns":{"scale_x":"float"},"rows":[{"name":"Kuribo","scale_x":1.5,"Count":-3},{"name":"","scale_x":2,"Count":7}]}"#;
+        let cooked = nebula_import::cook::table::TableIr::from_json(source).unwrap().to_ntbl();
+        let json = table_to_json(&cooked).unwrap();
+        assert_eq!(json["columns"]["scale_x"], "float");
+        let rows = json["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["name"], "Kuribo");
+        assert_eq!(rows[0]["Count"], -3);
+        assert_eq!(rows[0]["scale_x"], 1.5);
+        assert_eq!(rows[1]["scale_x"], 2.0);
+        // And it cooks again to the same table.
+        let again = nebula_import::cook::table::TableIr::from_json(serde_json::to_string(&json).unwrap().as_bytes()).unwrap().to_ntbl();
+        assert_eq!(again, cooked);
+    }
+}
