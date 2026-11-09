@@ -15,7 +15,7 @@
   "description": "A new enemy in Good Egg: its own model, music, health and behaviour.",
   "plugins": [
     {
-      "api": 1,
+      "api": 2,
       "binaries": {
         "windows-x64": "plugins/little_boss.dll"
       }

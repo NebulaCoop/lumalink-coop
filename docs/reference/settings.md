@@ -1,37 +1,71 @@
-# Game settings
+# Game settings (tunables)
 
-Named in a layer's `switches`. A setting is a number, or `{ "option": "id" }` to take the number from one of the mod's number options. Where two mods set one, the mod higher on the list wins. `lumalink list settings` prints these; a plugin reads them with `setting`.
+Every tuning number the game has (a walk speed, a timer, a health count, thousands of them) is a **tunable**, named
+`"<file stem>.<name>"` after the game's source file and the number's name. A layer's `tunables` sets them, and the mod
+says `"requires": ["tunables"]`. A value is a number, `true` or `false`, a list for a list of numbers (`null` keeps a
+place), or `{ "option": "id" }` to take the number from one of the mod's number options. Where two mods set one, the mod
+higher on the list wins. A plugin reads one with `get_tunable` and sets one with `set_tunable`.
 
 ```json
-"switches": { "player_health": 6, "max_lives": 999, "coins_per_one_up": 100 }
+"requires": ["tunables"],
+"layers": [{ "tunables": { "GameRules.cPlayerHealth": 6, "GameDataPlayerStatus.cMaxPlayerLeft": 999, "ScenePlayingResult.cCoinStepNum": 100 } }]
 ```
 
-| Setting | The game has | What it does |
+The whole list, with the game's value for each, is written by the game itself: start Nebula with an enabled mod and
+`GALAXY_DUMP_TUNABLES=<file>`. `lumalink list settings` prints the game's rules below.
+
+| Tunable | The game has | What it does |
 |---|---|---|
-| `player_health` | 3 | The health a player starts with, and the most before a Life Up |
-| `player_health_fixed` | off | Daredevil comets don't change the player's health |
-| `hit_takes_all` | off | A hit takes all the player's health |
-| `life_up_health` | 6 | The most health a Life Up gives. 0: none |
-| `no_low_health_warning` | off | No warning sound at low health |
-| `no_dark_comet_rules` | off | A Daredevil comet is a comet like any other |
-| `max_lives` | 99 | The most lives |
-| `starting_lives` | 4 | The lives a file starts and loads with |
-| `max_star_bits` | 9999 | The most star bits kept in the save |
-| `max_carried_star_bits` | 999 | The most star bits carried in a stage |
-| `max_coins` | 999 | The most coins in a stage |
-| `coins_per_one_up` | 50 | Coins for a 1-up. 0: none |
-| `star_bits_per_one_up` | 50 | Star bits for a 1-up. 0: none |
-| `purple_coins_for_star` | 100 | Purple coins that bring the star |
-| `water_air` | 8 | The air the player has under water |
-| `miss_star_pieces` | 0 | Star bits added after a miss, negative to take. -999: all lost |
-| `flip_panel_group` | 32 | How many flip panels a group holds |
-| `flip_panel_observer_group` | 32 | The same for their observers |
-| `water_bazooka_shot_flag` | off | The water bazooka's shots' flag |
-| `kamek_barrier_offset_y` | 0 | Kamek's barrier's height, as float bits |
-| `skeletal_fish_baby_no_bubble` | off | No air bubble from a hit skeletal fish |
-| `dodoryu_shell_only` | off | Dodoryu is hurt by shells alone |
-| `no_hidden_star_table` | off | Hidden stars without their table |
-| `no_sudden_death_dodoryu` | off | No sudden-death Dodoryu |
-| `begoman_fire_proof` | off | Begomans survive fire ground |
-| `messenger_always_ex` | off | The 1-up messenger gives its larger supply |
-| `messenger_ex_one_ups` | 20 | How many 1-ups that is |
+| `GameRules.cPlayerHealth` | 3 | The health a player starts with, and the most before a Life Up |
+| `MarioActor.cDarkCometOneHealth` | true | Daredevil comets leave the player one health |
+| `MarioActor.cHitTakesAll` | false | A hit takes all the player's health |
+| `GameRules.cLifeUpHealth` | 6 | The most health a Life Up gives. 0: none |
+| `MarioEffect.cLowHealthWarning` | true | The warning sound at low health or air |
+| `EventUtil.cDarkCometRules` | true | Daredevil comets keep their rules; false: a comet like any other |
+| `GameDataPlayerStatus.cMaxPlayerLeft` | 99 | The most lives |
+| `GameDataPlayerStatus.cStartingPlayerLeft` | 4 | The lives a file starts and loads with |
+| `GameRules.cMaxStarBits` | 9999 | The most star bits kept in the save |
+| `GameDataTemporaryInGalaxy.cMaxCarriedStarPieceNum` | 999 | The most star bits carried in a stage |
+| `GameRules.cMaxCoins` | 999 | The most coins in a stage |
+| `ScenePlayingResult.cCoinStepNum` | 50 | Coins for a 1-up. 0: none |
+| `ScenePlayingResult.cStarPieceStepNum` | 50 | Star bits for a 1-up. 0: none |
+| `ScenePlayingResult.cPurpleCoinPowerStarAppearNum` | 100 | Purple coins that bring the star |
+| `MarioActor.cWaterAir` | 8 | The air the player has under water |
+| `SequenceUtil.cMissStarPieceNum` | 0 | Star bits added after a miss, negative to take. -999: all lost |
+| `FlipPanel.cPanelGroupSize` | 32 | How many flip panels a group holds |
+| `FlipPanel.cObserverGroupSize` | 32 | The same for their observers |
+| `WaterBazooka.cShotInvalidSpinKill` | false | A spin doesn't break the water bazooka's shots |
+| `BossKameckBarrier.cOffsetY` | 0 | Added to Kamek's barrier's height |
+| `SkeletalFishBaby.cBreakAirBubble` | true | A hit skeletal fish leaves an air bubble |
+| `GameRules.cDodoryuShellOnly` | false | Dodoryu is hurt by shells alone |
+| `SceneUtil.cHiddenStarTable` | true | Hidden stars take their mission from the game's table |
+| `SceneUtil.cSuddenDeathDodoryu` | true | Dodoryu's one-hit run in CosmosGardenGalaxy's fourth mission |
+| `GameRules.cBegomanFireProof` | false | Begomans survive fire ground |
+| `KinopioAstro.cMessangerAlwaysEx` | false | The 1-up messenger always gives its larger supply |
+| `KinopioAstro.sMessangerOneUpExNum` | 20 | How many 1-ups that is |
+
+## From `switches`
+
+Earlier mods named these rules in a layer's `switches`. Nebula and `lumalink check` refuse `switches` now, naming the
+tunable for each; LumaLink writes tunables when it converts a console mod. A switch whose sense was "no ..." is the
+opposite value of its tunable: `"no_low_health_warning": 1` is `"MarioEffect.cLowHealthWarning": false`.
+
+| Switch | Tunable |
+|---|---|
+| `player_health`, `life_up_health` | `GameRules.cPlayerHealth`, `GameRules.cLifeUpHealth` |
+| `player_health_fixed` | `MarioActor.cDarkCometOneHealth`, opposite |
+| `hit_takes_all`, `water_air` | `MarioActor.cHitTakesAll`, `MarioActor.cWaterAir` |
+| `no_low_health_warning` | `MarioEffect.cLowHealthWarning`, opposite |
+| `no_dark_comet_rules` | `EventUtil.cDarkCometRules`, opposite |
+| `max_lives`, `starting_lives` | `GameDataPlayerStatus.cMaxPlayerLeft`, `GameDataPlayerStatus.cStartingPlayerLeft` |
+| `max_star_bits`, `max_coins` | `GameRules.cMaxStarBits`, `GameRules.cMaxCoins` |
+| `max_carried_star_bits` | `GameDataTemporaryInGalaxy.cMaxCarriedStarPieceNum` |
+| `coins_per_one_up`, `star_bits_per_one_up`, `purple_coins_for_star` | `ScenePlayingResult.cCoinStepNum`, `.cStarPieceStepNum`, `.cPurpleCoinPowerStarAppearNum` |
+| `miss_star_pieces` | `SequenceUtil.cMissStarPieceNum` (a signed number) |
+| `flip_panel_group`, `flip_panel_observer_group` | `FlipPanel.cPanelGroupSize`, `FlipPanel.cObserverGroupSize` |
+| `water_bazooka_shot_flag` | `WaterBazooka.cShotInvalidSpinKill` |
+| `kamek_barrier_offset_y` | `BossKameckBarrier.cOffsetY` (a number now, not float bits) |
+| `skeletal_fish_baby_no_bubble` | `SkeletalFishBaby.cBreakAirBubble`, opposite |
+| `dodoryu_shell_only`, `begoman_fire_proof` | `GameRules.cDodoryuShellOnly`, `GameRules.cBegomanFireProof` |
+| `no_hidden_star_table`, `no_sudden_death_dodoryu` | `SceneUtil.cHiddenStarTable`, `SceneUtil.cSuddenDeathDodoryu`, both opposite |
+| `messenger_always_ex`, `messenger_ex_one_ups` | `KinopioAstro.cMessangerAlwaysEx`, `KinopioAstro.sMessangerOneUpExNum` |

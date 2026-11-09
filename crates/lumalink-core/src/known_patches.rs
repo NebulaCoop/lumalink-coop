@@ -1,12 +1,14 @@
 //! Code patches with a native version. A Riivolution memory patch changes the Wii program, which Nebula does not have, so
-//! it cannot be carried over byte for byte. Those listed here were studied and have a switch in the native game (Nebula's
-//! `NEBULA_PATCH_*`): when a mod's bytes match, the package turns the switch on.
+//! it cannot be carried over byte for byte. Those listed here were studied and each has a tunable in the native game:
+//! when a mod's bytes match, the package sets the tunable (`luma.json` "tunables", see `tunable`) to the value read from
+//! them. The numbers in `id` only name the changes inside LumaLink.
 //!
-//! To add one: note the mod's region, address and bytes, add the native switch to Nebula, and add a row.
+//! To add one: note the mod's region, address and bytes, find or add the game's tunable in Nebula, and add rows here and
+//! in `TUNABLES`.
 
 use serde::Serialize;
 
-/// The native switches, numbered as `nebula_game_api.h` numbers them. 0: nothing to do, Nebula covers it by itself.
+/// The changes LumaLink recognises, each one tunable's (`TUNABLES`). 0: nothing to do, Nebula covers it by itself.
 pub mod id {
     pub const NATIVE_ALREADY: u32 = 0;
     pub const FLIP_PANEL_GROUP: u32 = 1;
@@ -381,44 +383,71 @@ pub fn is_table(address: u32) -> bool {
         || (EVENT_FLAG_TABLE..EVENT_FLAG_TABLE + 0x8000).contains(&address)
 }
 
-/// A switch's name in `luma.json`.
-pub fn switch_name(switch: u32) -> Option<&'static str> {
-    use id::*;
-    Some(match switch {
-        FLIP_PANEL_GROUP => "flip_panel_group",
-        FLIP_PANEL_OBSERVER_GROUP => "flip_panel_observer_group",
-        WATER_BAZOOKA_SHOT_FLAG => "water_bazooka_shot_flag",
-        KAMECK_BARRIER_OFFSET_Y => "kamek_barrier_offset_y",
-        SKELETAL_FISH_BABY_NO_BUBBLE => "skeletal_fish_baby_no_bubble",
-        DODORYU_SHELL_ONLY => "dodoryu_shell_only",
-        MISS_STAR_PIECES => "miss_star_pieces",
-        NO_HIDDEN_STAR_TABLE => "no_hidden_star_table",
-        NO_SUDDEN_DEATH_DODORYU => "no_sudden_death_dodoryu",
-        BEGOMAN_FIRE_PROOF => "begoman_fire_proof",
-        MESSENGER_ALWAYS_EX => "messenger_always_ex",
-        MESSENGER_EX_ONE_UPS => "messenger_ex_one_ups",
-        PLAYER_HEALTH => "player_health",
-        PLAYER_HEALTH_FIXED => "player_health_fixed",
-        HIT_TAKES_ALL => "hit_takes_all",
-        LIFE_UP_HEALTH => "life_up_health",
-        NO_LOW_HEALTH_WARNING => "no_low_health_warning",
-        NO_DARK_COMET_RULES => "no_dark_comet_rules",
-        MAX_LIVES => "max_lives",
-        MAX_STAR_BITS => "max_star_bits",
-        MAX_CARRIED_STAR_BITS => "max_carried_star_bits",
-        MAX_COINS => "max_coins",
-        COINS_PER_ONE_UP => "coins_per_one_up",
-        STAR_BITS_PER_ONE_UP => "star_bits_per_one_up",
-        STARTING_LIVES => "starting_lives",
-        PURPLE_COINS_FOR_STAR => "purple_coins_for_star",
-        WATER_AIR => "water_air",
-        _ => return None,
-    })
+/// How a recognised patch's number becomes its tunable's value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Carry {
+    /// The number as it is.
+    Number,
+    /// The number as a signed one (4294966297 is -999).
+    Signed,
+    /// The number's bits as a float (0xC4BB8000 is -1500).
+    FloatBits,
+    /// Any number turns the tunable on.
+    On,
+    /// Any number turns the tunable off: the tunable's sense is the opposite of the old switch's.
+    Off,
 }
 
-/// Every switch a `luma.json` may name.
-pub fn switch_names() -> impl Iterator<Item = &'static str> {
-    (1..=27).filter_map(switch_name)
+/// The game's tunable each switch became (Nebula's `luma.json` "tunables"): the switch, its old name, the tunable's key
+/// ("<file stem>.<name>"), how its value carries over.
+const TUNABLES: &[(u32, &str, &str, Carry)] = &[
+    (FLIP_PANEL_GROUP, "flip_panel_group", "FlipPanel.cPanelGroupSize", Carry::Number),
+    (FLIP_PANEL_OBSERVER_GROUP, "flip_panel_observer_group", "FlipPanel.cObserverGroupSize", Carry::Number),
+    (WATER_BAZOOKA_SHOT_FLAG, "water_bazooka_shot_flag", "WaterBazooka.cShotInvalidSpinKill", Carry::On),
+    (KAMECK_BARRIER_OFFSET_Y, "kamek_barrier_offset_y", "BossKameckBarrier.cOffsetY", Carry::FloatBits),
+    (SKELETAL_FISH_BABY_NO_BUBBLE, "skeletal_fish_baby_no_bubble", "SkeletalFishBaby.cBreakAirBubble", Carry::Off),
+    (DODORYU_SHELL_ONLY, "dodoryu_shell_only", "GameRules.cDodoryuShellOnly", Carry::On),
+    (MISS_STAR_PIECES, "miss_star_pieces", "SequenceUtil.cMissStarPieceNum", Carry::Signed),
+    (NO_HIDDEN_STAR_TABLE, "no_hidden_star_table", "SceneUtil.cHiddenStarTable", Carry::Off),
+    (NO_SUDDEN_DEATH_DODORYU, "no_sudden_death_dodoryu", "SceneUtil.cSuddenDeathDodoryu", Carry::Off),
+    (BEGOMAN_FIRE_PROOF, "begoman_fire_proof", "GameRules.cBegomanFireProof", Carry::On),
+    (MESSENGER_ALWAYS_EX, "messenger_always_ex", "KinopioAstro.cMessangerAlwaysEx", Carry::On),
+    (MESSENGER_EX_ONE_UPS, "messenger_ex_one_ups", "KinopioAstro.sMessangerOneUpExNum", Carry::Number),
+    (PLAYER_HEALTH, "player_health", "GameRules.cPlayerHealth", Carry::Number),
+    (PLAYER_HEALTH_FIXED, "player_health_fixed", "MarioActor.cDarkCometOneHealth", Carry::Off),
+    (HIT_TAKES_ALL, "hit_takes_all", "MarioActor.cHitTakesAll", Carry::On),
+    (LIFE_UP_HEALTH, "life_up_health", "GameRules.cLifeUpHealth", Carry::Number),
+    (NO_LOW_HEALTH_WARNING, "no_low_health_warning", "MarioEffect.cLowHealthWarning", Carry::Off),
+    (NO_DARK_COMET_RULES, "no_dark_comet_rules", "EventUtil.cDarkCometRules", Carry::Off),
+    (MAX_LIVES, "max_lives", "GameDataPlayerStatus.cMaxPlayerLeft", Carry::Number),
+    (MAX_STAR_BITS, "max_star_bits", "GameRules.cMaxStarBits", Carry::Number),
+    (MAX_CARRIED_STAR_BITS, "max_carried_star_bits", "GameDataTemporaryInGalaxy.cMaxCarriedStarPieceNum", Carry::Number),
+    (MAX_COINS, "max_coins", "GameRules.cMaxCoins", Carry::Number),
+    (COINS_PER_ONE_UP, "coins_per_one_up", "ScenePlayingResult.cCoinStepNum", Carry::Number),
+    (STAR_BITS_PER_ONE_UP, "star_bits_per_one_up", "ScenePlayingResult.cStarPieceStepNum", Carry::Number),
+    (STARTING_LIVES, "starting_lives", "GameDataPlayerStatus.cStartingPlayerLeft", Carry::Number),
+    (PURPLE_COINS_FOR_STAR, "purple_coins_for_star", "ScenePlayingResult.cPurpleCoinPowerStarAppearNum", Carry::Number),
+    (WATER_AIR, "water_air", "MarioActor.cWaterAir", Carry::Number),
+];
+
+/// A recognised patch as a `luma.json` "tunables" row: the key and its value. None: Nebula covers it by itself.
+pub fn tunable(switch: u32, number: u32) -> Option<(&'static str, serde_json::Value)> {
+    let &(_, _, key, carry) = TUNABLES.iter().find(|t| t.0 == switch)?;
+    Some((
+        key,
+        match carry {
+            Carry::Number => number.into(),
+            Carry::Signed => (number as i32).into(),
+            Carry::FloatBits => f64::from(f32::from_bits(number)).into(),
+            Carry::On => (number != 0).into(),
+            Carry::Off => (number == 0).into(),
+        },
+    ))
+}
+
+/// The tunable that took the place of a switch an older `luma.json` names, and whether its sense is the opposite.
+pub fn tunable_for_switch(name: &str) -> Option<(&'static str, bool)> {
+    TUNABLES.iter().find(|t| t.1 == name).map(|t| (t.2, t.3 == Carry::Off))
 }
 
 #[cfg(test)]
@@ -430,6 +459,20 @@ mod tests {
         assert_eq!(find(0x8039AA2C, &[0x60, 0, 0, 0]).unwrap().id, 0);
         assert_eq!(find(0x0007679C, &[0x60, 0, 0, 0]).unwrap().id, SKELETAL_FISH_BABY_NO_BUBBLE);
         assert!(find(0x8007679C, &[0x60, 0, 0, 1]).is_none());
+    }
+
+    #[test]
+    fn each_change_becomes_its_tunable_with_the_value_carried_over() {
+        assert_eq!(tunable(PLAYER_HEALTH, 2), Some(("GameRules.cPlayerHealth", serde_json::json!(2))));
+        assert_eq!(tunable(MISS_STAR_PIECES, 4294966297), Some(("SequenceUtil.cMissStarPieceNum", serde_json::json!(-999))));
+        assert_eq!(tunable(KAMECK_BARRIER_OFFSET_Y, 0xC4BB_8000), Some(("BossKameckBarrier.cOffsetY", serde_json::json!(-1500.0))));
+        assert_eq!(tunable(SKELETAL_FISH_BABY_NO_BUBBLE, 1), Some(("SkeletalFishBaby.cBreakAirBubble", serde_json::json!(false))));
+        assert_eq!(tunable(DODORYU_SHELL_ONLY, 1), Some(("GameRules.cDodoryuShellOnly", serde_json::json!(true))));
+        assert_eq!(tunable(NATIVE_ALREADY, 1), None);
+        assert!((1..=WATER_AIR).all(|id| tunable(id, 1).is_some()), "every change has its tunable");
+        assert_eq!(tunable_for_switch("no_low_health_warning"), Some(("MarioEffect.cLowHealthWarning", true)));
+        assert_eq!(tunable_for_switch("max_coins"), Some(("GameRules.cMaxCoins", false)));
+        assert_eq!(tunable_for_switch("nope"), None);
     }
 
     #[test]

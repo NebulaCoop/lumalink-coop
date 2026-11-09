@@ -33,7 +33,7 @@ cc -O2 -shared -fPIC -fvisibility=hidden -I sdk -o plugins/my.so source/plugin.c
 ```
 
 ```json
-"plugins": [{ "api": 1, "binaries": { "windows-x64": "plugins/my.dll", "linux-x64": "plugins/my.so" } }]
+"plugins": [{ "api": 2, "binaries": { "windows-x64": "plugins/my.dll", "linux-x64": "plugins/my.so" } }]
 ```
 
 Devices: `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`, `android-arm64`, `android-x64`. A device with no library for a mod that has plugins says THIS MOD HAS NO VERSION FOR THIS DEVICE. A plugin's row takes a `when` as a layer does.

@@ -15,7 +15,6 @@ My Mod.luma
 │       ├── textures/          replacement textures
 │       └── movies/            replacement videos
 ├── save/                      optional, starting files for its own saves
-├── shaders/                   optional, see "Shaders"
 └── plugins/                   optional, the mod's code, see "Plugins"
 ```
 
@@ -47,7 +46,7 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
     }
   ],
   "layers": [
-    { "path": "layers/base", "switches": { "skeletal_fish_baby_no_bubble": 1 } },
+    { "path": "layers/base", "tunables": { "SkeletalFishBaby.cBreakAirBubble": false } },
     { "path": "layers/one-health", "when": { "option": { "lives": ["one"] } } },
     { "path": "layers/japan-text", "when": { "version": ["J"] } }
   ]
@@ -98,8 +97,8 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 
 | Field | Meaning |
 |---|---|
-| `path` | The layer's folder. It may hold `files/`, `textures/` and `movies/`. May be left out for a layer that only sets switches. |
-| `switches` | Changes to the game's behaviour that Nebula has built in, by name, with their values. |
+| `path` | The layer's folder. It may hold `files/`, `textures/` and `movies/`. May be left out for a layer that only sets tunables. |
+| `tunables` | The game's tuning numbers by `"<file stem>.<name>"`: a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](reference/settings.md). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `when` | Conditions. All of those given must hold. Left out: always. |
 
 `when` may hold:
@@ -148,15 +147,7 @@ Own saves live in a folder per tag, outside the mod, so they survive updating or
 
 ### Shaders
 
-Nobody writes shaders for a mod, and nobody compiles them. A model's materials say what it needs, and Nebula builds that. `lumalink pack` and `lumalink convert` put the results in the file so that the first start is quick:
-
-```
-shaders/dxil.shaders     for Direct3D 12
-shaders/spirv.shaders    for Vulkan
-shaders/source/          what they were built from
-```
-
-These are only a head start. If they are missing, or were built for an earlier Nebula, Nebula builds them itself on that device, with a progress screen. A `.luma` without `shaders/` is complete and correct.
+Nobody writes shaders for a mod, and nobody compiles them. A model's materials say what it needs: when the player applies the mod, Nebula's conversion writes each material's program text, and Nebula builds the ones it lacks on that device, once, with a progress screen. LumaLink puts no compiled programs in a `.luma`: one fits only the Nebula it was built for.
 
 ### Modern files
 
@@ -203,7 +194,7 @@ Most mods never need this: a model's materials get their shaders by themselves. 
 }]
 ```
 
-`lumalink shader <model>` writes the shader Nebula would make for each of a model's materials, to start from. The file is HLSL, one file for every device. It includes `j3d_material.hlsli`, as the shaders Nebula generates do, and Nebula builds it for the device's graphics interface with a progress screen. A shader that doesn't build leaves that material undrawn, and the log says why. It applies to materials of that name in the models the mod brings: a model of the game's own has to be in the layer's `files/` for its materials to change.
+`lumalink shader <model>` writes the pixel program Nebula makes for each of a model's materials, to start from; a hand-written one takes the place of that material's plain program. The file is HLSL, one file for every device. It includes `program.hlsli` (and `program_lit.hlsli` for a lit material), as the programs Nebula generates do, and the command writes those beside it; and Nebula builds it for the device's graphics interface with a progress screen. A shader that doesn't build leaves that material undrawn, and the log says why. It applies to materials of that name in the models the mod brings: a model of the game's own has to be in the layer's `files/` for its materials to change.
 
 ### Adding to shared files
 
@@ -308,7 +299,7 @@ A mod's code: a native library per device, with what it needs named in [plugins.
 
 ```json
 "plugins": [{
-  "api": 1,
+  "api": 2,
   "binaries": { "windows-x64": "plugins/my.dll", "linux-x64": "plugins/my.so" },
   "when": { "option": { "mode": ["hard"] } }
 }]
@@ -354,5 +345,5 @@ Nebula reads every format it has ever read.
 - No path leaves the file.
 - `when` names only options the file declares, and only their choices.
 - `default` is one of its option's choices.
-- Every switch name is known.
+- Every tunable key is `"<file stem>.<name>"` with a number, `true`/`false`, a list or an option, and the mod requires `tunables`. A layer's `switches` is refused, naming the tunable for each.
 - Every file in a layer's `files/` is a kind the game can read.

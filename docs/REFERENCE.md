@@ -69,14 +69,12 @@ A grid of tiles, one per mod. Drop files or folders on it. Tick the ones you wan
 | `lumalink pack FOLDER [-o FOLDER]` | Builds a project into a `.luma`, checking it first |
 | `lumalink check PATH` | Lists every problem with a project or a `.luma` |
 | `lumalink unpack FILE -o FOLDER` | Opens a `.luma` into a project folder |
-| `lumalink shader MODEL -o FOLDER` | Writes the shader Nebula would make for each material, to start a hand-written one |
+| `lumalink shader MODEL -o FOLDER` | Writes the pixel program Nebula makes for each material, to start a hand-written one |
 | `lumalink cook FILE` | Converts one file alone, to test a model, texture or track |
 
 `--game` is your imported game, Nebula's `game.pak`. Mods that name files only by their name (loose `.arc` files with no folders) need it, to find where each one goes. `--game-id` picks the version to check against when you have no game file; a `.luma` works on every version anyway.
 
-### Compilers
-
-LumaLink needs no compilers to convert anything. If it finds them, the `.luma` carries ready-built shaders and the player's first start is quicker. It looks in `PATH` and in `LUMALINK_DXC` (dxc) and `LUMALINK_SPIRV` (Nebula's `galaxy_native_spirv`). Without them, the game builds the same shaders on the device.
+LumaLink needs no compilers. Nebula builds the programs a mod's materials need on the player's device (section 15).
 
 ## 4. What conversion does
 
@@ -103,7 +101,7 @@ A mod goes through these steps. Nothing in LumaLink knows any mod by name: each 
 
 **Files.** Each is checked. A file empty in the mod is left out, with a note, so the game's stays: an empty file on a console means a crash or silence, never something a modder meant. Files the game has no use for (readmes, thumbnails, tools) are not copied.
 
-**Materials.** Models a mod brings are read for their materials; shaders are built if compilers are there.
+**Materials.** Models a mod brings are converted as Nebula will, and the report counts the programs their materials use.
 
 **Writing.** A zip with `luma.json` first. The result is checked by the same code `lumalink check` uses.
 
@@ -117,27 +115,28 @@ The rule: **a write is matched by where it is in the game, and its value is read
 
 ### Settings
 
-Named in a layer's `switches`:
+Written into a layer's `tunables` (and `"requires": ["tunables"]`), each the game's own tuning number by
+`"<file stem>.<name>"`. The [settings reference](reference/settings.md) has every one with the game's value.
 
-| Switch | Value | What it does |
+| Tunable | Read from the write | What it does |
 |---|---|---|
-| `player_health` | The number | The health and most health a player starts with (3) |
-| `player_health_fixed` | 1 | Daredevil comets don't change the player's health |
-| `hit_takes_all` | 1 | A hit takes all the player's health |
-| `life_up_health` | The number | The most health a Life Up gives (6). 0: none |
-| `no_low_health_warning` | 1 | No warning sound at low health |
-| `no_dark_comet_rules` | 1 | A Daredevil comet is a comet like any other |
-| `flip_panel_group`, `flip_panel_observer_group` | The number | A flip panel group's size |
-| `water_bazooka_shot_flag` | 1 | The water bazooka's shots' flag |
-| `kamek_barrier_offset_y` | Float bits | Kamek's barrier's height |
-| `skeletal_fish_baby_no_bubble` | 1 | No air bubble from a hit skeletal fish |
-| `dodoryu_shell_only` | 1 | Dodoryu is hurt by shells alone |
-| `miss_star_pieces` | Signed number | Star bits added after a miss (-999: all lost) |
-| `no_hidden_star_table` | 1 | Hidden stars without their table |
-| `no_sudden_death_dodoryu` | 1 | No sudden-death Dodoryu |
-| `begoman_fire_proof` | 1 | Begomans survive fire ground |
-| `messenger_always_ex` | 1 | The 1-up messenger gives its larger supply |
-| `messenger_ex_one_ups` | The number | How many 1-ups that is (20) |
+| `GameRules.cPlayerHealth` | The number | The health and most health a player starts with (3) |
+| `MarioActor.cDarkCometOneHealth` | false | Daredevil comets don't change the player's health |
+| `MarioActor.cHitTakesAll` | true | A hit takes all the player's health |
+| `GameRules.cLifeUpHealth` | The number | The most health a Life Up gives (6). 0: none |
+| `MarioEffect.cLowHealthWarning` | false | No warning sound at low health |
+| `EventUtil.cDarkCometRules` | false | A Daredevil comet is a comet like any other |
+| `FlipPanel.cPanelGroupSize`, `FlipPanel.cObserverGroupSize` | The number | A flip panel group's size |
+| `WaterBazooka.cShotInvalidSpinKill` | true | A spin doesn't break the water bazooka's shots |
+| `BossKameckBarrier.cOffsetY` | The float the bits hold | Kamek's barrier's height |
+| `SkeletalFishBaby.cBreakAirBubble` | false | No air bubble from a hit skeletal fish |
+| `GameRules.cDodoryuShellOnly` | true | Dodoryu is hurt by shells alone |
+| `SequenceUtil.cMissStarPieceNum` | Signed number | Star bits added after a miss (-999: all lost) |
+| `SceneUtil.cHiddenStarTable` | false | Hidden stars without their table |
+| `SceneUtil.cSuddenDeathDodoryu` | false | No sudden-death Dodoryu |
+| `GameRules.cBegomanFireProof` | true | Begomans survive fire ground |
+| `KinopioAstro.cMessangerAlwaysEx` | true | The 1-up messenger gives its larger supply |
+| `KinopioAstro.sMessangerOneUpExNum` | The number | How many 1-ups that is (20) |
 
 ### Tables
 
@@ -172,7 +171,6 @@ My Mod.luma
 │       ├── textures/        replacement textures
 │       └── movies/          replacement videos
 ├── save/                    optional, starting files for its own saves
-├── shaders/                 optional, ready-built shaders
 └── plugins/                 optional, the mod's code
 ```
 
@@ -230,7 +228,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | Field | Meaning |
 |---|---|
 | `path` | Its folder. May be left out for a layer of settings alone |
-| `switches` | Game settings, by name, with values |
+| `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](reference/settings.md)) |
 | `object_changes` | Objects changed or gone |
 | `comet_time_limits` | Comet missions' time limits |
 | `materials` | Hand-written shaders by material name |
@@ -399,7 +397,7 @@ A column is named, or written as `0x` and its hash. One left out is zero or empt
 
 ### Placing objects
 
-Levels use the game's rows and names, from a level editor such as Whitehole. `Obj_arg0` to `Obj_arg7` reach a plugin's object through `object_arg`; `SW_A`, `SW_B`, `SW_APPEAR`, `SW_DEAD` through its switches; `CommonPath_ID` as its rail.
+Levels use the game's rows and names, from a level editor such as Whitehole. Every column of an object's row reaches a plugin's object by its name through `placement_number` and `placement_text` (`Obj_arg0` to `Obj_arg7`, `ShapeModelNo`, `MessageId`...); `SW_A`, `SW_B`, `SW_APPEAR`, `SW_DEAD` through its switches; `CommonPath_ID` as its rail.
 
 ## 9. Cutscenes, movies, Lumas
 
@@ -501,7 +499,7 @@ A plugin is a native library: `.dll`, `.so`, `.dylib`. The game loads it and cal
 
 ```json
 "plugins": [{
-  "api": 1,
+  "api": 2,
   "binaries": { "windows-x64": "plugins/my.dll", "linux-x64": "plugins/my.so" },
   "when": { "option": { "mode": ["hard"] } }
 }]
@@ -625,7 +623,7 @@ A name the game already uses takes that object's place. Each callback can be nul
 | `set_front(actor, xyz)`, `get_front`, `turn_to_player(actor, degrees)` | The way it faces, standing against gravity on any planet. Its model turns with this, not its rotation |
 | `set_touchable(actor, touchable)` | |
 | `hit_player(actor, how)` | `NEBULA_HIT_NORMAL`, `STRONG`, `FIRE`, `ELECTRIC`, `FREEZE`, `FLIP` |
-| `object_arg(actor, index)` | `Obj_arg0` to `7` from the level, -1 for none |
+| `placement_number(actor, column, &value)`, `placement_text(actor, column)` | A column of its row in the level by name (`"Obj_arg0"`; -1 where the level sets none). 0 or null: no such column, or not placed by the level |
 | `declare_item(actor, what, count)` | In `start`: `NEBULA_ITEM_COINS`, `STAR_BITS`, `POWER_STAR` (count: its number, -1 the next) |
 | `appear_item(actor, what, xyz, count)` | The moment it comes out |
 
@@ -774,29 +772,21 @@ The Wii decided a lot of how this game works, for reasons that don't apply to Ne
 
 ## 15. Shaders
 
-Nobody writes shaders for a mod, and nobody compiles them. A model's materials say what it needs and Nebula builds that.
-
-```text
-shaders/dxil.shaders     for Direct3D 12
-shaders/spirv.shaders    for Vulkan
-shaders/source/          what they were built from
-```
-
-LumaLink puts these in if it has compilers, and only as a head start: if they're missing or from an earlier Nebula, the game builds them on the device, with a progress screen.
+Nobody writes shaders for a mod, and nobody compiles them. A model's materials say what it needs: when the player applies the mod, Nebula's conversion writes each material's program text, and Nebula builds the ones it lacks on that device, once, with a progress screen. LumaLink puts no compiled programs in a `.luma`: one fits only the Nebula it was built for.
 
 | Device | What builds a mod's shaders |
 |---|---|
 | Windows | Setup installs Microsoft's dxc beside the game. No download at play time |
 | Linux, Android, Mac | glslang and the SPIR-V tools, built into the game. Nothing to download |
 
-To write one yourself, `lumalink shader model.bdl -o folder`, change the HLSL it writes, and name it:
+To write one yourself, `lumalink shader model.bdl -o folder`, change the pixel program it writes for a material, and name it:
 
 ```json
 "requires": ["custom-shaders"],
 "layers": [{ "path": "layers/base", "materials": { "WaterSurface": "layers/base/shaders/water.hlsl" } }]
 ```
 
-One HLSL file for every device. It includes `j3d_material.hlsli` as generated ones do. One that doesn't build leaves its material undrawn, and the log says why. It applies to materials of that name in models the mod brings, so a game model has to be in the layer's `files/` for its materials to change.
+One HLSL file for every device. It takes the place of that material's plain program, and includes `program.hlsli` (and `program_lit.hlsli` for a lit one) as generated ones do; the command writes both beside it. One that doesn't build leaves its material undrawn, and the log says why. It applies to materials of that name in models the mod brings, so a game model has to be in the layer's `files/` for its materials to change.
 
 ## 16. Devices
 
@@ -836,7 +826,7 @@ A mod that can't be used stays in the list, off, with one line:
 
 ### `lumalink check`
 
-`luma.json` first, valid, with its needed fields. Every `path`, `icon`, `save.path` exists. No path leaves the file. `when` names only declared options and choices. `default` is one of its choices. Every switch is known. Every file in `files/` is a kind the game can read. Each plugin library is really for the device it's listed under. Music and progression rows make sense.
+`luma.json` first, valid, with its needed fields. Every `path`, `icon`, `save.path` exists. No path leaves the file. `when` names only declared options and choices. `default` is one of its choices. Every tunable is `"<file stem>.<name>"` with a value it can take; `switches` is refused, naming each one's tunable. Every file in `files/` is a kind the game can read. Each plugin library is really for the device it's listed under. Music and progression rows make sense.
 
 ## 18. Questions
 

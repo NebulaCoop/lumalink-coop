@@ -11,7 +11,7 @@
   "description": "Any hit is the last one.",
   "plugins": [
     {
-      "api": 1,
+      "api": 2,
       "binaries": {
         "windows-x64": "plugins/one_health.dll"
       }

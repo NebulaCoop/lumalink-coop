@@ -1,4 +1,4 @@
-//! Writes a `.luma` (docs/format.md): the mod's files in their layers, its `luma.json`, and its shaders as a head start. The
+//! Writes a `.luma` (docs/format.md): the mod's files in their layers, and its `luma.json`. The
 //! files are checked by converting each with the converter Nebula itself uses, but what goes in the file is the mod's own,
 //! so a `.luma` keeps working on every Nebula to come.
 
@@ -6,11 +6,10 @@ use crate::game_store::GameStore;
 use crate::known_patches;
 use crate::layout::Layout;
 use crate::plan::{Layer, Level, Plan, PlannedFile, PlayerOption, When, ANY_VERSION};
-use crate::shaders::{self, Tools};
 use crate::PACKAGE_FORMAT;
 use anyhow::{bail, Context, Result};
-use nebula_import::cook::material::MOD_MATERIALS;
 use nebula_import::cook::overlay::{self, Change};
+use nebula_import::cook::programs;
 use nebula_import::cook::Stats;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -31,7 +30,7 @@ struct ManifestLayer {
     #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    switches: BTreeMap<String, u32>,
+    tunables: BTreeMap<String, serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     object_changes: Vec<known_patches::ObjectChangeRow>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -67,6 +66,9 @@ struct Manifest {
     name: String,
     version: String,
     game: String,
+    /// "tunables" when a layer sets any: a Nebula without them refuses the mod rather than playing it without them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    requires: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     authors: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -92,7 +94,8 @@ pub struct Outcome {
     pub file: PathBuf,
     pub converted: usize,
     pub total: usize,
-    pub materials: usize,
+    /// Pixel programs its models' materials use; Nebula builds those it lacks on first play.
+    pub programs: usize,
     /// Files the game couldn't use, with the reason. They are left out.
     pub failed: Vec<(String, String)>,
     pub report: String,
@@ -160,31 +163,19 @@ fn pack_file_wanted(path: &Path, pack_root: &Path) -> bool {
     })
 }
 
-/// The compiler's job for a mod's new materials: whichever layers are used, all of them are ready.
-pub(crate) struct ShaderResult {
-    pub materials: usize,
-    pub problems: Vec<(u32, String)>,
-}
-
-/// Converts every layer as Nebula will, to find files it can't use and to gather what its materials need.
-pub(crate) fn check_and_build_shaders(
-    layers: &[(String, Vec<Change>)],
-    game_id: &str,
-    store: Option<&GameStore>,
-    building: &Path,
-) -> Result<(ShaderResult, Vec<(String, String)>, usize)> {
+/// Converts every layer as Nebula will, to find files it can't use and to count the programs its models' materials use.
+/// Nebula builds any of those it lacks on the player's device from the texts its own conversion writes (mods.sources): a
+/// compiled program fits one build of Nebula only, so a `.luma` carries none.
+pub(crate) fn check_layers(layers: &[(String, Vec<Change>)], game_id: &str, store: Option<&GameStore>, building: &Path) -> Result<(usize, Vec<(String, String)>, usize)> {
     // One at a time: the collector below is the converter's, for the whole program.
     static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-    let tools = Tools::find();
     let mut stats = Stats::default();
     let mut failed = Vec::new();
     let mut converted = 0;
     let scratch = building.join(".checking");
     fs::create_dir_all(&scratch)?;
-    // A material Nebula lacks is collected, so that the file holding it counts as fine. With the compilers it's brought along too;
-    // without them Nebula builds it on the player's device.
-    *MOD_MATERIALS.lock().unwrap_or_else(|e| e.into_inner()) = Some(BTreeMap::new());
+    *programs::MOD_TEXTS.lock().unwrap_or_else(|e| e.into_inner()) = Some(BTreeMap::new());
     for (name, changes) in layers {
         if changes.is_empty() {
             continue;
@@ -200,31 +191,17 @@ pub(crate) fn check_and_build_shaders(
         }
     }
     let _ = fs::remove_dir_all(&scratch);
-    let collected = MOD_MATERIALS.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default();
-    let mut result = ShaderResult { materials: 0, problems: Vec::new() };
-    if let (Some(tools), false) = (&tools, collected.is_empty()) {
-        let records: BTreeMap<u32, Vec<u8>> = collected.iter().map(|(id, r)| (*id, r.to_vec())).collect();
-        let compiled = shaders::compile(&records, tools, &building.join(".compile"))?;
-        let _ = fs::remove_dir_all(building.join(".compile"));
-        let folder = building.join("shaders");
-        fs::create_dir_all(folder.join("source"))?;
-        fs::write(folder.join("dxil.shaders"), &compiled.dxil)?;
-        fs::write(folder.join("spirv.shaders"), &compiled.spirv)?;
-        for (id, source) in &compiled.sources {
-            fs::write(folder.join("source").join(format!("m{id:08x}.hlsl")), source)?;
-        }
-        result.materials = compiled.sources.len();
-        result.problems = compiled.failed;
-    }
-    Ok((result, failed, converted))
+    let texts = programs::MOD_TEXTS.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default();
+    let pixel_programs = texts.keys().filter(|name| name.starts_with('p')).count();
+    Ok((pixel_programs, failed, converted))
 }
 
 fn changes(files: &BTreeMap<String, PlannedFile>) -> Vec<Change> {
     files.values().map(|f| Change { path: f.disc.trim_start_matches('/').to_string(), source: f.host.clone(), merge: false }).collect()
 }
 
-fn switches_named(switches: &BTreeMap<u32, u32>) -> BTreeMap<String, u32> {
-    switches.iter().filter_map(|(id, value)| known_patches::switch_name(*id).map(|name| (name.to_string(), *value))).collect()
+fn tunables_of(switches: &BTreeMap<u32, u32>) -> BTreeMap<String, serde_json::Value> {
+    switches.iter().filter_map(|(id, number)| known_patches::tunable(*id, *number).map(|(key, value)| (key.to_string(), value))).collect()
 }
 
 fn when_of(when: &When) -> Option<ManifestWhen> {
@@ -257,7 +234,7 @@ fn report_text(name: &str, plan: &Plan, outcome: &Outcome, textures: usize) -> S
     let _ = writeln!(text, "{name}");
     let _ = writeln!(text, "Files: {} of {}", outcome.converted, outcome.total);
     let _ = writeln!(text, "Textures: {textures}");
-    let _ = writeln!(text, "New materials: {}", outcome.materials);
+    let _ = writeln!(text, "Material programs: {} (Nebula builds any it lacks when the mod is first played)", outcome.programs);
     if !plan.known_patches.is_empty() {
         let _ = writeln!(text, "\nGameplay changes that work in Nebula:");
         for what in &plan.known_patches {
@@ -331,7 +308,7 @@ pub fn write(name: &str, layout: &Layout, plan: &Plan, store: Option<&GameStore>
 fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan, store: Option<&GameStore>, building: &Path, file: &Path) -> Result<Outcome> {
     let mut jobs: Vec<(String, Vec<Change>)> = vec![("base".to_string(), changes(&plan.files))];
     jobs.extend(plan.layers.iter().map(|l: &Layer| (l.name.clone(), changes(&l.files))));
-    let (shaders, failed, converted) = check_and_build_shaders(&jobs, &plan.game_id, store, building)?;
+    let (programs, failed, converted) = check_layers(&jobs, &plan.game_id, store, building)?;
 
     let mut layers = Vec::new();
     copy_layer(&plan.files, &failed, building, "layers/base")?;
@@ -352,7 +329,7 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
     if has_base || !plan.native_patches.is_empty() || !plan.object_changes.is_empty() || !plan.comet_limits.is_empty() || !plan.player_constants.is_empty() {
         layers.push(ManifestLayer {
             path: has_base.then(|| "layers/base".to_string()),
-            switches: switches_named(&plan.native_patches),
+            tunables: tunables_of(&plan.native_patches),
             object_changes: plan.object_changes.clone(),
             comet_time_limits: plan.comet_limits.clone(),
             player_constants: plan.player_constants.clone(),
@@ -364,7 +341,7 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         copy_layer(&layer.files, &failed, building, &path)?;
         layers.push(ManifestLayer {
             path: building.join(&path).is_dir().then_some(path),
-            switches: switches_named(&layer.switches),
+            tunables: tunables_of(&layer.switches),
             object_changes: layer.object_changes.clone(),
             comet_time_limits: layer.comet_limits.clone(),
             player_constants: layer.player_constants.clone(),
@@ -389,6 +366,7 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
             .or_else(|| version.map(str::to_string))
             .unwrap_or_else(|| "1.0.0".to_string()),
         game: ANY_VERSION.to_string(),
+        requires: if layers.iter().any(|l| !l.tunables.is_empty()) { vec!["tunables".to_string()] } else { Vec::new() },
         authors: if authors.is_empty() { Vec::new() } else { vec![authors] },
         description: pack.map(|p| p.description.clone()).unwrap_or_default(),
         options: plan.options.clone(),
@@ -408,17 +386,11 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
         file: file.to_path_buf(),
         converted,
         total: jobs.iter().map(|(_, c)| c.len()).sum(),
-        materials: shaders.materials,
+        programs,
         failed,
         report: String::new(),
     };
     outcome.report = report_text(name, plan, &outcome, textures);
-    if !shaders.problems.is_empty() {
-        let _ = writeln!(outcome.report, "\nMaterials Nebula will have to build itself:");
-        for (id, why) in &shaders.problems {
-            let _ = writeln!(outcome.report, "  {id:08x}: {why}");
-        }
-    }
     fs::write(building.join("report.txt"), &outcome.report)?;
     pack_folder(building, file)?;
     Ok(outcome)

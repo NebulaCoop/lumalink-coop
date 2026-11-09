@@ -15,7 +15,7 @@
   "description": "A track of the mod's, started by its code.",
   "plugins": [
     {
-      "api": 1,
+      "api": 2,
       "binaries": {
         "windows-x64": "plugins/boss_music.dll"
       }

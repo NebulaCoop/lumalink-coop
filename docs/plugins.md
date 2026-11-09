@@ -49,7 +49,7 @@ List it in `luma.json`:
 
 ```json
 "plugins": [
-  { "api": 1, "binaries": { "windows-x64": "plugins/one_health.dll" } }
+  { "api": 2, "binaries": { "windows-x64": "plugins/one_health.dll" } }
 ]
 ```
 

@@ -35,15 +35,15 @@ This writes `Some Mod.luma` and says what happened to everything in the mod. Ope
 | Levels, layouts, text and models | Converted automatically |
 | Music and sound, including 4-bit ADPCM streams | Converted automatically |
 | Texture packs | Carried over. Nebula sorts them into categories players can switch on and off |
-| Models with materials Nebula doesn't have | Nebula builds their shaders on the player's device, with a progress screen. LumaLink adds a head start if it has the compilers |
+| Models with materials Nebula doesn't have | Nebula builds their programs on the player's device, once, with a progress screen |
 | A galaxy the mod adds | Listed in the file, and given its own saves |
-| Known code patches | Turned into Nebula's native switch for the same change |
+| Known code patches | Turned into the game's tunable for the same change, its value read from the patch |
 | Other code patches, `CustomCode`, `.gct` and `.dol` files | **Can't be converted.** Named in the report. The rest of the mod still applies |
 | Mods for Super Mario Galaxy 2 | Refused with a clear message |
 
 ### Why Wii code can't be converted
 
-Code patches and custom code are PowerPC instructions aimed at exact addresses in the Wii program. Nebula doesn't contain that program, so there is nothing for them to attach to. What such a patch does has to be written again, as a switch or a plugin. [`known_patches.rs`](crates/lumalink-core/src/known_patches.rs) lists the ones done so far.
+Code patches and custom code are PowerPC instructions aimed at exact addresses in the Wii program. Nebula doesn't contain that program, so there is nothing for them to attach to. What such a patch does has to be written again, as a tunable or a plugin. [`known_patches.rs`](crates/lumalink-core/src/known_patches.rs) lists the ones done so far.
 
 ## Commands
 
@@ -77,10 +77,6 @@ lumalink pack "My Mod"
 | Everything, in one page | [docs/REFERENCE.md](docs/REFERENCE.md) |
 
 `lumalink-core` is the library behind LumaLink, if you'd rather use it.
-
-## Shader compilers
-
-A `.luma` doesn't need compiled shaders: Nebula builds them on the player's device. For a head start, so that players don't wait, give LumaLink two compilers: Microsoft's [`dxc`](https://github.com/microsoft/DirectXShaderCompiler) and Nebula's `galaxy_native_spirv`. Put them in a `tools` folder beside the program, or name them in `LUMALINK_DXC` and `LUMALINK_SPIRV`.
 
 ## Building
 

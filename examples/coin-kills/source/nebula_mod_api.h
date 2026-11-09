@@ -13,7 +13,9 @@
 extern "C" {
 #endif
 
-#define NEBULA_MOD_API_VERSION 1u
+/* 2: setting() and setting_by_number() gave way to get_tunable(), and object_arg(index) to placement_number(column) and
+   placement_text(column); a plugin built for 1 is not started. */
+#define NEBULA_MOD_API_VERSION 2u
 
 #if defined(_WIN32)
 #define NEBULA_PLUGIN_EXPORT __declspec(dllexport)
@@ -308,7 +310,9 @@ typedef struct NebulaModApi {
     void (*stick)(float* x, float* y);
     void (*shake_camera)(void);
 
-    /* Only in nebula_plugin_start. 0: done. */
+    /* Only in nebula_plugin_start. 0: done; -2: the galaxy has no scenario archive (StageData/<name>/<name>Scenario.arc in
+       the mod, StageData/<name>Scenario in the store), so it is left out; -1: anything else (its name clashes with one the
+       game has). */
     int32_t (*add_galaxy)(const NebulaGalaxy* galaxy);
     /* A hungry Luma: placed in a level as TicoGalaxy with its Arg7 at `slot`, it opens `galaxy` when fed `star_bits`.
        The game's own are slots 0 to 6: using one takes its place. */
@@ -338,8 +342,8 @@ typedef struct NebulaModApi {
        A name the game has is changed, a new one added. `kind`: 1 stars, 2 a galaxy's stars, 3 a special star, 4 two flags, 5 story,
        6 a galaxy, 7 a comet, 8 a hungry Luma. `a` and `b` follow the kind: the star's number, or the Luma's slot and its price. 0: done. */
     int32_t (*set_event_flag)(const char* name, int32_t kind, int32_t a, int32_t b, const char* first, const char* second);
-    /* Only in nebula_plugin_start. A dome's comets, 1 to 6, in the order they come, for the whole of its schedule: `galaxies[i]` with
-       `coins[i]` at 1 for the hundred purple coins. */
+    /* Only in nebula_plugin_start. A dome's comets (domes 1 to 6 are the game's; 7, 8 and on add domes while they run on unbroken), in
+       the order they come, for the whole of its schedule: `galaxies[i]` with `coins[i]` at 1 for the hundred purple coins. */
     int32_t (*set_comet_schedule)(int32_t dome, const char* const* galaxies, const int32_t* coins, int32_t count);
 
     /* One of the game's objects becomes another, or (`becomes` null) is gone. Where: NEBULA_OBJECTS_*. Before stages load. */
@@ -356,7 +360,8 @@ typedef struct NebulaModApi {
     void (*stop_effect)(NebulaActor* actor, const char* name); /* null: all of them */
     void (*stop_sound)(NebulaActor* actor, const char* name);
 
-    /* An object of register_object's own step in what it's doing. Starts at 0; state_frames counts from the set_state that began it. */
+    /* An object of register_object's own step in what it's doing: a number of the plugin's own (its enum of steps),
+       starting at 0; state_frames counts from the set_state that began it. */
     void (*set_state)(NebulaActor* actor, int32_t state);
     int32_t (*state)(NebulaActor* actor);
     int32_t (*state_frames)(NebulaActor* actor);
@@ -374,8 +379,13 @@ typedef struct NebulaModApi {
     void (*set_touchable)(NebulaActor* actor, int32_t touchable);
     int32_t (*hit_player)(NebulaActor* actor, NebulaHit how);
 
-    /* A placed object's numbers from the level (Obj_arg0 to 7; -1: none). */
-    int32_t (*object_arg)(NebulaActor* actor, int32_t index);
+    /* register_object's objects: a column of its row in the level, by the column's name, as a level editor shows it:
+       Obj_arg0 to Obj_arg7 (-1 where the level sets none), CommonPath_ID, ShapeModelNo, CameraSetId, MessageId, GroupId,
+       ClippingGroupId, DemoGroupId, ViewGroupId, CastId, ParentID, the SW_ columns, l_id... placement_number: 1 and the
+       number for a number column (whole or not); 0 for a column the row lacks or one of words, or an object the level
+       didn't place (spawn). placement_text: a column of words (name), or null. */
+    int32_t (*placement_number)(NebulaActor* actor, const char* column, double* value);
+    const char* (*placement_text)(NebulaActor* actor, const char* column);
     /* Its switches. is_valid: the level set one. */
     int32_t (*has_switch)(NebulaActor* actor, NebulaSwitch which);
     int32_t (*is_switch_on)(NebulaActor* actor, NebulaSwitch which);
@@ -477,8 +487,9 @@ typedef struct NebulaModApi {
     void (*set_star)(const char* galaxy, int32_t star, int32_t have);
     int32_t (*stars_in_galaxy)(const char* galaxy);
     int32_t (*stars_won_in_galaxy)(const char* galaxy);
-    /* A game setting by its name (the names of a layer's `switches`). `missing`: no mod set it. */
-    int32_t (*setting)(const char* name, int32_t missing);
+    /* A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the number now and the game's. 0: done; -1: no such
+       number. */
+    int32_t (*get_tunable)(const char* key, double* value, double* game_value);
 
     /* A layout on the screen, for this stage. Null if it has no such archive. */
     NebulaLayout* (*layout_open)(const char* name);
@@ -495,8 +506,6 @@ typedef struct NebulaModApi {
     /* Text kept for this mod across plays, in place of store_get's numbers: how much was read. */
     int32_t (*store_get_text)(const NebulaPlugin* self, const char* key, char* out, int32_t size);
     void (*store_set_text)(const NebulaPlugin* self, const char* key, const char* text);
-    /* The game's answer behind setting(), by the setting's number. Plugins use setting(). */
-    int32_t (*setting_by_number)(uint32_t number, int32_t missing);
     /* The star-choosing screen of a galaxy, as a launch star opens it. */
     void (*open_scenario_select)(const char* galaxy);
     /* Only in nebula_plugin_start. The game's journey: "first_stage" (and "first_mission", a number as text) is where a new file begins, in place of
@@ -504,6 +513,13 @@ typedef struct NebulaModApi {
     int32_t (*set_story)(const char* key, const char* value);
     /* The game writes the save, as it does after a star. */
     void (*save_game)(void);
+    /* A file's tuning number by "<file stem>.<name>" ("Kuribo.cWalkSpeed"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's
+       "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds
+       round and clamp. 0: done; -1: no such number. */
+    int32_t (*set_tunable)(const char* key, double value);
+    /* The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), name, place in its list (-1: one number), kind (1 f32,
+       2 f64, 3 s32, 4 u32, 5 s16, 6 u16, 7 s8, 8 u8, 9 bool), the game's number and the number now. 0: done; -1: past the last. */
+    int32_t (*tunable_at)(int32_t index, const char** file, const char** name, int32_t* place, int32_t* kind, double* game_value, double* value);
 } NebulaModApi;
 
 /* Where an object change applies. */

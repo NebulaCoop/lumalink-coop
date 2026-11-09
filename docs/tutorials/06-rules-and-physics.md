@@ -2,23 +2,26 @@
 
 No code for any of this. All of it goes in a layer, so an [option](07-options.md) can turn any of it on.
 
-## Settings
+## Tunables
+
+Every tuning number in the game is a tunable, named after its source file and its name. The mod says
+`"requires": ["tunables"]`, and a layer sets them:
 
 ```json
-"switches": {
-  "player_health": 6,
-  "life_up_health": 12,
-  "max_lives": 999,
-  "starting_lives": 20,
-  "coins_per_one_up": 100,
-  "star_bits_per_one_up": 0,
-  "max_coins": 5000,
-  "purple_coins_for_star": 50,
-  "water_air": 16
+"tunables": {
+  "GameRules.cPlayerHealth": 6,
+  "GameRules.cLifeUpHealth": 12,
+  "GameDataPlayerStatus.cMaxPlayerLeft": 999,
+  "GameDataPlayerStatus.cStartingPlayerLeft": 20,
+  "ScenePlayingResult.cCoinStepNum": 100,
+  "ScenePlayingResult.cStarPieceStepNum": 0,
+  "GameRules.cMaxCoins": 5000,
+  "ScenePlayingResult.cPurpleCoinPowerStarAppearNum": 50,
+  "MarioActor.cWaterAir": 16
 }
 ```
 
-Health can be anything: the meter's six parts show it in proportion and the number is exact. Numbers past what the game shows stay on one line. See [every setting](../reference/settings.md).
+Health can be anything: the meter's six parts show it in proportion and the number is exact. Numbers past what the game shows stay on one line. See [the game's rules and how to list every tunable](../reference/settings.md).
 
 ## How the player moves
 

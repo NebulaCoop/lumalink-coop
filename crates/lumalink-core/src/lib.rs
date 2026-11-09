@@ -8,7 +8,7 @@
 //! 3. [`riivolution`] reads the patches and their options.
 //! 4. [`plan::build`] decides which file goes where, what is for one version only and what players choose, with the reason
 //!    for everything it does not use.
-//! 5. [`package::write`] checks each file with the converter Nebula uses, builds what its materials need, and writes the
+//! 5. [`package::write`] checks each file with the converter Nebula uses and writes the
 //!    `.luma`: see docs/format.md.
 
 pub mod column_names;
@@ -24,7 +24,6 @@ pub mod player_constants;
 pub mod project;
 pub mod region_map;
 pub mod riivolution;
-pub mod shaders;
 pub mod source;
 pub mod texture_pack;
 

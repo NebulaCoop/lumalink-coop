@@ -70,7 +70,8 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `turn_to_player` | `void turn_to_player(NebulaActor* actor, float degrees)` |
 | `set_touchable` | `void set_touchable(NebulaActor* actor, int32_t touchable)` |
 | `hit_player` | `int32_t hit_player(NebulaActor* actor, NebulaHit how)` |
-| `object_arg` | `int32_t object_arg(NebulaActor* actor, int32_t index)` |
+| `placement_number` | `int32_t placement_number(NebulaActor* actor, const char* column, double* value)` |
+| `placement_text` | `const char* placement_text(NebulaActor* actor, const char* column)` |
 | `has_switch` | `int32_t has_switch(NebulaActor* actor, NebulaSwitch which)` |
 | `is_switch_on` | `int32_t is_switch_on(NebulaActor* actor, NebulaSwitch which)` |
 | `set_switch` | `void set_switch(NebulaActor* actor, NebulaSwitch which, int32_t on)` |
@@ -132,7 +133,7 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `set_star` | `void set_star(const char* galaxy, int32_t star, int32_t have)` |
 | `stars_in_galaxy` | `int32_t stars_in_galaxy(const char* galaxy)` |
 | `stars_won_in_galaxy` | `int32_t stars_won_in_galaxy(const char* galaxy)` |
-| `setting` | `int32_t setting(const char* name, int32_t missing)` |
+| `get_tunable` | `int32_t get_tunable(const char* key, double* value, double* game_value)` |
 | `layout_open` | `NebulaLayout* layout_open(const char* name)` |
 | `layout_show` | `void layout_show(NebulaLayout* layout, int32_t show)` |
 | `layout_set_text` | `void layout_set_text(NebulaLayout* layout, const char* pane, const char* utf8)` |
@@ -144,10 +145,11 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `layout_set_alpha` | `void layout_set_alpha(NebulaLayout* layout, float alpha)` |
 | `store_get_text` | `int32_t store_get_text(const NebulaPlugin* self, const char* key, char* out, int32_t size)` |
 | `store_set_text` | `void store_set_text(const NebulaPlugin* self, const char* key, const char* text)` |
-| `setting_by_number` | `int32_t setting_by_number(uint32_t number, int32_t missing)` |
 | `open_scenario_select` | `void open_scenario_select(const char* galaxy)` |
 | `set_story` | `int32_t set_story(const char* key, const char* value)` |
 | `save_game` | `void save_game(void)` |
+| `set_tunable` | `int32_t set_tunable(const char* key, double value)` |
+| `tunable_at` | `int32_t tunable_at(int32_t index, const char** file, const char** name, int32_t* place, int32_t* kind, double* game_value, double* value)` |
 
 ## What each does
 
@@ -581,6 +583,8 @@ An object of register_object's own step in what it's doing. Starts at 0; state_f
 int32_t state(NebulaActor* actor)
 ```
 
+The number is the plugin's own: an enum of its steps.
+
 See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 
 ### `state_frames`
@@ -663,13 +667,26 @@ int32_t hit_player(NebulaActor* actor, NebulaHit how)
 
 See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 
-### `object_arg`
+### `placement_number`
 
 ```c
-int32_t object_arg(NebulaActor* actor, int32_t index)
+int32_t placement_number(NebulaActor* actor, const char* column, double* value)
 ```
 
-A placed object's numbers from the level (Obj_arg0 to 7; -1: none).
+A column of a `register_object` object's row in the level, by the column's name as a level editor shows it: `Obj_arg0` to `Obj_arg7` (-1 where the level sets none), `CommonPath_ID`, `ShapeModelNo`, `CameraSetId`, `MessageId`, `GroupId`, `ClippingGroupId`, `DemoGroupId`, `ViewGroupId`, `CastId`, `ParentID`, the `SW_` columns, `l_id`. 1 and the number for a number column, whole or not; 0 for a column the row lacks, a column of words, or an object the level didn't place (`spawn`).
+
+```c
+double speed = 0;
+if (game->placement_number(actor, "Obj_arg0", &speed) && speed >= 0) { /* the level set it */ }
+```
+
+### `placement_text`
+
+```c
+const char* placement_text(NebulaActor* actor, const char* column)
+```
+
+A column of words of the same row (`name`), or null.
 
 ### `has_switch`
 
@@ -1159,13 +1176,13 @@ int32_t stars_won_in_galaxy(const char* galaxy)
 
 See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 
-### `setting`
+### `get_tunable`
 
 ```c
-int32_t setting(const char* name, int32_t missing)
+int32_t get_tunable(const char* key, double* value, double* game_value)
 ```
 
-A game setting by its name (the names of a layer's `switches`). `missing`: no mod set it.
+A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the number now and the game's. 0: done; -1: no such number. Interface 2; it took the place of `setting` and `setting_by_number`.
 
 ### `layout_open`
 
@@ -1255,14 +1272,6 @@ void store_set_text(const NebulaPlugin* self, const char* key, const char* text)
 
 See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 
-### `setting_by_number`
-
-```c
-int32_t setting_by_number(uint32_t number, int32_t missing)
-```
-
-The game's answer behind setting(), by the setting's number. Plugins use setting().
-
 ### `open_scenario_select`
 
 ```c
@@ -1286,6 +1295,22 @@ void save_game(void)
 ```
 
 The game writes the save, as it does after a star.
+
+### `set_tunable`
+
+```c
+int32_t set_tunable(const char* key, double value)
+```
+
+A file's tuning number by "<file stem>.<name>" ("Kuribo.cWalkSpeed"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds round and clamp. 0: done; -1: no such number.
+
+### `tunable_at`
+
+```c
+int32_t tunable_at(int32_t index, const char** file, const char** name, int32_t* place, int32_t* kind, double* game_value, double* value)
+```
+
+The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), name, place in its list (-1: one number), kind (1 f32, 2 f64, 3 s32, 4 u32, 5 s16, 6 u16, 7 s8, 8 u8, 9 bool), the game's number and the number now. 0: done; -1: past the last.
 
 ## Numbers and names
 

@@ -53,10 +53,11 @@ Add this beside `layers`:
 ## 4. Give Mario six health from the start, and a thousand lives
 
 ```json
+"requires": ["tunables"],
 "layers": [ {
   "path": "layers/base",
   "player_constants": { "mario": { "mJumpHeight": [null, null, 60.0] } },
-  "switches": { "player_health": 6, "max_lives": 999, "starting_lives": 100 }
+  "tunables": { "GameRules.cPlayerHealth": 6, "GameDataPlayerStatus.cMaxPlayerLeft": 999, "GameDataPlayerStatus.cStartingPlayerLeft": 100 }
 } ]
 ```
 

@@ -62,7 +62,7 @@ enum Command {
         #[arg(long)]
         plugin: bool,
     },
-    /// Write the shader Nebula would make for each material of a model, to start a hand-written one from.
+    /// Write the pixel program Nebula makes for each material of a model, to start a hand-written one from.
     Shader {
         /// A model (.bdl or .bmd), or an archive holding one.
         model: PathBuf,
@@ -251,7 +251,7 @@ fn convert_one(input: &Path, output: &Path, store: Option<&GameStore>, game_id: 
     for (path, why) in &outcome.failed {
         println!("  left out: {path}: {why}");
     }
-    println!("  {} of {} files, {} new materials", outcome.converted, outcome.total, outcome.materials);
+    println!("  {} of {} files, {} material programs", outcome.converted, outcome.total, outcome.programs);
     println!("  wrote {}", outcome.file.display());
     Ok(outcome)
 }
@@ -299,7 +299,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Pack { folder, output, game } => {
             let (store, _) = open_store(&game)?;
             let outcome = project::pack(&folder, &output, store.as_ref())?;
-            println!("{} files, {} new materials", outcome.converted, outcome.materials);
+            println!("{} files, {} material programs", outcome.converted, outcome.programs);
             println!("wrote {}", outcome.file.display());
             Ok(ExitCode::SUCCESS)
         }

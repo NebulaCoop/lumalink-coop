@@ -86,10 +86,13 @@ pub fn add_plugin(folder: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Writes each material's generated shader beside the output, as `<material>.hlsl`, from a model or an archive holding
-/// one. What's returned: the files.
+/// Writes each material's pixel program as Nebula generates it, as `<material>.hlsl` beside the output with the headers it
+/// includes, from a model or an archive holding one: the start of a mod's own program (a layer's `"materials"`), which
+/// takes the place of the plain form's. What's returned: the files.
 pub fn write_generated_shaders(model: &Path, output: &Path) -> Result<Vec<String>> {
-    use nebula_import::cook::{archive, material};
+    use nebula_import::cook::model_ir::{read_file, Source};
+    use nebula_import::cook::programs::{self, Form};
+    use nebula_import::cook::{archive, Stats};
     let mut bytes = fs::read(model).with_context(|| format!("{} can't be read", model.display()))?;
     if archive::is_compressed(&bytes) {
         bytes = archive::expand(&bytes)?;
@@ -102,15 +105,22 @@ pub fn write_generated_shaders(model: &Path, output: &Path) -> Result<Vec<String
     if !is_model(&bytes) {
         bail!("{} isn't a model", model.display());
     }
+    let ir = read_file(&bytes, Source::of(&bytes), &mut Stats::default())?;
+    let written = programs::written_or_unknown();
     fs::create_dir_all(output)?;
-    let mut written = Vec::new();
-    for (name, source) in material::generated_shaders(&bytes)? {
-        let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
-        let file = format!("{safe}.hlsl");
-        fs::write(output.join(&file), source)?;
-        written.push(file);
+    for (name, text) in programs::HEADERS {
+        fs::write(output.join(name), text)?;
     }
-    Ok(written)
+    let mut files = Vec::new();
+    for m in &ir.materials {
+        let text = programs::generate(m, Form::default(), programs::mesh_skinned(&ir, m), &written.registers(m))
+            .with_context(|| format!("material {}", m.name))?;
+        let safe: String = m.name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+        let file = format!("{safe}.hlsl");
+        fs::write(output.join(&file), text.pixel)?;
+        files.push(file);
+    }
+    Ok(files)
 }
 
 /// Starts a project: the folder, its `luma.json`, and the folders a mod usually fills.
@@ -185,15 +195,14 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
             jobs.push((format!("layer{i}"), layer_changes(folder, layer)));
         }
         let game_id = store.map_or("RMGE01".to_string(), |s| s.game_id.clone());
-        let (shaders, failed, converted) = package::check_and_build_shaders(&jobs, &game_id, store, &building)?;
+        let (programs, failed, converted) = package::check_layers(&jobs, &game_id, store, &building)?;
         if let Some((path, why)) = failed.first() {
             bail!("{path}: {why}");
         }
         for entry in walkdir::WalkDir::new(folder) {
             let entry = entry.with_context(|| format!("{} can't be read through", folder.display()))?;
             let relative = entry.path().strip_prefix(folder)?;
-            let is_built = relative.components().next().is_some_and(|c| c.as_os_str() == "shaders");
-            if !entry.file_type().is_file() || (is_built && building.join("shaders").is_dir()) || !belongs_in_file(relative) {
+            if !entry.file_type().is_file() || !belongs_in_file(relative) {
                 continue;
             }
             let target = building.join(relative);
@@ -208,7 +217,7 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
             file,
             converted,
             total: jobs.iter().map(|(_, c)| c.len()).sum(),
-            materials: shaders.materials,
+            programs,
             failed,
             report: String::new(),
         })
@@ -451,7 +460,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
         found.problem("it has no layers");
         return;
     };
-    let names: Vec<&str> = known_patches::switch_names().collect();
+    let says_tunables = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "tunables"));
     // A mod can be only code, or only a galaxy's row over files another mod brings.
     let mut has_anything = manifest.get("plugins").and_then(Value::as_array).is_some_and(|p| !p.is_empty())
         || manifest.get("text").and_then(Value::as_object).is_some_and(|t| !t.is_empty())
@@ -500,23 +509,39 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
             has_anything |= walkdir::WalkDir::new(folder.join("textures")).into_iter().filter_map(std::result::Result::ok).any(|e| e.file_type().is_file());
             has_anything |= walkdir::WalkDir::new(folder.join("movies")).into_iter().filter_map(std::result::Result::ok).any(|e| e.file_type().is_file());
         }
+        // Switches gave way to the game's tunables: each is named with what took its place.
         if let Some(switches) = layer.get("switches") {
-            let Some(switches) = switches.as_object() else {
-                found.problem(format!("{name}: switches names switches and their values"));
+            let named: Vec<String> = switches.as_object().into_iter().flatten().map(|(switch, _)| match known_patches::tunable_for_switch(switch) {
+                Some((key, true)) => format!("{switch} is \"{key}\", the opposite sense"),
+                Some((key, false)) => format!("{switch} is \"{key}\""),
+                None => format!("{switch} has no tunable"),
+            }).collect();
+            found.problem(format!("{name}: \"switches\" are now \"tunables\" (\"requires\": [\"tunables\"]): {}", named.join("; ")));
+        }
+        if let Some(tunables) = layer.get("tunables") {
+            let Some(tunables) = tunables.as_object() else {
+                found.problem(format!("{name}: tunables names the game's numbers (\"<file>.<name>\") and their values"));
                 continue;
             };
-            for (switch, value) in switches {
+            if !says_tunables {
+                found.problem(format!("{name}: a mod with tunables says \"requires\": [\"tunables\"]"));
+            }
+            for (key, value) in tunables {
                 has_anything = true;
-                if !names.contains(&switch.as_str()) {
-                    found.problem(format!("{name}: there's no switch called {switch}"));
+                if !key.contains('.') || key.starts_with('.') || key.ends_with('.') {
+                    found.problem(format!("{name}: {key} is not \"<file stem>.<name>\" (\"GameRules.cPlayerHealth\")"));
                 }
-                let from_option = value.get("option").and_then(Value::as_str);
-                if let Some(option) = from_option {
+                let one = |v: &Value| v.is_number() || v.is_boolean();
+                if let Some(option) = value.get("option").and_then(Value::as_str) {
                     if !options.contains_key(option) {
-                        found.problem(format!("{name}: {switch} takes its number from {option}, and there's no such option"));
+                        found.problem(format!("{name}: {key} takes its number from {option}, and there's no such option"));
                     }
-                } else if !value.is_u64() {
-                    found.problem(format!("{name}: {switch} needs a whole number, or {{ \"option\": its id }}"));
+                } else if let Some(list) = value.as_array() {
+                    if !list.iter().all(|v| v.is_null() || one(v)) {
+                        found.problem(format!("{name}: {key}'s list holds numbers, true or false, or null to keep a place"));
+                    }
+                } else if !one(value) {
+                    found.problem(format!("{name}: {key} needs a number, true or false, a list, or {{ \"option\": its id }}"));
                 }
             }
         }
@@ -879,7 +904,7 @@ const PLUGIN_TARGETS: &[(&str, BinaryKind, u32)] = &[
     ("macos-arm64", BinaryKind::MachO, 0x0100_000C),
 ];
 /// The plugin interface this LumaLink knows: `NEBULA_MOD_API_VERSION`.
-const PLUGIN_API: u64 = 1;
+const PLUGIN_API: u64 = 2;
 
 #[derive(Clone, Copy, PartialEq)]
 enum BinaryKind {
@@ -924,7 +949,10 @@ fn check_plugins(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec
     for (i, plugin) in plugins.iter().enumerate() {
         let name = format!("plugin {}", i + 1);
         match plugin.get("api").and_then(Value::as_u64) {
-            Some(api) if (1..=PLUGIN_API).contains(&api) => {}
+            Some(PLUGIN_API) => {}
+            Some(api) if api < PLUGIN_API => found.problem(format!(
+                "{name}: api {api} is an older interface; rebuild it with nebula_mod_api.h {PLUGIN_API} (setting() is now get_tunable())"
+            )),
             Some(api) => found.problem(format!("{name}: api {api} is newer than this LumaLink knows ({PLUGIN_API})")),
             None => found.problem(format!("{name}: api is the number of the interface it was built for ({PLUGIN_API})")),
         }
@@ -1030,7 +1058,7 @@ fn check_folder(folder: &Path, found: &mut Findings) {
     }
     if let Some(requires) = manifest.get("requires") {
         for feature in string_list(requires, "requires", found) {
-            if feature != "custom-shaders" {
+            if feature != "custom-shaders" && feature != "tunables" {
                 found.problem(format!("requires {feature}, a feature this version of LumaLink doesn't know"));
             }
         }
@@ -1245,9 +1273,9 @@ mod tests {
         check(dir.path(), None).unwrap().into_iter().filter(|f| f.serious).map(|f| f.text).collect()
     }
 
-    const GOOD: &str = r#"{"format":1,"id":"m","name":"M","version":"1.0","game":"RMG","authors":["A"],
+    const GOOD: &str = r#"{"format":1,"id":"m","name":"M","version":"1.0","game":"RMG","requires":["tunables"],"authors":["A"],
         "options":[{"id":"o","name":{"default":"O","ja":"オ"},"default":"a","choices":[{"id":"a","name":"A"},{"id":"b","name":"B"}]}],
-        "layers":[{"path":"layers/base","switches":{"dodoryu_shell_only":1},"when":{"version":["E","P"],"platform":["android"],"option":{"o":["b"]},"language":["UsEnglish"]}}]}"#;
+        "layers":[{"path":"layers/base","tunables":{"GameRules.cDodoryuShellOnly":true},"when":{"version":["E","P"],"platform":["android"],"option":{"o":["b"]},"language":["UsEnglish"]}}]}"#;
 
     #[test]
     fn check_passes_a_good_file_and_names_each_mistake() {
@@ -1260,7 +1288,10 @@ mod tests {
             (r#""game":"RMG""#, r#""game":"X""#, "game has to be RMG"),
             (r#""default":"a""#, r#""default":"z""#, "isn't one of its choices"),
             (r#""ja":"オ""#, r#""xx":"オ""#, "isn't a language"),
-            (r#""dodoryu_shell_only""#, r#""nope""#, "no switch called"),
+            (r#""GameRules.cDodoryuShellOnly""#, r#""cDodoryuShellOnly""#, "is not \"<file stem>.<name>\""),
+            (r#"true},"when""#, r#""yes"},"when""#, "needs a number, true or false"),
+            (r#""tunables":{"#, r#""switches":{"no_low_health_warning":1},"tunables":{"#, "no_low_health_warning is \"MarioEffect.cLowHealthWarning\", the opposite sense"),
+            (r#""requires":["tunables"],"#, "", "says \"requires\": [\"tunables\"]"),
             (r#""version":["E","P"]"#, r#""version":["Q"]"#, "isn't a version"),
             (r#""platform":["android"]"#, r#""platform":["toaster"]"#, "isn't a device"),
             (r#""o":["b"]"#, r#""o":["z"]"#, "has no choice z"),
@@ -1306,21 +1337,22 @@ mod tests {
         fs::write(project.join("plugins/arm.dll"), pe(0xAA64)).unwrap();
         fs::write(project.join("plugins/not.dll"), "text").unwrap();
 
-        let good = with(r#"[{ "api": 1, "binaries": { "windows-x64": "plugins/a.dll" } }]"#);
+        let good = with(r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/a.dll" } }]"#);
         assert!(problems(&good).is_empty(), "{good:?}");
         assert!(good.iter().any(|f| f.text.contains("its own code")));
         assert!(good.iter().any(|f| f.text.contains("linux-x64")));
 
         for (plugins, says) in [
             (r#"[{ "binaries": { "windows-x64": "plugins/a.dll" } }]"#, "api is"),
-            (r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/a.dll" } }]"#, "newer"),
-            (r#"[{ "api": 1 }]"#, "binaries names"),
-            (r#"[{ "api": 1, "binaries": { "amiga": "plugins/a.dll" } }]"#, "isn't a device"),
-            (r#"[{ "api": 1, "binaries": { "windows-x64": "../a.dll" } }]"#, "path in the file"),
-            (r#"[{ "api": 1, "binaries": { "windows-x64": "plugins/gone.dll" } }]"#, "isn't in the file"),
-            (r#"[{ "api": 1, "binaries": { "windows-x64": "plugins/not.dll" } }]"#, "isn't a library"),
-            (r#"[{ "api": 1, "binaries": { "windows-x64": "plugins/arm.dll" } }]"#, "isn't a library"),
-            (r#"[{ "api": 1, "binaries": { "linux-x64": "plugins/a.dll" } }]"#, "isn't a library"),
+            (r#"[{ "api": 3, "binaries": { "windows-x64": "plugins/a.dll" } }]"#, "newer"),
+            (r#"[{ "api": 1, "binaries": { "windows-x64": "plugins/a.dll" } }]"#, "setting() is now get_tunable()"),
+            (r#"[{ "api": 2 }]"#, "binaries names"),
+            (r#"[{ "api": 2, "binaries": { "amiga": "plugins/a.dll" } }]"#, "isn't a device"),
+            (r#"[{ "api": 2, "binaries": { "windows-x64": "../a.dll" } }]"#, "path in the file"),
+            (r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/gone.dll" } }]"#, "isn't in the file"),
+            (r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/not.dll" } }]"#, "isn't a library"),
+            (r#"[{ "api": 2, "binaries": { "windows-x64": "plugins/arm.dll" } }]"#, "isn't a library"),
+            (r#"[{ "api": 2, "binaries": { "linux-x64": "plugins/a.dll" } }]"#, "isn't a library"),
         ] {
             let found = with(plugins);
             assert!(problems(&found).iter().any(|t| t.contains(says)), "{plugins}: {found:?}");

@@ -26,7 +26,6 @@ My Mod.luma
 │       ├── textures/        replacement textures
 │       └── movies/          replacement videos
 ├── save/                    optional, starting files for its own saves
-├── shaders/                 optional, ready-built shaders
 └── plugins/                 optional, the mod's code
 ```
 
@@ -36,7 +35,7 @@ From the simplest to the most powerful. Use the first one that does what you wan
 
 | Way | What it changes | Two mods can both do it? |
 |---|---|---|
-| **Settings** (`switches`) | Numbers and rules: health, lives, caps | Yes, the higher wins |
+| **Tunables** (`tunables`) | Every tuning number and rule: health, lives, caps, speeds, timers | Yes, the higher wins |
 | **Player numbers** (`player_constants`) | How the player moves, how long power-ups last | Yes, per number |
 | **Rows** (`music`, `text`, `event_flags`, `stages`, `object_classes`, ...) | The game's tables: what plays where, what opens what | Yes, per row |
 | **Merge** (`merge/`) | Rows in levels and tables: add, change, remove | Yes, all kept |

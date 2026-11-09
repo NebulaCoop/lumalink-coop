@@ -15,7 +15,7 @@
 }],
 "layers": [
   { "path": "layers/base" },
-  { "when": { "option": { "difficulty": ["hard"] } }, "switches": { "hit_takes_all": 1 } }
+  { "when": { "option": { "difficulty": ["hard"] } }, "tunables": { "MarioActor.cHitTakesAll": true } }
 ]
 ```
 
@@ -31,12 +31,12 @@ A range is a choice for each number:
   "range": { "from": 1, "to": 20, "step": 1 }
 }],
 "layers": [{
-  "switches": { "player_health": { "option": "health" } },
+  "tunables": { "GameRules.cPlayerHealth": { "option": "health" } },
   "player_constants": { "both": { "mFireModeTime": { "option": "fire-time" } } }
 }]
 ```
 
-A setting or a player number takes the chosen number directly, with no layer per value.
+A tunable or a player number takes the chosen number directly, with no layer per value.
 
 ## `when`
 
