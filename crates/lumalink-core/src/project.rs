@@ -666,6 +666,20 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                 found.problem(format!("{name}: a row of object_classes needs name and like"));
             } else if !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(like)) {
                 found.note(format!("{name}: {like}, which {object} is made like, isn't an object of the game's. A plugin may add it"));
+            } else if let Some(store) = store {
+                let own_path = format!("ObjectData/{object}.arc");
+                let own = layer.get("path").and_then(Value::as_str).map(|path| folder.join(path).join("files").join(&own_path));
+                match own.filter(|own| own.is_dir()) {
+                    Some(own) => {
+                        if let Ok(games) = nebula_import::cook::store::read_folder(&store.path, &format!("ObjectData/{like}.arc")) {
+                            compare_with_like(&own, &games, name, object, like, found);
+                        }
+                    }
+                    None if !store.has(&own_path) => {
+                        found.problem(format!("{name}: {object} has no {own_path}, in the layer or the game: Nebula leaves it out"));
+                    }
+                    None => {}
+                }
             }
         }
     }
@@ -730,9 +744,70 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                     found.problem(format!("{name}: the sound {sound}: {file} isn't in the layer's files"));
                 }
             }
+            // "<name>@luigi": the sound while Luigi plays.
+            if let Some(base) = sound.strip_suffix("@luigi") {
+                if base.is_empty() || base.contains('@') {
+                    found.problem(format!("{name}: the sound {sound}: @luigi follows a sound's name"));
+                }
+            } else if sound.contains('@') {
+                found.problem(format!("{name}: the sound {sound}: a name has no @, but for @luigi at its end"));
+            }
         }
     }
     any
+}
+
+/// An object made like the game's `like`, with an archive of its own: what the game's model and archive have that its
+/// own lack. The game's code for `like` moves joints and plays animations by name: a joint its model lacks moves its
+/// root, an animation it lacks plays nothing (Nebula carries on). Notes, not problems: a model may need fewer.
+/// `own`: the layer's folder of the object's archive; `games`: the files of the game's archive of `like`.
+fn compare_with_like(own: &Path, games: &[(String, Vec<u8>)], name: &str, object: &str, like: &str, found: &mut Findings) {
+    let stem = |file: &str| file.rsplit('/').next().unwrap_or(file).split('.').next().unwrap_or_default().to_ascii_lowercase();
+    let ending = |file: &str| file.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    const ANIMATIONS: [&str; 8] = ["bck", "bca", "btk", "brk", "bpk", "btp", "bva", "bxk"];
+    // The game's: its model's joints (the one named as the object, else the first) and its animations.
+    let model = games
+        .iter()
+        .filter(|(file, _)| matches!(ending(file).as_str(), "bdl" | "bmd"))
+        .max_by_key(|(file, _)| stem(file) == like.to_ascii_lowercase());
+    let game_joints = model.and_then(|(_, bytes)| nebula_import::cook::model_write::names(bytes).ok()).map(|n| n.joints).unwrap_or_default();
+    let mut game_animations: Vec<String> =
+        games.iter().filter(|(file, _)| ANIMATIONS.contains(&ending(file).as_str())).map(|(file, _)| stem(file)).collect();
+    game_animations.sort();
+    game_animations.dedup();
+    // Its own: what its glTF models hold, and its animation files.
+    let mut own_joints: Vec<String> = Vec::new();
+    let mut own_animations: Vec<String> = Vec::new();
+    for entry in walkdir::WalkDir::new(own).into_iter().filter_map(std::result::Result::ok).filter(|e| e.file_type().is_file()) {
+        let file = entry.file_name().to_string_lossy().to_string();
+        let lower = file.to_ascii_lowercase();
+        if lower.ends_with(".glb") || lower.ends_with(".gltf") {
+            let Ok(bytes) = fs::read(entry.path()) else { continue };
+            match nebula_import::cook::gltf::to_ir(&bytes, entry.path().parent()) {
+                Ok((ir, clips)) => {
+                    own_joints.extend(ir.joints.iter().map(|j| j.name.clone()));
+                    own_animations.extend(clips.iter().map(|(clip, _)| clip.to_ascii_lowercase()));
+                }
+                Err(error) => found.problem(format!("{name}: {file}: {error:#}")),
+            }
+        } else if ANIMATIONS.contains(&ending(&file).as_str()) {
+            own_animations.push(stem(&file));
+        }
+    }
+    let missing_joints: Vec<&str> = game_joints.iter().filter(|j| !own_joints.iter().any(|o| o == *j)).map(String::as_str).collect();
+    if !own_joints.is_empty() && !missing_joints.is_empty() {
+        found.note(format!("{name}: {object}'s model has no joint {} of {like}'s: what {like}'s code moves there moves its root", missing_joints.join(", ")));
+    }
+    let missing: Vec<&str> = game_animations.iter().filter(|a| !own_animations.contains(a)).map(String::as_str).collect();
+    if !missing.is_empty() {
+        found.note(format!(
+            "{name}: {object} has {} of {like}'s {} animations; where {like}'s code plays one of the {} others ({}), {object} goes on as it was",
+            game_animations.len() - missing.len(),
+            game_animations.len(),
+            missing.len(),
+            missing.join(" ")
+        ));
+    }
 }
 
 /// What a layer adds to files many mods share. Whether it found anything.
@@ -1514,6 +1589,113 @@ mod tests {
         assert!(!said.contains("Jump2"), "{said}");
         assert!(said.contains("Nope is neither"), "{said}");
         fs::remove_dir_all(&folder).ok();
+    }
+
+    /// A skinned glTF binary with these joints (a chain) and these animations (each moving the first joint).
+    fn skinned_glb(joints: &[&str], clips: &[&str]) -> Vec<u8> {
+        let mut nodes: Vec<Value> = joints
+            .iter()
+            .enumerate()
+            .map(|(i, j)| if i + 1 < joints.len() { json!({"name": j, "children": [i + 1]}) } else { json!({"name": j}) })
+            .collect();
+        nodes.push(json!({"name": "mesh", "mesh": 0, "skin": 0}));
+        let floats = |values: &[f32]| values.iter().flat_map(|f| f.to_le_bytes()).collect::<Vec<u8>>();
+        let mut bin = floats(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]); // 0: positions, 36
+        bin.extend([0u8, 0, 1, 0, 2, 0]); // 36: indices, 6
+        bin.extend([0u8; 24]); // 42: joints, 3 x 4 u16
+        bin.extend(floats(&[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])); // 66: weights, 48
+        bin.extend(floats(&[0.0, 1.0])); // 114: times, 8
+        bin.extend(floats(&[0.0; 6])); // 122: translations, 24
+        let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        for _ in joints {
+            bin.extend(floats(&identity)); // 146: inverse binds
+        }
+        let animations: Vec<Value> = clips
+            .iter()
+            .map(|c| json!({"name": c, "samplers": [{"input": 5, "output": 6}], "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]}))
+            .collect();
+        let mut document = json!({
+            "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0, joints.len()]}], "nodes": nodes,
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "JOINTS_0": 2, "WEIGHTS_0": 3}, "indices": 1}]}],
+            "skins": [{"joints": (0..joints.len()).collect::<Vec<_>>(), "inverseBindMatrices": 4}],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [1, 1, 0]},
+                {"bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR"},
+                {"bufferView": 2, "componentType": 5123, "count": 3, "type": "VEC4"},
+                {"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC4"},
+                {"bufferView": 6, "componentType": 5126, "count": joints.len(), "type": "MAT4"},
+                {"bufferView": 4, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0.0], "max": [1.0]},
+                {"bufferView": 5, "componentType": 5126, "count": 2, "type": "VEC3"}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 36}, {"buffer": 0, "byteOffset": 36, "byteLength": 6},
+                {"buffer": 0, "byteOffset": 42, "byteLength": 24}, {"buffer": 0, "byteOffset": 66, "byteLength": 48},
+                {"buffer": 0, "byteOffset": 114, "byteLength": 8}, {"buffer": 0, "byteOffset": 122, "byteLength": 24},
+                {"buffer": 0, "byteOffset": 146, "byteLength": 64 * joints.len()}],
+            "buffers": [{"byteLength": bin.len()}],
+        });
+        if !animations.is_empty() {
+            document["animations"] = Value::Array(animations);
+        }
+        let mut text = serde_json::to_vec(&document).unwrap();
+        while text.len() % 4 != 0 {
+            text.push(b' ');
+        }
+        while bin.len() % 4 != 0 {
+            bin.push(0);
+        }
+        let mut out = b"glTF".to_vec();
+        out.extend(2u32.to_le_bytes());
+        out.extend(u32::try_from(12 + 8 + text.len() + 8 + bin.len()).unwrap().to_le_bytes());
+        out.extend(u32::try_from(text.len()).unwrap().to_le_bytes());
+        out.extend(b"JSON");
+        out.extend(&text);
+        out.extend(u32::try_from(bin.len()).unwrap().to_le_bytes());
+        out.extend(b"BIN\0");
+        out.extend(&bin);
+        out
+    }
+
+    #[test]
+    fn an_object_made_like_the_games_is_compared_with_it() {
+        // The game's: a model with joints JointRoot, body, head, and the animations wait, talk, spin.
+        let (model, _) = nebula_import::cook::gltf::to_files(&skinned_glb(&["JointRoot", "body", "head"], &[]), None, "Kinopio").unwrap();
+        let games = vec![
+            ("kinopio.bdl".to_string(), model),
+            ("wait.bck".to_string(), Vec::new()),
+            ("talk.bck".to_string(), Vec::new()),
+            ("spin.bck".to_string(), Vec::new()),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let own = dir.path().join("Lumie.arc");
+        fs::create_dir_all(&own).unwrap();
+        fs::write(own.join("Lumie.bdl.glb"), skinned_glb(&["JointRoot", "body"], &["Wait", "Talk"])).unwrap();
+        let mut found = Findings::default();
+        compare_with_like(&own, &games, "base", "Lumie", "Kinopio", &mut found);
+        let said = format!("{:?}", found.0);
+        assert!(said.contains("has no joint head of Kinopio's"), "{said}");
+        assert!(said.contains("2 of Kinopio's 3 animations") && said.contains("(spin)"), "{said}");
+        // Everything there: nothing said.
+        fs::write(own.join("Lumie.bdl.glb"), skinned_glb(&["JointRoot", "body", "head"], &["Wait", "Talk", "Spin"])).unwrap();
+        let mut found = Findings::default();
+        compare_with_like(&own, &games, "base", "Lumie", "Kinopio", &mut found);
+        assert!(found.0.is_empty(), "{:?}", found.0);
+    }
+
+    /// The reference (docs/reference/plugin-api.md, written by tools/plugin_api_doc.py) explains every call of the header
+    /// `lumalink new` gives plugins: a call added to the game's header and not to the reference fails here.
+    #[test]
+    fn the_plugin_reference_has_every_call() {
+        let reference = include_str!("../../../docs/reference/plugin-api.md");
+        let api = PLUGIN_HEADER.split("typedef struct NebulaModApi {").nth(1).and_then(|rest| rest.split("} NebulaModApi;").next()).unwrap();
+        let mut calls = 0;
+        for line in api.lines() {
+            let Some(name) = line.split_once("(*").and_then(|(_, rest)| rest.split_once(")(")).map(|(name, _)| name) else { continue };
+            if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                calls += 1;
+                assert!(reference.contains(&format!("### `{name}`")), "{name} is not in docs/reference/plugin-api.md: run tools/plugin_api_doc.py");
+            }
+        }
+        assert!(calls > 150, "{calls} calls read from the header");
     }
 
     #[test]

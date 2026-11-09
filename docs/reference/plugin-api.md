@@ -1,6 +1,6 @@
 # The plugin interface, call by call
 
-Written from `nebula_mod_api.h`, in its order: fields are only ever added at the end, so a plugin keeps working on later versions of Nebula. Check `game->size` before using a call newer than the oldest Nebula you support.
+Written from `nebula_mod_api.h` (by `tools/plugin_api_doc.py`), in its order: fields are only ever added at the end, so a plugin keeps working on later versions of Nebula. Check `game->size` before using a call newer than the oldest Nebula you support.
 
 A call on an actor with a null pointer is your bug: nothing checks. Calls about the player or the stage do nothing, and answer 0 or null, between stages and on the file select screen.
 
@@ -10,8 +10,8 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `option` | `const char* option(const NebulaPlugin* self, const char* id)` |
 | `subscribe` | `int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)` |
 | `register_object` | `int32_t register_object(const NebulaObjectClass* object)` |
-| `register_creator` | `int32_t register_creator(const char* name, void* (*create)(const char* name), const char* archive)` |
-| `hook` | `int32_t hook(void* target, void* replacement, void** original)` |
+| `register_creator` | `int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)` |
+| `hook` | `int32_t hook(void* target, void* replacement, void* * original)` |
 | `find_function` | `void* find_function(const char* symbol)` |
 | `player` | `NebulaActor* player(void)` |
 | `get_position` | `void get_position(NebulaActor* actor, float* xyz)` |
@@ -61,6 +61,11 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `set_state` | `void set_state(NebulaActor* actor, int32_t state)` |
 | `state` | `int32_t state(NebulaActor* actor)` |
 | `state_frames` | `int32_t state_frames(NebulaActor* actor)` |
+| `nerve` | `const char* nerve(NebulaActor* actor)` |
+| `nerve_frames` | `int32_t nerve_frames(NebulaActor* actor)` |
+| `set_nerve` | `int32_t set_nerve(NebulaActor* actor, const char* nerve)` |
+| `hook_nerve` | `int32_t hook_nerve(const char* nerve, NebulaNerveCallback callback, void* user)` |
+| `nerve_at` | `const char* nerve_at(int32_t index)` |
 | `get_rotation` | `void get_rotation(NebulaActor* actor, float* xyz)` |
 | `set_rotation` | `void set_rotation(NebulaActor* actor, const float* xyz)` |
 | `get_scale` | `void get_scale(NebulaActor* actor, float* xyz)` |
@@ -115,7 +120,7 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `set_object_class` | `int32_t set_object_class(const char* name, const char* like)` |
 | `add_sound_effect` | `int32_t add_sound_effect(const char* name, const char* file)` |
 | `find_actor` | `NebulaActor* find_actor(const char* name, NebulaActor* after)` |
-| `actors_near` | `int32_t actors_near(const float* xyz, float radius, NebulaActor** out, int32_t max)` |
+| `actors_near` | `int32_t actors_near(const float* xyz, float radius, NebulaActor* * out, int32_t max)` |
 | `attack_actor` | `int32_t attack_actor(NebulaActor* target, NebulaActor* by, NebulaAttack how)` |
 | `actor_data` | `void* actor_data(NebulaActor* actor)` |
 | `set_actor_data` | `void set_actor_data(NebulaActor* actor, void* data)` |
@@ -149,7 +154,20 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `set_story` | `int32_t set_story(const char* key, const char* value)` |
 | `save_game` | `void save_game(void)` |
 | `set_tunable` | `int32_t set_tunable(const char* key, double value)` |
-| `tunable_at` | `int32_t tunable_at(int32_t index, const char** file, const char** name, int32_t* place, int32_t* kind, double* game_value, double* value)` |
+| `tunable_at` | `int32_t tunable_at(int32_t index, const char* * file, const char* * name, int32_t* place, int32_t* kind, double* game_value, double* value)` |
+| `set_gravity_scale` | `void set_gravity_scale(float scale)` |
+| `gravity_scale` | `float gravity_scale(void)` |
+| `timer` | `int32_t timer(float* seconds_left, float* seconds_limit)` |
+| `set_timer` | `int32_t set_timer(float seconds_left)` |
+| `pause_timer` | `void pause_timer(int32_t paused)` |
+| `set_camera` | `void set_camera(const float* position, const float* target, float fov)` |
+| `camera_fov` | `float camera_fov(void)` |
+| `show_hud` | `void show_hud(uint32_t parts, int32_t show)` |
+| `set_game_speed` | `void set_game_speed(float speed)` |
+| `step_game` | `void step_game(int32_t steps)` |
+| `draw_text` | `int32_t draw_text(int32_t line, float x, float y, float size, uint32_t rgba, const char* utf8)` |
+| `add_text_like` | `int32_t add_text_like(const char* id, const char* utf8, const char* like_id)` |
+| `add_player_animation` | `int32_t add_player_animation(const char* name, const char* file, float rate, int32_t blend_frames)` |
 
 ## What each does
 
@@ -175,7 +193,7 @@ The choice a player made for one of the mod's options, by option id: its choice 
 int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)
 ```
 
-Only in nebula_plugin_start. 0: done.
+Only in nebula_plugin_start: `callback` runs at each `event` (NEBULA_MOD_EVENT_*), with what it's about. What it returns counts where the event says so (a hit refused, coins changed); else return data->value. 0: done.
 
 ### `register_object`
 
@@ -183,12 +201,12 @@ Only in nebula_plugin_start. 0: done.
 int32_t register_object(const NebulaObjectClass* object)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A class of objects levels can place by its name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name taken, or a class older than Nebula reads.
 
 ### `register_creator`
 
 ```c
-int32_t register_creator(const char* name, void* (*create)(const char* name), const char* archive)
+int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)
 ```
 
 `create` makes the game's own object (a NameObj) from its placed name; `archive` is loaded for it, or null.
@@ -196,7 +214,7 @@ int32_t register_creator(const char* name, void* (*create)(const char* name), co
 ### `hook`
 
 ```c
-int32_t hook(void* target, void* replacement, void** original)
+int32_t hook(void* target, void* replacement, void* * original)
 ```
 
 Run `replacement` in place of the game's function at `target`; `original` gets a call to what was there before it, which may be another plugin's. A function the compiler inlined everywhere can't be reached this way: use events. Windows x64, and Linux and Mac on x64 and arm64. Elsewhere, or for a function whose first instructions can't be moved, it answers -1.
@@ -223,7 +241,7 @@ Null when no stage is running, or outside a stage's frame.
 void get_position(NebulaActor* actor, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Where it is: x, y, z in the level's units.
 
 ### `set_position`
 
@@ -231,7 +249,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_position(NebulaActor* actor, const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It is there at once. The player is put there as after a warp; an object just moves.
 
 ### `get_velocity`
 
@@ -239,7 +257,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void get_velocity(NebulaActor* actor, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How far it moves each frame: x, y, z. The player's is the game's own.
 
 ### `set_velocity`
 
@@ -247,7 +265,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_velocity(NebulaActor* actor, const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its movement from now: the game's gravity and friction go on from it.
 
 ### `value`
 
@@ -255,7 +273,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t value(NebulaModValue what)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+One of the game's numbers (NEBULA_VALUE_*). The player's are 0 with no stage running.
 
 ### `set_value`
 
@@ -263,7 +281,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_value(NebulaModSet what, int32_t value)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Sets one (NEBULA_SET_*); nothing with no stage running. Life 0 or less: the player dies; more than the most: the most. A power-up: the game's (NEBULA_POWER_UP_*) or one add_power_up gave.
 
 ### `kill_player`
 
@@ -271,7 +289,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void kill_player(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The player dies, as from a fall out of the level.
 
 ### `jump_player`
 
@@ -279,7 +297,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void jump_player(const float* velocity)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The player leaves the ground with this velocity, as a spring sends them.
 
 ### `appear`
 
@@ -287,7 +305,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void appear(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It comes into the level (one killed, or one not yet shown): drawn, moving and touchable, as the game's appear.
 
 ### `kill`
 
@@ -295,7 +313,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void kill(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It leaves the level, as a beaten enemy: not drawn, moved or touched. appear brings it back.
 
 ### `is_dead`
 
@@ -303,7 +321,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_dead(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while it's out of the level (killed, or not yet appeared).
 
 ### `show_model`
 
@@ -311,7 +329,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void show_model(NebulaActor* actor, int32_t show)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model.
 
 ### `play`
 
@@ -327,7 +345,7 @@ int32_t play(NebulaActor* actor, NebulaModPlay what, const char* name)
 const char* actor_name(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The name it was made with: a placed object's is its name in the level (Kuribo); some of the game's own objects have Japanese names.
 
 ### `stage_name`
 
@@ -335,7 +353,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 const char* stage_name(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The stage being played (EggStarGalaxy); null with none.
 
 ### `spawn`
 
@@ -351,7 +369,7 @@ A registered object at a place. Its archive must already be loaded: a level plac
 uint32_t buttons_held(void)
 ```
 
-The controls held, and those pressed on this frame: NEBULA_BUTTON_*.
+The controls held now: NEBULA_BUTTON_*, any together. 0 with no stage running.
 
 ### `buttons_pressed`
 
@@ -359,7 +377,7 @@ The controls held, and those pressed on this frame: NEBULA_BUTTON_*.
 uint32_t buttons_pressed(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The controls pressed on this frame only: NEBULA_BUTTON_*.
 
 ### `stick`
 
@@ -375,7 +393,7 @@ The stick, each from -1 to 1.
 void shake_camera(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the camera shakes, as when something heavy lands (shake_camera_by chooses how hard).
 
 ### `add_galaxy`
 
@@ -383,7 +401,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t add_galaxy(const NebulaGalaxy* galaxy)
 ```
 
-Only in nebula_plugin_start. 0: done.
+Only in nebula_plugin_start. 0: done; -2: the galaxy has no scenario archive (StageData/<name>/<name>Scenario.arc in the mod, StageData/<name>Scenario in the store), so it is left out; -1: anything else (its name clashes with one the game has).
 
 ### `add_hungry_luma`
 
@@ -399,7 +417,7 @@ A hungry Luma: placed in a level as TicoGalaxy with its Arg7 at `slot`, it opens
 int32_t add_text(const char* id, const char* utf8)
 ```
 
-A message of the game by its id, in place of its own or new: GalaxyName_<galaxy>, ScenarioName_<galaxy><n>, a talk's id.
+A message of the game by its id, in place of its own or new: GalaxyName_<galaxy>, ScenarioName_<galaxy><n>, a talk's id. A line of the game keeps its talk settings. The words may hold the game's message tags in brackets (nebula_text_tags.h).
 
 ### `add_power_up`
 
@@ -471,7 +489,7 @@ In a stage: a movie over the game, by its place in the game: MovieData/MyMovie.t
 void stop_movie(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The movie playing ends now; the game goes on.
 
 ### `is_movie_playing`
 
@@ -479,7 +497,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_movie_playing(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while a movie plays.
 
 ### `set_event_flag`
 
@@ -495,7 +513,7 @@ Only in nebula_plugin_start. A row of the game's progression, by its name: what 
 int32_t set_comet_schedule(int32_t dome, const char* const* galaxies, const int32_t* coins, int32_t count)
 ```
 
-Only in nebula_plugin_start. A dome's comets, 1 to 6, in the order they come, for the whole of its schedule: `galaxies[i]` with `coins[i]` at 1 for the hundred purple coins.
+Only in nebula_plugin_start. A dome's comets (domes 1 to 6 are the game's; 7, 8 and on add domes while they run on unbroken), in the order they come, for the whole of its schedule: `galaxies[i]` with `coins[i]` at 1 for the hundred purple coins.
 
 ### `set_object_change`
 
@@ -519,7 +537,7 @@ A comet mission's time limit in seconds, for a galaxy and mission of the player'
 int32_t is_animation_done(NebulaActor* actor)
 ```
 
-An object's animation: 1 while the last one started hasn't reached its end; its frame, its length, setting them.
+An object's skeleton animation (what play's NEBULA_PLAY_ANIMATION started): 1 once it has reached its end, 0 while it plays on.
 
 ### `animation_frame`
 
@@ -527,7 +545,7 @@ An object's animation: 1 while the last one started hasn't reached its end; its 
 float animation_frame(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its frame now, from 0; 0 with no model.
 
 ### `animation_length`
 
@@ -535,7 +553,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 float animation_length(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its last frame; 0 with no model.
 
 ### `set_animation_frame`
 
@@ -543,7 +561,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_animation_frame(NebulaActor* actor, float frame)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It goes on from this frame.
 
 ### `set_animation_rate`
 
@@ -551,7 +569,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_animation_rate(NebulaActor* actor, float rate)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its speed: 1 its own, 2 twice, 0 held, below 0 backwards.
 
 ### `stop_effect`
 
@@ -559,7 +577,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void stop_effect(NebulaActor* actor, const char* name)
 ```
 
-null: all of them
+Its effect of that name stops; null: all of them.
 
 ### `stop_sound`
 
@@ -567,7 +585,7 @@ null: all of them
 void stop_sound(NebulaActor* actor, const char* name)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its sound of that name stops.
 
 ### `set_state`
 
@@ -575,7 +593,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_state(NebulaActor* actor, int32_t state)
 ```
 
-An object of register_object's own step in what it's doing. Starts at 0; state_frames counts from the set_state that began it.
+An object of register_object's own step in what it's doing: a number of the plugin's own (its enum of steps), starting at 0; state_frames counts from the set_state that began it.
 
 ### `state`
 
@@ -583,9 +601,7 @@ An object of register_object's own step in what it's doing. Starts at 0; state_f
 int32_t state(NebulaActor* actor)
 ```
 
-The number is the plugin's own: an enum of its steps.
-
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its state: what set_state set last, 0 before that or for an object not register_object's.
 
 ### `state_frames`
 
@@ -593,7 +609,47 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t state_frames(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Frames since that set_state, from 0.
+
+### `nerve`
+
+```c
+const char* nerve(NebulaActor* actor)
+```
+
+The game's own objects (and screens, and the states objects hand their work to) run one nerve at a time: Kuribo walks in "Kuribo.Walk". A nerve's name is "<class>.<nerve>", as docs/modding/NERVES.md lists every one. nerve: the object's now; null for one without nerves (register_object's objects have set_state). nerve_frames: its frames in it, from 0. set_nerve: it goes to another nerve of the class its nerve now is of, from its next frame (the game's code of that nerve runs, as when the game sets it). 0: done; -1: no such nerve of its class.
+
+### `nerve_frames`
+
+```c
+int32_t nerve_frames(NebulaActor* actor)
+```
+
+Its frames in the nerve, from 0.
+
+### `set_nerve`
+
+```c
+int32_t set_nerve(NebulaActor* actor, const char* nerve)
+```
+
+It goes to another nerve of its class (as nerve names it) from its next frame. 0: done; -1: no such nerve.
+
+### `hook_nerve`
+
+```c
+int32_t hook_nerve(const char* nerve, NebulaNerveCallback callback, void* user)
+```
+
+Only in nebula_plugin_start. `callback` runs for every object in the nerve: as it enters, every frame of it, and as it leaves. 0: done; -1: no such nerve.
+
+### `nerve_at`
+
+```c
+const char* nerve_at(int32_t index)
+```
+
+The index-th nerve's name, for listing them all. Null: past the last.
 
 ### `get_rotation`
 
@@ -601,7 +657,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void get_rotation(NebulaActor* actor, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its rotation about x, y and z, in degrees, as levels place it.
 
 ### `set_rotation`
 
@@ -609,7 +665,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_rotation(NebulaActor* actor, const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its rotation, in degrees. A register_object object with a front (set_front) turns by that instead.
 
 ### `get_scale`
 
@@ -617,7 +673,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void get_scale(NebulaActor* actor, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its size on each axis: 1 its own.
 
 ### `set_scale`
 
@@ -625,7 +681,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_scale(NebulaActor* actor, const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Its size on each axis.
 
 ### `set_front`
 
@@ -641,7 +697,7 @@ register_object's objects: the way it faces, standing against gravity. Its model
 void get_front(NebulaActor* actor, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The way it faces (set_front's, or as it turned to the player); 0, 0, 1 for others.
 
 ### `turn_to_player`
 
@@ -649,7 +705,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void turn_to_player(NebulaActor* actor, float degrees)
 ```
 
-at most this far this frame
+It turns to face the player, at most `degrees` this frame.
 
 ### `set_touchable`
 
@@ -665,7 +721,7 @@ register_object's objects: whether anything can touch it, and hurting the player
 int32_t hit_player(NebulaActor* actor, NebulaHit how)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It hurts the player as the game's enemies do (NEBULA_HIT_*), through its body. 1 if the player took it.
 
 ### `placement_number`
 
@@ -673,12 +729,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t placement_number(NebulaActor* actor, const char* column, double* value)
 ```
 
-A column of a `register_object` object's row in the level, by the column's name as a level editor shows it: `Obj_arg0` to `Obj_arg7` (-1 where the level sets none), `CommonPath_ID`, `ShapeModelNo`, `CameraSetId`, `MessageId`, `GroupId`, `ClippingGroupId`, `DemoGroupId`, `ViewGroupId`, `CastId`, `ParentID`, the `SW_` columns, `l_id`. 1 and the number for a number column, whole or not; 0 for a column the row lacks, a column of words, or an object the level didn't place (`spawn`).
-
-```c
-double speed = 0;
-if (game->placement_number(actor, "Obj_arg0", &speed) && speed >= 0) { /* the level set it */ }
-```
+register_object's objects: a column of its row in the level, by the column's name, as a level editor shows it: Obj_arg0 to Obj_arg7 (-1 where the level sets none), CommonPath_ID, ShapeModelNo, CameraSetId, MessageId, GroupId, ClippingGroupId, DemoGroupId, ViewGroupId, CastId, ParentID, the SW_ columns, l_id... placement_number: 1 and the number for a number column (whole or not); 0 for a column the row lacks or one of words, or an object the level didn't place (spawn). placement_text: a column of words (name), or null.
 
 ### `placement_text`
 
@@ -686,7 +737,7 @@ if (game->placement_number(actor, "Obj_arg0", &speed) && speed >= 0) { /* the le
 const char* placement_text(NebulaActor* actor, const char* column)
 ```
 
-A column of words of the same row (`name`), or null.
+A column of words of its row (its name in the level, a camera's name), or null.
 
 ### `has_switch`
 
@@ -694,7 +745,7 @@ A column of words of the same row (`name`), or null.
 int32_t has_switch(NebulaActor* actor, NebulaSwitch which)
 ```
 
-Its switches. is_valid: the level set one.
+Its switches (NEBULA_SWITCH_*): 1 when the level set that one. The other switch calls do nothing for one it didn't.
 
 ### `is_switch_on`
 
@@ -702,7 +753,7 @@ Its switches. is_valid: the level set one.
 int32_t is_switch_on(NebulaActor* actor, NebulaSwitch which)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while that switch is on.
 
 ### `set_switch`
 
@@ -710,7 +761,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_switch(NebulaActor* actor, NebulaSwitch which, int32_t on)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It turns that switch on or off, for all the level's objects that listen to it.
 
 ### `has_rail`
 
@@ -718,7 +769,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t has_rail(NebulaActor* actor)
 ```
 
-Its rail from the level. move_on_rail goes `speed` along and puts the object there.
+Its rail from the level (CommonPath_ID): 1 when it has one. The rail calls do nothing, or answer 0, for an object without.
 
 ### `move_on_rail`
 
@@ -726,7 +777,7 @@ Its rail from the level. move_on_rail goes `speed` along and puts the object the
 void move_on_rail(NebulaActor* actor, float speed)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It goes `speed` along its rail (below 0: back) and is put there.
 
 ### `rail_at_end`
 
@@ -734,7 +785,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t rail_at_end(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 once it has come to the end it moves to.
 
 ### `rail_turn_back`
 
@@ -742,7 +793,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void rail_turn_back(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It moves the other way along it from now.
 
 ### `rail_coord`
 
@@ -750,7 +801,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 float rail_coord(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How far along it is, in the level's units from the rail's start.
 
 ### `set_rail_coord`
 
@@ -758,7 +809,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_rail_coord(NebulaActor* actor, float coord)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+It is put this far along (the next move_on_rail moves it from there).
 
 ### `rail_length`
 
@@ -766,7 +817,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 float rail_length(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The rail's whole length.
 
 ### `raycast`
 
@@ -774,7 +825,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t raycast(const float* from, const float* to, float* hit)
 ```
 
-The world. raycast: 1 and where if the line from `from` to `to` meets the map.
+The world. 1 and where (`hit`) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
 
 ### `is_on_ground`
 
@@ -782,7 +833,7 @@ The world. raycast: 1 and where if the line from `from` to `to` meets the map.
 int32_t is_on_ground(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while it stands on the map: the player, or an object with collision of its own.
 
 ### `is_touching_wall`
 
@@ -790,7 +841,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_touching_wall(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while it touches a wall of the map (objects with collision of their own).
 
 ### `is_in_water`
 
@@ -798,7 +849,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_in_water(const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 if a point is in the stage's water.
 
 ### `distance_to_player`
 
@@ -806,7 +857,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 float distance_to_player(NebulaActor* actor)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How far it is from the player; 0 with no player.
 
 ### `get_joint_position`
 
@@ -814,7 +865,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void get_joint_position(NebulaActor* actor, const char* joint, float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Where one of its model's joints is now; its position with no such joint or model.
 
 ### `player_front`
 
@@ -822,7 +873,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void player_front(float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The way the player faces, a unit length; 0, 0, 1 with no player.
 
 ### `set_player_control`
 
@@ -830,7 +881,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_player_control(int32_t on)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The player's controls: 0 takes them (the player stands still, as in a cutscene), 1 gives them back.
 
 ### `declare_item`
 
@@ -838,7 +889,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void declare_item(NebulaActor* actor, NebulaItem what, int32_t count)
 ```
 
-Items. declare_item in `start`; then appear_item at the moment it comes out.
+Items an object gives: declared in its class's `start` (the game readies them with the stage), then appear_item at the moment one comes out.
 
 ### `appear_item`
 
@@ -846,7 +897,7 @@ Items. declare_item in `start`; then appear_item at the moment it comes out.
 void appear_item(NebulaActor* actor, NebulaItem what, const float* xyz, int32_t count)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+One comes out at a point: coins and star bits pop out `count` at a time; a power star, the star of number `count` (below 0: the stage's).
 
 ### `start_cutscene`
 
@@ -854,7 +905,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t start_cutscene(NebulaActor* actor, const char* name)
 ```
 
-Cutscenes and cameras. start_cutscene: 1 when it began (another may be playing: ask again next frame).
+A cutscene of the stage's (its DemoGroupId's, by name): the actor's part in it starts. 1 when it began; 0 while another plays (ask again next frame).
 
 ### `end_cutscene`
 
@@ -862,7 +913,7 @@ Cutscenes and cameras. start_cutscene: 1 when it began (another may be playing: 
 void end_cutscene(NebulaActor* actor, const char* name)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The actor's part in that cutscene ends; the cutscene ends when every part has.
 
 ### `is_cutscene_playing`
 
@@ -870,7 +921,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_cutscene_playing(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while any cutscene plays.
 
 ### `shake_camera_by`
 
@@ -878,7 +929,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void shake_camera_by(NebulaShake how)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the camera shakes, as hard as `how` (NEBULA_SHAKE_*).
 
 ### `start_camera`
 
@@ -886,7 +937,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void start_camera(const char* name, int32_t frames)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: one of its event cameras (by name, as the stage's camera table has it) takes the view over `frames` frames.
 
 ### `end_camera`
 
@@ -894,7 +945,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void end_camera(const char* name, int32_t frames)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+That camera hands the view back over `frames` frames.
 
 ### `fade_out`
 
@@ -902,7 +953,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void fade_out(int32_t frames)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the screen fades to black over `frames` frames.
 
 ### `fade_in`
 
@@ -910,7 +961,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void fade_in(int32_t frames)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the screen fades back in over `frames` frames.
 
 ### `change_stage`
 
@@ -918,7 +969,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void change_stage(const char* galaxy, int32_t mission)
 ```
 
-The game's progress and text.
+The player goes to a galaxy's mission, as a launch star sends them (the stage ends, the new one loads).
 
 ### `back_to_dome`
 
@@ -926,7 +977,7 @@ The game's progress and text.
 void back_to_dome(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the player goes back to the dome, as when a galaxy is left.
 
 ### `is_event_flag_on`
 
@@ -934,7 +985,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t is_event_flag_on(const char* name)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on.
 
 ### `set_event_flag_on`
 
@@ -942,7 +993,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void set_event_flag_on(const char* name)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Turns it on in the save (written with the next save).
 
 ### `has_star`
 
@@ -950,7 +1001,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t has_star(const char* galaxy, int32_t star)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 if the save has that galaxy's star of that number.
 
 ### `show_message`
 
@@ -958,7 +1009,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void show_message(const char* utf8_or_id, int32_t centre)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+In a stage: the game's information box (at the bottom, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags). It stays until hide_message.
 
 ### `hide_message`
 
@@ -966,7 +1017,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void hide_message(void)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The information box goes.
 
 ### `store_get`
 
@@ -974,7 +1025,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t store_get(const NebulaPlugin* self, const char* key, int32_t missing)
 ```
 
-A number kept for this mod across plays.
+A number kept for this mod across plays (in the mods folder's .plugin-data, written at once). Keys: no '=' or line ends. `missing`: what a key never set answers.
 
 ### `store_set`
 
@@ -982,7 +1033,7 @@ A number kept for this mod across plays.
 void store_set(const NebulaPlugin* self, const char* key, int32_t value)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Keeps `value` under `key`.
 
 ### `set_stage_rules`
 
@@ -1006,7 +1057,7 @@ A number of the player's table by its name (mJumpHeight, mFireModeTime). `charac
 float player_constant(int32_t character, const char* name, int32_t index)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+The number now; 0 with no such number.
 
 ### `set_object_class`
 
@@ -1022,7 +1073,7 @@ Only in nebula_plugin_start. A new name levels can place, made as the game's obj
 int32_t add_sound_effect(const char* name, const char* file)
 ```
 
-Only in nebula_plugin_start. A sound by its name, played from a file (AudioRes/Stream/Boom.wav, .ogg, .ast): a new name, or one of the game's (SE_OJ_COIN_GET) to replace it wherever it plays. 0: done.
+Only in nebula_plugin_start. A sound by its name, played from a file (AudioRes/Stream/Boom.wav, .ogg, .ast): a new name, or one of the game's (SE_OJ_COIN_GET) to replace it wherever it plays, by name or by number (the player's voices, SE_PV_*). "<name>@luigi": in its place while Luigi plays. 0: done.
 
 ### `find_actor`
 
@@ -1035,7 +1086,7 @@ Finding things. An actor by the name levels place it under; `after` null starts,
 ### `actors_near`
 
 ```c
-int32_t actors_near(const float* xyz, float radius, NebulaActor** out, int32_t max)
+int32_t actors_near(const float* xyz, float radius, NebulaActor* * out, int32_t max)
 ```
 
 Living actors within `radius`. Their count; up to `max` go in `out`.
@@ -1054,7 +1105,7 @@ As the player's attack `how`, on any actor. 1 if it took it. `by`: where it come
 void* actor_data(NebulaActor* actor)
 ```
 
-A pointer of your own on any of register_object's objects.
+A pointer of your own on one of register_object's objects: what set_actor_data put there, else null.
 
 ### `set_actor_data`
 
@@ -1062,7 +1113,7 @@ A pointer of your own on any of register_object's objects.
 void set_actor_data(NebulaActor* actor, void* data)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Puts a pointer of your own on it: yours to free (at its class's `kill` or the STAGE_END event).
 
 ### `actor_placed_name`
 
@@ -1086,7 +1137,7 @@ Run again at `frames` frames, or not at all with 0: a plain hit-stop: the whole 
 void gravity_at(const float* xyz, float* out)
 ```
 
-The world.
+Which way is down at a point, a unit length: from the stage's gravity, as an object there would fall.
 
 ### `is_in_area`
 
@@ -1094,7 +1145,7 @@ The world.
 int32_t is_in_area(const char* area, const float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 if a point is in one of the stage's areas of that kind (WaterArea, DeathArea, a ChangeBgmCube...).
 
 ### `camera_position`
 
@@ -1102,7 +1153,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void camera_position(float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Where the camera is.
 
 ### `camera_target`
 
@@ -1110,7 +1161,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void camera_target(float* xyz)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A point the camera looks at, 1000 units before it.
 
 ### `screen_position`
 
@@ -1142,7 +1193,7 @@ The pointer on the screen, in the screen's own coordinates. 0: off it.
 int32_t event_value(const char* name)
 ```
 
-Save data. An event value (a named number the game keeps), by its name.
+Save data. An event value (a named number the save keeps), by its name.
 
 ### `set_event_value`
 
@@ -1150,7 +1201,7 @@ Save data. An event value (a named number the game keeps), by its name.
 void set_event_value(const char* name, int32_t value)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Sets it, held between 0 and 65535 (the save keeps 16 bits).
 
 ### `set_star`
 
@@ -1166,7 +1217,7 @@ A star as if won, or taken away.
 int32_t stars_in_galaxy(const char* galaxy)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How many power stars a galaxy has (its scenarios with a star).
 
 ### `stars_won_in_galaxy`
 
@@ -1174,7 +1225,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t stars_won_in_galaxy(const char* galaxy)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How many of them the save has.
 
 ### `get_tunable`
 
@@ -1182,7 +1233,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t get_tunable(const char* key, double* value, double* game_value)
 ```
 
-A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the number now and the game's. 0: done; -1: no such number. Interface 2; it took the place of `setting` and `setting_by_number`.
+A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the number now and the game's. 0: done; -1: no such number. Interface 2: it took the place of setting and setting_by_number.
 
 ### `layout_open`
 
@@ -1190,7 +1241,7 @@ A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"):
 NebulaLayout* layout_open(const char* name)
 ```
 
-A layout on the screen, for this stage. Null if it has no such archive.
+A layout on the screen (LayoutData/<name>.arc, the game's or a mod's), for this stage: it goes with the stage. Null if there is no such archive.
 
 ### `layout_show`
 
@@ -1198,7 +1249,7 @@ A layout on the screen, for this stage. Null if it has no such archive.
 void layout_show(NebulaLayout* layout, int32_t show)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Shown (1) or hidden (0).
 
 ### `layout_set_text`
 
@@ -1206,7 +1257,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void layout_set_text(NebulaLayout* layout, const char* pane, const char* utf8)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A pane's text: these words, with the game's message tags.
 
 ### `layout_set_number`
 
@@ -1214,7 +1265,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void layout_set_number(NebulaLayout* layout, const char* pane, int32_t number)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A pane's text as a number, in the game's digits.
 
 ### `layout_show_pane`
 
@@ -1222,7 +1273,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void layout_show_pane(NebulaLayout* layout, const char* pane, int32_t show)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A pane shown (1) or hidden (0), with the panes in it.
 
 ### `layout_move_pane`
 
@@ -1230,7 +1281,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void layout_move_pane(NebulaLayout* layout, const char* pane, float x, float y)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+A pane moved to x, y on the screen, where screen_position puts a point; it stays there.
 
 ### `layout_play`
 
@@ -1246,7 +1297,7 @@ Its animation by name.
 int32_t layout_is_playing(NebulaLayout* layout)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+1 while its animation plays.
 
 ### `layout_set_alpha`
 
@@ -1254,7 +1305,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 void layout_set_alpha(NebulaLayout* layout, float alpha)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+How opaque it is: 1 as made, 0 not seen.
 
 ### `store_get_text`
 
@@ -1262,7 +1313,7 @@ See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
 int32_t store_get_text(const NebulaPlugin* self, const char* key, char* out, int32_t size)
 ```
 
-Text kept for this mod across plays, in place of store_get's numbers: how much was read.
+Text kept for this mod across plays, beside store_get's numbers: up to `size` - 1 bytes and an end go in `out`; how many were read (0 for a key never set).
 
 ### `store_set_text`
 
@@ -1270,7 +1321,7 @@ Text kept for this mod across plays, in place of store_get's numbers: how much w
 void store_set_text(const NebulaPlugin* self, const char* key, const char* text)
 ```
 
-See the overview in [the plugin guide](../tutorials/10-first-plugin.md).
+Keeps `text` under `key`.
 
 ### `open_scenario_select`
 
@@ -1307,12 +1358,124 @@ A file's tuning number by "<file stem>.<name>" ("Kuribo.cWalkSpeed"), or a list'
 ### `tunable_at`
 
 ```c
-int32_t tunable_at(int32_t index, const char** file, const char** name, int32_t* place, int32_t* kind, double* game_value, double* value)
+int32_t tunable_at(int32_t index, const char* * file, const char* * name, int32_t* place, int32_t* kind, double* game_value, double* value)
 ```
 
 The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), name, place in its list (-1: one number), kind (1 f32, 2 f64, 3 s32, 4 u32, 5 s16, 6 u16, 7 s8, 8 u8, 9 bool), the game's number and the number now. 0: done; -1: past the last.
 
+### `set_gravity_scale`
+
+```c
+void set_gravity_scale(float scale)
+```
+
+The game's rules as a plugin changes them, any time. Each holds until set again; a stage change keeps it. How hard gravity pulls: the player's fall and every object's. 1 the game's, 0.5 half, 0 none; below 0 pulls away.
+
+### `gravity_scale`
+
+```c
+float gravity_scale(void)
+```
+
+The scale now.
+
+### `timer`
+
+```c
+int32_t timer(float* seconds_left, float* seconds_limit)
+```
+
+The countdown on the screen (a comet's time limit). 1 while one runs, with its seconds left and its whole length; 0 when none does.
+
+### `set_timer`
+
+```c
+int32_t set_timer(float seconds_left)
+```
+
+Its seconds left, within its length. 0: done; -1: no countdown runs.
+
+### `pause_timer`
+
+```c
+void pause_timer(int32_t paused)
+```
+
+1 holds every countdown where it is, 0 lets them run.
+
+### `set_camera`
+
+```c
+void set_camera(const float* position, const float* target, float fov)
+```
+
+The camera at `position` looking at `target`, with `fov` degrees from the picture's top to its bottom. A null point or a fov of 0 leaves that to the game; all three left: the game's camera again. A position set is where the camera is that frame, with no easing, and it passes through walls.
+
+### `camera_fov`
+
+```c
+float camera_fov(void)
+```
+
+The angle of view the camera drew with last, in degrees.
+
+### `show_hud`
+
+```c
+void show_hud(uint32_t parts, int32_t show)
+```
+
+HUD parts (NEBULA_HUD_*) hidden (0) or shown as the game shows them (1).
+
+### `set_game_speed`
+
+```c
+void set_game_speed(float speed)
+```
+
+The scene's speed: 1 the game's, 0.5 one step every other frame, 0 held (menus and the HUD still run). Between 0 and 1. Set in a STAGE_FRAME callback, it counts from that frame.
+
+### `step_game`
+
+```c
+void step_game(int32_t steps)
+```
+
+While held: the scene runs this many steps, one a frame.
+
+### `draw_text`
+
+```c
+int32_t draw_text(int32_t line, float x, float y, float size, uint32_t rgba, const char* utf8)
+```
+
+A line of text over the game, in the game's message font. `line`: its slot, 0-15. x, y: its top-left corner, 0 to 1 across and down the screen. `size`: its height, of the screen's height (0.04 reads like the HUD's numbers). `rgba`: its colour, 0xRRGGBBAA. Null or "" takes the line away; it stays until then, across stages. 0: done; -1: no such slot.
+
+### `add_text_like`
+
+```c
+int32_t add_text_like(const char* id, const char* utf8, const char* like_id)
+```
+
+As add_text, and a new line takes the talk (camera, sound, talk and balloon type) of the game's message `like_id`; null or "": add_text. The words may hold the game's message tags in brackets ([wait 30], [color 1], [player]...: nebula_text_tags.h), as add_text's may.
+
+### `add_player_animation`
+
+```c
+int32_t add_player_animation(const char* name, const char* file, float rate, int32_t blend_frames)
+```
+
+A player animation: `name` plays the bck `file` of the player's animations (ObjectData/MarioAnime.arc: the game's or one the mod adds there, a .bck or an animation in a .glb), at `rate` (1: the bck's own speed), blended in over `blend_frames` frames (0: the game's 6). Played by name (NEBULA_PLAY_PLAYER_ANIMATION), and where the game plays that name: a name the game has (its own animation table's) is played from the mod's bck. Called from the plugin's entry, before the first stage: 0 done; -1 a bad name or file, or too late.
+
 ## Numbers and names
+
+### `NebulaPlugin`
+
+```c
+    uint32_t size;
+    const char* id;       /* the mod's id */
+    const char* version;  /* the mod's version */
+```
 
 ### `NebulaModEvent`
 
@@ -1325,7 +1488,8 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
     NEBULA_MOD_EVENT_STAGE_START,
     /* The player is about to lose one health. Return 0 to refuse the hit. */
     NEBULA_MOD_EVENT_PLAYER_DAMAGE,
-    /* The player is about to die. value: how. */
+    /* The player is about to die. value: how (0 a fall out of the level). Return -1 to refuse it: the player lives on where
+       they are, so move them somewhere safe (set_position) and give back life (set_value) as the plugin's rule says. */
     NEBULA_MOD_EVENT_PLAYER_MISS,
     /* The player's power-up is about to change. value: the new one (NEBULA_POWER_UP_*); what you return is used. */
     NEBULA_MOD_EVENT_POWER_UP,
@@ -1355,6 +1519,14 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
     /* A power star comes into the stage. value: its number. */
     NEBULA_MOD_EVENT_POWER_STAR_APPEAR,
     NEBULA_MOD_EVENT_COUNT
+```
+
+### `NebulaModEventData`
+
+```c
+    int32_t value;
+    NebulaActor* actor;
+    const char* name;
 ```
 
 ### `NebulaModValue`
@@ -1424,6 +1596,30 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
     NEBULA_PLAY_MATERIAL_COLOUR  /* .bpk */
 ```
 
+### `NebulaObjectClass`
+
+```c
+    uint32_t size;
+    const char* name;
+    const char* archive; /* its model and animations: ObjectData/<archive>.arc. Null: nothing to see */
+    float radius;        /* what it touches with */
+    void* user;
+    void (*start)(NebulaActor* actor, void* user);
+    void (*update)(NebulaActor* actor, void* user);
+    void (*touch_player)(NebulaActor* actor, void* user);
+    /* The player attacked it. Return 1 if it took the attack. */
+    int32_t (*attacked)(NebulaActor* actor, void* user);
+    /* The same, saying how: NEBULA_ATTACK_*. If set, it's called in place of `attacked`. */
+    int32_t (*attacked_by)(NebulaActor* actor, int32_t how, void* user);
+    /* What follows may be left out of an older plugin's class: `size` says. */
+    int32_t kind;         /* NEBULA_OBJECT_*: how it touches things and where it's drawn */
+    int32_t collision;    /* 1: its archive's collision model is solid, and moves with it */
+    float shadow_radius;  /* a round shadow under it; 0: none */
+    float clip_radius;    /* not run or drawn when off screen past this; 0: always */
+    void (*appeared)(NebulaActor* actor, void* user);
+    void (*killed)(NebulaActor* actor, void* user);
+```
+
 ### `NebulaObjectKind`
 
 ```c
@@ -1485,6 +1681,58 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
     NEBULA_SHAKE_VERY_STRONG
 ```
 
+### `NebulaGalaxy`
+
+```c
+    uint32_t size;
+    const char* name;
+    const char* map_pane;           /* its icon's pane in the map's layout (MapGrandGalaxy). Null: not on the map */
+    const char* open_condition[3];  /* the event flags that open it, or null */
+    int32_t stars_to_open;          /* power stars it takes to open */
+    int32_t dome;                   /* the dome it belongs to: 1 to 6, 0 for none */
+    int32_t has_map_position;       /* 1: the game makes its icon's pane, at map_position */
+    float map_position[2];          /* from the middle of its dome's page, or of the grand map with no dome: right and up, 608 wide by 456 high */
+```
+
+### `NebulaPowerUpClass`
+
+```c
+    uint32_t size;
+    const char* name;
+    int32_t frames;       /* how long it lasts, at 60 a second. 0: until something ends it */
+    const char* music;    /* the music while it lasts: a BGM_ name, or null */
+    int32_t color_frame;  /* the player's colours: a frame of Mario.arc's ColorChange (0 his own, 1 Flying's, 2 Fire's). 0: those of
+                             looks_like. A mod's Mario.arc can add more. */
+    void* user;
+    void (*start)(void* user);
+    void (*update)(void* user); /* every frame it lasts */
+    void (*end)(void* user);
+    /* What follows may be left out of an older plugin's class: `size` says. */
+    const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the game's */
+    int32_t looks_like;   /* with no model: the look of one of the game's (NEBULA_POWER_UP_*) */
+```
+
+### `NebulaNervePhase`
+
+```c
+    NEBULA_NERVE_ENTER = 0, /* frames is 0 */
+    NEBULA_NERVE_FRAME,     /* before the game's frame of it: return 0 and the game's is not run (yours stands in) */
+    NEBULA_NERVE_LEAVE      /* another nerve was set; the game's own end of this one has run */
+```
+
+### `NebulaHudPart`
+
+```c
+    NEBULA_HUD_COINS = 1u << 0,
+    NEBULA_HUD_STAR_BITS = 1u << 1,
+    NEBULA_HUD_LIVES = 1u << 2,
+    NEBULA_HUD_STARS = 1u << 3,
+    NEBULA_HUD_LIFE_METER = 1u << 4,
+    NEBULA_HUD_POINTER = 1u << 5,
+    NEBULA_HUD_TIMER = 1u << 6,
+    NEBULA_HUD_ALL = 0x7Fu
+```
+
 ### `NebulaObjectsIn`
 
 ```c
@@ -1509,74 +1757,3 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
     NEBULA_BUTTON_PAUSE = 1u << 9,
     NEBULA_BUTTON_MAP = 1u << 10
 ```
-
-### `NebulaPlugin`
-
-```c
-    uint32_t size;
-    const char* id;       /* the mod's id */
-    const char* version;  /* the mod's version */
-```
-
-### `NebulaModEventData`
-
-```c
-    int32_t value;
-    NebulaActor* actor;
-    const char* name;
-```
-
-### `NebulaObjectClass`
-
-```c
-    uint32_t size;
-    const char* name;
-    const char* archive; /* its model and animations: ObjectData/<archive>.arc. Null: nothing to see */
-    float radius;        /* what it touches with */
-    void* user;
-    void (*start)(NebulaActor* actor, void* user);
-    void (*update)(NebulaActor* actor, void* user);
-    void (*touch_player)(NebulaActor* actor, void* user);
-    /* The player attacked it. Return 1 if it took the attack. */
-    int32_t (*attacked)(NebulaActor* actor, void* user);
-    /* The same, saying how: NEBULA_ATTACK_*. If set, it's called in place of `attacked`. */
-    int32_t (*attacked_by)(NebulaActor* actor, int32_t how, void* user);
-    /* What follows may be left out of an older plugin's class: `size` says. */
-    int32_t kind;         /* NEBULA_OBJECT_*: how it touches things and where it's drawn */
-    int32_t collision;    /* 1: its archive's collision model is solid, and moves with it */
-    float shadow_radius;  /* a round shadow under it; 0: none */
-    float clip_radius;    /* not run or drawn when off screen past this; 0: always */
-    void (*appeared)(NebulaActor* actor, void* user);
-    void (*killed)(NebulaActor* actor, void* user);
-```
-
-### `NebulaGalaxy`
-
-```c
-    uint32_t size;
-    const char* name;
-    const char* map_pane;           /* its icon's pane in the map's layout (MapGrandGalaxy). Null: not on the map */
-    const char* open_condition[3];  /* the event flags that open it, or null */
-    int32_t stars_to_open;          /* power stars it takes to open */
-    int32_t dome;                   /* the dome it belongs to: 1 to 6, 0 for none */
-    int32_t has_map_position;       /* 1: the game makes its icon's pane, at map_position */
-    float map_position[2];          /* from the middle of its dome's page, or of the grand map with no dome: right and up, 608 wide by 456 high */
-```
-
-### `NebulaPowerUpClass`
-
-```c
-    uint32_t size;
-    const char* name;
-    int32_t frames;       /* how long it lasts, at 60 a second. 0: until something ends it */
-    const char* music;    /* the music while it lasts: a BGM_ name, or null */
-    int32_t color_frame;  /* the player's colours: a frame of Mario.arc's ColorChange (0 his own, 1 Fire's). A mod's Mario.arc can add more. */
-    void* user;
-    void (*start)(void* user);
-    void (*update)(void* user); /* every frame it lasts */
-    void (*end)(void* user);
-    /* What follows may be left out of an older plugin's class: `size` says. */
-    const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the game's */
-    int32_t looks_like;   /* with no model: the look of one of the game's (NEBULA_POWER_UP_*) */
-```
-

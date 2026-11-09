@@ -187,6 +187,49 @@ pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListin
     Ok(found)
 }
 
+/// One model of an imported game: its path, its joints, materials and textures, and the animations beside it in its
+/// archive (a model made like it, or put in its place, plays those by name).
+pub struct ModelListing {
+    pub path: String,
+    pub names: nebula_import::cook::model_write::ModelNames,
+    pub animations: Vec<String>,
+}
+
+/// The endings of a model's animations in its archive: skeleton (bck, bca), texture moves (btk), colours (brk, bpk),
+/// texture frames (btp), shown parts (bva), cluster and shape moves (blk, bla, bxk, bxa).
+const ANIMATION_ENDINGS: [&str; 11] = ["bck", "bca", "btk", "brk", "bpk", "btp", "bva", "blk", "bla", "bxk", "bxa"];
+
+/// Every model of an imported game whose path holds `filter`, read from the cooked store.
+pub fn list_models(store: &Path, filter: Option<&str>) -> Result<Vec<ModelListing>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let wanted = filter.map(str::to_ascii_lowercase);
+    let files = crate::game_store::GameStore::disc_files(store)?;
+    let ending = |path: &str| path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    let folder = |path: &str| path.rsplit_once('/').map_or(String::new(), |(f, _)| f.to_ascii_lowercase());
+    let mut animations: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (path, _, _) in &files {
+        if ANIMATION_ENDINGS.contains(&ending(path).as_str()) {
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            animations.entry(folder(path)).or_default().push(name);
+        }
+    }
+    let mut pak = fs::File::open(store).with_context(|| format!("{} cannot be read", store.display()))?;
+    let mut found = Vec::new();
+    for (path, position, size) in &files {
+        if !matches!(ending(path).as_str(), "bdl" | "bmd") || wanted.as_ref().is_some_and(|w| !path.to_ascii_lowercase().contains(w)) {
+            continue;
+        }
+        let mut bytes = vec![0u8; usize::try_from(*size)?];
+        pak.seek(SeekFrom::Start(*position))?;
+        pak.read_exact(&mut bytes)?;
+        let names = nebula_import::cook::model_write::names(&bytes).with_context(|| format!("{path}: model"))?;
+        let mut beside = animations.get(&folder(path)).cloned().unwrap_or_default();
+        beside.sort_by_key(|a| a.to_ascii_lowercase());
+        found.push(ModelListing { path: path.clone(), names, animations: beside });
+    }
+    Ok(found)
+}
+
 /// A language's messages of an imported game (`UsEnglish`, `EuFrench`...): (id, text with the game's tags in brackets,
 /// whether that text reads back as the game's own units).
 pub fn list_messages(store: &Path, language: &str) -> Result<Vec<(String, String, bool)>> {

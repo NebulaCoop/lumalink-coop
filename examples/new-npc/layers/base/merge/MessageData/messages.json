@@ -1,0 +1,21 @@
+{
+  "lines": {
+    "EggStarGalaxy_Lumie000": {
+      "default": "Oh! [player]! I'm Lumie.[page]I followed the comets all the way here.[wait 20] This planet is so bouncy!",
+      "fr": "Oh ! [player] ! Je suis Lumie.[page]J'ai suivi les comètes jusqu'ici.[wait 20] Cette planète est si rebondissante !",
+      "es": "¡Oh! ¡[player]! Soy Lumie.[page]He seguido a los cometas hasta aquí.[wait 20] ¡Este planeta es muy saltarín!",
+      "like": "AstroGalaxy_Kinopio012"
+    },
+    "EggStarGalaxy_Lumie001": {
+      "default": "The stars hum when you're near.",
+      "fr": "Les étoiles chantonnent quand tu es là.",
+      "es": "Las estrellas tararean cuando estás cerca.",
+      "like": "AstroGalaxy_Kinopio012",
+      "talk": "short"
+    }
+  },
+  "flows": {
+    "EggStarGalaxy_Lumie000": "EggStarGalaxy_Lumie001",
+    "EggStarGalaxy_Lumie001": "EggStarGalaxy_Lumie001"
+  }
+}

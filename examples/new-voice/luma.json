@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "id": "new-voice",
+  "name": "A New Voice",
+  "description": "The player's jump voices from the mod's own sounds, Luigi's of his own. No code: the game starts its voices by number, and a sound replaced by name plays there too.",
+  "layers": [
+    {
+      "path": "layers/base",
+      "sound_effects": [
+        { "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/HupSmall.wav" },
+        { "name": "SE_PV_JUMP_M", "file": "AudioRes/Stream/HupMiddle.wav" },
+        { "name": "SE_PV_JUMP_L", "file": "AudioRes/Stream/HupBig.wav" },
+        { "name": "SE_PV_JUMP_S@luigi", "file": "AudioRes/Stream/HupLuigi.wav" },
+        { "name": "SE_PV_JUMP_M@luigi", "file": "AudioRes/Stream/HupLuigi.wav" },
+        { "name": "SE_PV_JUMP_L@luigi", "file": "AudioRes/Stream/HupLuigi.wav" }
+      ]
+    }
+  ]
+}

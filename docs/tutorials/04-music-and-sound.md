@@ -63,7 +63,11 @@ A sound by its name, played from a file. A new name, or one of the game's to rep
 } ]
 ```
 
-The file goes in `files/` at that place. In a plugin, `game->play(actor, NEBULA_PLAY_SOUND, "MyBoom")` plays it from an object, and `game->play_system_sound("MyBoom")` from nowhere in particular. Game sound names are in the sound table: a level's `SoundEmitterCube`, an object's own table, and `lumalink table` on any file that names them show what's used.
+The file goes in `files/` at that place. A game sound replaced plays the file wherever the game starts it: by its name, and by
+its number too, as the player's voices are started (`SE_PV_JUMP_S`, Mario's small jump). Luigi plays the same voices: a row named
+`SE_PV_JUMP_S@luigi` is played in its place while he is the player, and without one he plays the row for every player.
+
+In a plugin, `game->play(actor, NEBULA_PLAY_SOUND, "MyBoom")` plays it from an object, and `game->play_system_sound("MyBoom")` from nowhere in particular. Game sound names are in the sound table: a level's `SoundEmitterCube`, an object's own table, and `lumalink table` on any file that names them show what's used.
 
 ## The game's sound banks
 

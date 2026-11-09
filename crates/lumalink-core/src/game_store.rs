@@ -34,6 +34,16 @@ fn is_archive_name(name: &str) -> bool {
 impl GameStore {
     /// Every file of a store with where its bytes are: (path as the store names it, position, size), in index order.
     pub fn files(path: &Path) -> Result<Vec<(String, u64, u64)>> {
+        Self::walk(path, false)
+    }
+
+    /// As `files`, with each archive's folder named as on the disc (`ObjectData/Kinopio.arc/kinopio.bdl`): as a mod's
+    /// layer names it.
+    pub fn disc_files(path: &Path) -> Result<Vec<(String, u64, u64)>> {
+        Self::walk(path, true)
+    }
+
+    fn walk(path: &Path, disc: bool) -> Result<Vec<(String, u64, u64)>> {
         let mut pak = File::open(path).with_context(|| format!("{} cannot be read", path.display()))?;
         let mut header = [0u8; 64];
         pak.read_exact(&mut header).with_context(|| format!("{} is too short to be a game store", path.display()))?;
@@ -57,10 +67,14 @@ impl GameStore {
             let size = u64::from_le_bytes(node[8..16].try_into().unwrap());
             let name_at = u32::from_le_bytes(node[16..20].try_into().unwrap()) as usize;
             let parent = u32::from_le_bytes(node[20..24].try_into().unwrap()) as usize;
-            let folder = u32::from_le_bytes(node[24..28].try_into().unwrap()) & 1 != 0;
+            let flags = u32::from_le_bytes(node[24..28].try_into().unwrap());
+            let folder = flags & 1 != 0;
             let tail = names.get(name_at..).unwrap_or(&[]);
             let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
-            let name = String::from_utf8_lossy(&tail[..end]).to_string();
+            let mut name = String::from_utf8_lossy(&tail[..end]).to_string();
+            if disc && flags & 2 != 0 {
+                name.push_str(".arc");
+            }
             let path = match full.get(parent).map(String::as_str) {
                 _ if i == 0 => String::new(),
                 Some("") | None => name,

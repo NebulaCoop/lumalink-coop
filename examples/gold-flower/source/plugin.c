@@ -14,6 +14,7 @@ static const NebulaPlugin* me;
 static int32_t gold = -1; /* add_power_up's number */
 static int give_at_start;
 static int given;
+static int spun; /* the first spin with its animation, logged once */
 
 enum { NEAR_MAX = 32 };
 
@@ -53,7 +54,12 @@ static int32_t on_spin(const NebulaModEventData* data, void* user) {
             burned++;
         }
     }
-    game->play(player, NEBULA_PLAY_PLAYER_ANIMATION, "GoldFlowerSpin");
+    if (game->play(player, NEBULA_PLAY_PLAYER_ANIMATION, "GoldFlowerSpin") == 0) {
+        game->log(me, "gold flower: the player has no GoldFlowerSpin");
+    } else if (!spun) {
+        spun = 1;
+        game->log(me, "gold flower: spun with GoldFlowerSpin");
+    }
     game->play(player, NEBULA_PLAY_EFFECT, "SpinLightBurst");
     game->play(player, NEBULA_PLAY_SOUND, "GoldFlowerZap");
     if (burned > 0) {
@@ -90,7 +96,7 @@ static int32_t on_stage_frame(const NebulaModEventData* data, void* user) {
 
 NEBULA_PLUGIN_ENTRY(api, self) {
     static const NebulaPowerUpClass power = {
-        sizeof(NebulaPowerUpClass), "GoldFlower", 20 * 60, "BGM_FIRE_A", 1, 0, power_start, 0, power_end,
+        sizeof(NebulaPowerUpClass), "GoldFlower", 20 * 60, "BGM_FIRE_A", 2, 0, power_start, 0, power_end,
         0, NEBULA_POWER_UP_FIRE,
     };
     static const NebulaObjectClass flower = {

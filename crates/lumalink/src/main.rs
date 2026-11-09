@@ -113,14 +113,16 @@ enum Command {
     },
     /// List what the game's names are: settings, player (its numbers), objects, rules, tables (every table of your
     /// imported game with its rows and columns: what a merge/ file can add to, remove from or change), or messages (every
-    /// message id of a language with its words, tags in brackets, as a "text" row takes them).
+    /// message id of a language with its words, tags in brackets, as a "text" row takes them), or models (every model of
+    /// your imported game with its joints, materials, textures and the animations beside it: what a model made like it,
+    /// or in its place, is matched by).
     List {
-        /// settings, player, objects, rules, tables, messages
+        /// settings, player, objects, rules, tables, messages, models
         what: String,
         /// Only names holding this (for tables: a path or a column name).
         #[arg(long)]
         filter: Option<String>,
-        /// Your imported game (Nebula's game.pak), for tables and messages.
+        /// Your imported game (Nebula's game.pak), for tables, messages and models.
         #[arg(long, value_name = "FILE")]
         game: Option<PathBuf>,
         /// The language folder of the messages: UsEnglish (the default), UsFrench, EuGerman, JpJapanese...
@@ -388,7 +390,25 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     let same = messages.iter().filter(|m| m.2).count();
                     println!("{shown} of {} messages; {same} read back as the game's own", messages.len());
                 }
-                other => bail!("{other}: choose settings, player, objects, rules, tables or messages"),
+                "models" => {
+                    let game = game.context("models are your game's: name its game.pak with --game")?;
+                    let models = lumalink_core::inspect::list_models(&game, filter.as_deref())?;
+                    for model in &models {
+                        println!("{}", model.path);
+                        println!("  joints: {}", model.names.joints.join(" "));
+                        println!("  materials: {}", model.names.materials.join(" "));
+                        let mut textures: Vec<&str> = Vec::new();
+                        for texture in &model.names.textures {
+                            if !textures.contains(&texture.as_str()) {
+                                textures.push(texture);
+                            }
+                        }
+                        println!("  textures: {}", textures.join(" "));
+                        println!("  animations: {}", model.animations.join(" "));
+                    }
+                    println!("{} models", models.len());
+                }
+                other => bail!("{other}: choose settings, player, objects, rules, tables, messages or models"),
             }
             Ok(ExitCode::SUCCESS)
         }

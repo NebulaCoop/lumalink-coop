@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "layers": [
+    {
+      "path": "layers/base",
+      "object_classes": [
+        {
+          "name": "Lumie",
+          "like": "Kinopio"
+        }
+      ]
+    }
+  ],
+  "id": "new-npc",
+  "name": "Lumie, a New Friend",
+  "description": "A character the game doesn't have, by Good Egg's start: its own model, skeleton, materials, textures and animations (one glTF file), made like a Toad, with its own talk. All data, no code."
+}
