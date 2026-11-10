@@ -20,7 +20,7 @@ pub struct PlannedFile {
 /// How serious a note is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Level {
-    /// Worth knowing; nothing is lost.
+    /// Information only.
     Info,
     /// Part of the mod does not reach the game.
     Lost,
@@ -126,7 +126,7 @@ impl Plan {
             self.note(Level::Lost, format!("{disc}: Nebula's own tables are not set by mods"));
             return;
         }
-        // A console's own files (banner, HOME menu, module list): Nebula has none of those, so nothing is lost.
+        // A console's own files (banner, HOME menu, module list): Nebula has none of those.
         if nebula_import::cook::console_only(disc.trim_start_matches('/')) || is_language_home_menu(&disc) {
             self.note(Level::Info, format!("{disc}: only the console reads this (its banner, HOME menu or module list); Nebula has none"));
             return;
@@ -384,7 +384,7 @@ impl Builder<'_> {
 
     fn folder(&mut self, sd_root: &Path, patch_root: &Path, folder: &FolderPatch, disc: &str, external: &str) {
         let Some(directory) = resolve(sd_root, patch_root, external).filter(|d| d.is_dir()) else {
-            // Patches often list folders the download doesn't bring. Riivolution skips those too: nothing is lost.
+            // Patches often list folders the download doesn't bring. Riivolution skips those too.
             return;
         };
         let Ok(entries) = fs::read_dir(&directory) else {

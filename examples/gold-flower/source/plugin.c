@@ -7,8 +7,11 @@
    source/make_gold_flower.py writes the model and the particle files.
    - Its spin: an animation of its own, GoldFlowerSpin (luma.json's player_animations: the game's fire spin, faster),
      that burns every enemy within 600 units, as fire does, with a burst of light and its sound.
+   - Its physics: the first jump goes a third higher while it lasts (set_player_constant), the game's again after.
    Only the stable interface: it builds for every device Nebula runs on (build.cmd or build.sh: lumalink build). */
 #include "nebula_mod_api.h"
+
+NEBULA_PLUGIN_FLOATS
 
 static const NebulaModApi* game;
 static const NebulaPlugin* me;
@@ -19,6 +22,9 @@ static int spun; /* the first spin with its animation, logged once */
 
 enum { NEAR_MAX = 32 };
 
+/* The player's first jump while the power-up lasts, and the number it had before. */
+static float jump_before;
+
 static void power_start(void* user) {
     NebulaActor* player = game->player();
     (void)user;
@@ -26,6 +32,8 @@ static void power_start(void* user) {
         game->play(player, NEBULA_PLAY_EFFECT, "GoldFlowerAura");
         game->play(player, NEBULA_PLAY_SOUND, "GoldFlowerOn");
     }
+    jump_before = game->player_constant(0, "mJumpHeight", 0);
+    game->set_player_constant(0, "mJumpHeight", 0, jump_before * 1.33f);
     game->log(me, "gold flower: on");
 }
 
@@ -35,6 +43,7 @@ static void power_end(void* user) {
     if (player != 0) {
         game->stop_effect(player, "GoldFlowerAura");
     }
+    game->set_player_constant(0, "mJumpHeight", 0, jump_before);
     game->log(me, "gold flower: off");
 }
 

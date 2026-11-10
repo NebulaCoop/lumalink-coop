@@ -7,7 +7,8 @@ It is a zip file with `luma.json` as its first entry. Inside are the mod's files
 ```
 My Mod.luma
 ├── luma.json                  what the mod is
-├── icon.png                   optional, square, 256x256 or smaller
+├── icon.png                   optional: a PNG, square looks best, 256x256 is plenty
+├── pictures/                  optional: screenshots and art for the mod's page
 ├── layers/
 │   └── base/
 │       ├── files/             files by their place in the game: StageData/MyGalaxy.arc
@@ -34,6 +35,7 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
   "license": "CC-BY-4.0",
   "homepage": "https://example.com/kaizo",
   "icon": "icon.png",
+  "pictures": ["pictures/first-galaxy.png", "pictures/boss.png"],
   "options": [
     {
       "id": "lives",
@@ -65,8 +67,10 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `requires` | no | Names of format features it cannot work without (see "Later additions"). |
 | `authors` | no | Names. |
 | `description` | no | Text. |
-| `license`, `homepage` | no | Strings. |
-| `icon` | no | A PNG in the file. |
+| `license` | no | Text: a license's name (`CC-BY-4.0`, `MIT`) or its own words. Shown on the mod's page. |
+| `homepage` | no | A web address starting with `https://` (or `http://`). Shown on the mod's page. |
+| `icon` | no | A PNG in the file. The first picture of the mod's page. |
+| `pictures` | no | PNGs in the file, shown after the icon on the mod's page, in order. The game shows the first 16. |
 | `needs` | no | Other mods it needs: `[{ "id": "other", "version": "1.2.0" }]`, where `version` is the oldest that will do. |
 | `conflicts` | no | Mods it can't run with: `[{ "id": "other", "below": "2.0.0" }]`. Without `below`: every version. |
 | `load_after`, `load_before` | no | Ids. Where this mod goes in the player's list when first added. The player's own order then wins. |
@@ -98,7 +102,7 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | Field | Meaning |
 |---|---|
 | `path` | The layer's folder. It may hold `files/`, `textures/` and `movies/`. May be left out for a layer that only sets tunables. |
-| `tunables` | The game's tuning numbers by `"<file stem>.<name>"`: a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](reference/settings.md). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
+| `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](reference/settings.md). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `when` | Conditions. All of those given must hold. Left out: always. |
 
 `when` may hold:
@@ -319,9 +323,14 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves out the version being played. |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off, or can't be used. |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | A mod in `needs` is older than it says. |
-| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on. |
+| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on above it in the list (of two that can't run together, the lower one is left off, whichever names the other), or a mod above it plays on another family of its own saves. |
+| ANOTHER COPY OF THIS MOD IS ON: {FOLDER} | Two folders hold the same `id` (a copy made by hand): the one higher in the list is used. |
 | THIS MOD HAS NO VERSION FOR THIS DEVICE | A plugin has no library for this device. |
+| THIS MOD'S CODE IS FOR AN OLDER NEBULA: REBUILD IT WITH THIS NEBULA'S NEBULA_MOD_API.H | A plugin's `api` is older than the game's. |
+| THIS MOD'S CODE IS OFF AFTER A CRASH. RESTART TO TRY IT AGAIN | The last run crashed while mods' code ran: this run starts without it. |
 | THIS FILE IS DAMAGED | Not a zip, `luma.json` missing or not readable, or a listed path missing. |
+
+A mod's needs, conflicts, copies and saves are worked out again whenever the player turns a mod on or off or moves one, until nothing changes: a mod that loses what it needs takes with it the mods that need it.
 
 ## Later additions
 
@@ -341,7 +350,9 @@ Nebula reads every format it has ever read.
 `lumalink check my-mod.luma` reports each of these:
 
 - `luma.json` is the first entry, is valid, and has its needed fields.
-- Every `path`, `icon` and `save.path` exists in the file.
+- Every `path`, `icon`, `pictures` entry and `save.path` exists in the file.
+- `icon` and `pictures` are PNGs of at most 8192 pixels a side and 64 MB; at most 16 pictures. Over 1024 pixels a side gets a note: the game shows a picture at most 1024 a side.
+- `homepage` starts with `https://` or `http://`; `license` is text.
 - No path leaves the file.
 - `when` names only options the file declares, and only their choices.
 - `default` is one of its option's choices.

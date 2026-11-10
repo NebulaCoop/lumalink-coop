@@ -2,9 +2,7 @@
 
 LumaLink turns Super Mario Galaxy mods and texture packs into `.luma` files that [Nebula](https://github.com/keepvaibin/nebula), the native version of the game, runs directly.
 
-One mod makes one file. That file works on every version of the game and on every device the mod has builds for. Nebula prepares its files itself, so a `.luma` made today keeps working on later versions of Nebula.
-
-There's a window, for dropping mods on and ticking the ones to convert, and a command line that does the same.
+One mod makes one file, for every version of the game and every device. There's a window and a command line.
 
 ## Quick start
 
@@ -14,9 +12,9 @@ Open LumaLink, drop a mod on it, and press Convert. Or:
 lumalink convert "Some Mod.zip" --game "path/to/game.pak"
 ```
 
-This writes `Some Mod.luma` and says what happened to everything in the mod. Open the file in Nebula: Settings, Mods, Import.
+This writes `Some Mod.luma` and a report. In Nebula: Settings, Mods, Import.
 
-`game.pak` is the game you imported into Nebula. LumaLink reads it to find where files named without a folder belong. Nothing from it goes into the converted file.
+`game.pak` is the game you imported into Nebula. LumaLink reads it to place loose files; none of it goes into the `.luma`.
 
 ## What you can give it
 
@@ -37,13 +35,13 @@ This writes `Some Mod.luma` and says what happened to everything in the mod. Ope
 | Texture packs | Carried over. Nebula sorts them into categories players can switch on and off |
 | Models with materials Nebula doesn't have | Nebula builds their programs on the player's device, once, with a progress screen |
 | A galaxy the mod adds | Listed in the file, and given its own saves |
-| Known code patches | Turned into the game's tunable for the same change, its value read from the patch |
-| Other code patches, `CustomCode`, `.gct` and `.dol` files | **Can't be converted.** Named in the report. The rest of the mod still applies |
-| Mods for Super Mario Galaxy 2 | Refused with a clear message |
+| Known code patches and Gecko codes (`.gct`, Dolphin `.ini`) | Turned into the tunable or sample plugin that does the same |
+| Other code patches, `CustomCode` and `.dol` files | **Not converted.** Named in the report; the rest of the mod applies |
+| Mods for Super Mario Galaxy 2 | Refused |
 
 ### Why Wii code can't be converted
 
-Code patches and custom code are PowerPC instructions aimed at exact addresses in the Wii program. Nebula doesn't contain that program, so there is nothing for them to attach to. What such a patch does has to be written again, as a tunable or a plugin. [`known_patches.rs`](crates/lumalink-core/src/known_patches.rs) lists the ones done so far.
+Code patches are PowerPC instructions for exact addresses in the Wii program, which Nebula doesn't contain. Their effect has to be rewritten as a tunable or a plugin. [`known_patches.rs`](crates/lumalink-core/src/known_patches.rs) and [`gecko.rs`](crates/lumalink-core/src/gecko.rs) list the ones done.
 
 ## Commands
 
@@ -75,6 +73,7 @@ lumalink pack "My Mod"
 | Everything a `.luma` can hold: options, regions, saves, new galaxies, hungry Lumas, text, shaders | [docs/format.md](docs/format.md) |
 | Change what the game does, with your own code | [docs/plugins.md](docs/plugins.md) |
 | Everything, in one page | [docs/REFERENCE.md](docs/REFERENCE.md) |
+| Every page and the game's lists as one book | [docs/book.md](docs/book.md) |
 
 `lumalink-core` is the library behind LumaLink, if you'd rather use it.
 
@@ -89,7 +88,7 @@ cargo build --release
 cargo test
 ```
 
-The results are `target/release/lumalink` and `target/release/lumalink-gui`. LumaLink uses Nebula's own converter, the `nebula-import` crate, so a converted mod matches what Nebula expects. Reading a `.rar` uses your system's `tar` command, which Windows 10 and later, macOS and most Linux systems include.
+This builds `target/release/lumalink` and `target/release/lumalink-gui`. Conversion uses Nebula's `nebula-import` crate. `.rar` files need the system `tar` (Windows 10+, macOS, most Linux).
 
 ## Layout
 
@@ -103,7 +102,7 @@ The results are `target/release/lumalink` and `target/release/lumalink-gui`. Lum
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Reports of mods that convert badly are especially useful. Please send the mod's name and `report.txt`, not game files.
+See [CONTRIBUTING.md](CONTRIBUTING.md). For a mod that converts badly, send its name and `report.txt`, not game files.
 
 ## License
 

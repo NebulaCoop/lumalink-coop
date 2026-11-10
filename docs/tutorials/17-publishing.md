@@ -37,4 +37,4 @@ Use `merge/` in place of replacing a whole level or table, so yours and others' 
 
 ## What players see
 
-Its name, icon, description, authors and options are on its row of the Mods page, in the player's language where you've given one. See [`luma.json`](../reference/luma-json.md).
+Its name, icon, description, authors and options are on its row of the Mods page, in the player's language where you've given one. See [`luma.json`](../format.md).

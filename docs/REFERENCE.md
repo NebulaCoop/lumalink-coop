@@ -116,7 +116,7 @@ The rule: **a write is matched by where it is in the game, and its value is read
 ### Settings
 
 Written into a layer's `tunables` (and `"requires": ["tunables"]`), each the game's own tuning number by
-`"<file stem>.<name>"`. The [settings reference](reference/settings.md) has every one with the game's value.
+`"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`). The [settings reference](reference/settings.md) has every one with the game's value.
 
 | Tunable | Read from the write | What it does |
 |---|---|---|

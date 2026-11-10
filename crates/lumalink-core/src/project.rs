@@ -361,6 +361,54 @@ fn check_text(value: &Value, field: &str, found: &mut Findings) {
     }
 }
 
+/// The pictures a mod's page shows besides its icon (the game's `kMaxPictures`).
+const MAX_PICTURES: usize = 16;
+/// The largest side of a picture the game reads.
+const MAX_PICTURE_SIDE: u32 = 8192;
+/// The largest picture file the game reads.
+const MAX_PICTURE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// A PNG's size from its header; None when the bytes aren't a PNG.
+fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'];
+    if bytes.len() < 24 || bytes[..8] != SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+    Some((width, height))
+}
+
+/// The icon or a picture as the game reads it: a PNG in the file, at most 8192 pixels a side and 64 MB. The game shows
+/// pictures at most 1024 pixels a side: a larger one is shown at a half, quarter... of its size.
+fn check_picture(folder: &Path, path: &str, what: &str, found: &mut Findings) {
+    let file = folder.join(path);
+    let Ok(meta) = fs::metadata(&file) else {
+        found.problem(format!("{what} isn't in the file"));
+        return;
+    };
+    if !meta.is_file() {
+        found.problem(format!("{what} isn't in the file"));
+        return;
+    }
+    if meta.len() > MAX_PICTURE_BYTES {
+        found.problem(format!("{what} is over 64 MB: the game doesn't read it"));
+        return;
+    }
+    let mut head = [0u8; 24];
+    let read = fs::File::open(&file).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head));
+    match read.ok().and_then(|_| png_size(&head)) {
+        None => found.problem(format!("{what} has to be a PNG")),
+        Some((width, height)) if width == 0 || height == 0 || width > MAX_PICTURE_SIDE || height > MAX_PICTURE_SIDE => {
+            found.problem(format!("{what} is {width}x{height}: the game reads pictures up to {MAX_PICTURE_SIDE} pixels a side"))
+        }
+        Some((width, height)) if width > 1024 || height > 1024 => {
+            found.note(format!("{what} is {width}x{height}: the game shows it at most 1024 pixels a side"))
+        }
+        Some(_) => {}
+    }
+}
+
 /// A path inside the file: going up or starting from a drive is refused.
 fn inside(path: &str) -> bool {
     !path.is_empty() && Path::new(path).components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) && !path.contains(':')
@@ -1246,7 +1294,7 @@ fn check_plugins(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec
         }
     }
     if !plugins.is_empty() {
-        found.note("This mod runs its own code, with everything the game can do on the player's device. Players are told before it first runs.");
+        found.note("Runs its own code. Players are asked before it first runs.");
     }
 }
 
@@ -1349,14 +1397,31 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
     }
     if let Some(icon) = manifest.get("icon") {
         match icon.as_str() {
-            Some(path) if inside(path) => {
-                if !folder.join(path).is_file() {
-                    found.problem(format!("the icon {path} isn't in the file"));
-                } else if !Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
-                    found.problem("the icon has to be a PNG");
-                }
-            }
+            Some(path) if inside(path) => check_picture(folder, path, "the icon", found),
             _ => found.problem("icon is a path in the file"),
+        }
+    }
+    if let Some(pictures) = manifest.get("pictures") {
+        let list = string_list(pictures, "pictures", found);
+        if list.len() > MAX_PICTURES {
+            found.problem(format!("pictures lists {} pictures: the game shows the first {MAX_PICTURES}", list.len()));
+        }
+        for path in list {
+            if inside(path) {
+                check_picture(folder, path, &format!("the picture {path}"), found);
+            } else {
+                found.problem(format!("pictures: {path:?} isn't a path in the file"));
+            }
+        }
+    }
+    if let Some(homepage) = manifest.get("homepage") {
+        if !homepage.as_str().is_some_and(|h| h.starts_with("https://") || h.starts_with("http://")) {
+            found.problem("homepage is a web address starting with https://");
+        }
+    }
+    if let Some(license) = manifest.get("license") {
+        if !license.as_str().is_some_and(|l| !l.trim().is_empty()) {
+            found.problem("license is text: a name such as CC-BY-4.0, or the license's own words");
         }
     }
     if let Some(save) = manifest.get("save") {
@@ -1562,11 +1627,51 @@ mod tests {
             (r#""authors":["A"]"#, r#""authors":["A"],"save":{"mode":"mine"}"#, "save.mode"),
             (r#""authors":["A"]"#, r#""authors":["A"],"save":{"tag":"Bad Tag"}"#, "save.tag"),
             (r#""authors":["A"]"#, r#""authors":["A"],"save":{"path":"none"}"#, "save.path"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"icon":"none.png""#, "the icon isn't in the file"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"icon":"../up.png""#, "icon is a path in the file"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"pictures":["none.png"]"#, "the picture none.png isn't in the file"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"pictures":["../x.png"]"#, "isn't a path in the file"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"pictures":"x.png""#, "pictures is a list"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"homepage":"example.com""#, "homepage is a web address"),
+            (r#""authors":["A"]"#, r#""authors":["A"],"license":"""#, "license is text"),
         ] {
             assert!(GOOD.contains(from), "{from}");
             let bad = checked(&GOOD.replace(from, to));
             assert!(bad.iter().any(|t| t.contains(says)), "{from} -> {to}: {bad:?}");
         }
+    }
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = vec![0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n', 0, 0, 0, 13];
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        bytes.extend_from_slice(&[8, 6, 0, 0, 0]);
+        bytes
+    }
+
+    #[test]
+    fn check_reads_the_icon_and_pictures() {
+        let dir = tempfile::tempdir().unwrap();
+        let with = |extra: &str| {
+            write(dir.path(), "luma.json", &GOOD.replace(r#""authors":["A"]"#, &format!(r#""authors":["A"],{extra}"#)));
+            write(dir.path(), "layers/base/files/StageData/a.arc", "x");
+            check(dir.path(), None).unwrap()
+        };
+        fs::write(dir.path().join("icon.png"), png(256, 256)).unwrap();
+        fs::write(dir.path().join("big.png"), png(4096, 2048)).unwrap();
+        fs::write(dir.path().join("huge.png"), png(9000, 10)).unwrap();
+        fs::write(dir.path().join("fake.png"), b"not a picture at all, just words").unwrap();
+        let good = with(r#""icon":"icon.png","pictures":["icon.png","big.png"],"homepage":"https://x.example","license":"MIT""#);
+        assert!(good.iter().all(|f| !f.serious), "{good:?}");
+        assert!(good.iter().any(|f| f.text.contains("big.png is 4096x2048")), "{good:?}");
+        let huge = with(r#""pictures":["huge.png"]"#);
+        assert!(huge.iter().any(|f| f.serious && f.text.contains("9000x10")), "{huge:?}");
+        let fake = with(r#""icon":"fake.png""#);
+        assert!(fake.iter().any(|f| f.serious && f.text.contains("the icon has to be a PNG")), "{fake:?}");
+        let many: Vec<String> = (0..17).map(|_| "\"icon.png\"".to_string()).collect();
+        let lots = with(&format!(r#""pictures":[{}]"#, many.join(",")));
+        assert!(lots.iter().any(|f| f.serious && f.text.contains("the first 16")), "{lots:?}");
     }
 
     fn pe(machine: u16) -> Vec<u8> {

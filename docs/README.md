@@ -2,7 +2,7 @@
 
 Nebula is Super Mario Galaxy rebuilt as a native program. LumaLink makes mods for it: it converts what people have already made, and it builds new ones. A mod is one `.luma` file that works on every version of the game and every device.
 
-There's almost nothing a mod can't change. Files, levels, objects, the player's physics, power-ups, the star count, the story's order, music, text, shaders and whole new enemies, with no code at all for most of it and a full plugin interface for the rest.
+A mod can change files, levels, objects, the player's physics, power-ups, the star count, the story's order, music, text, shaders and cutscenes, and add new enemies, characters and galaxies. Most of it needs no code; the plugin interface covers the rest.
 
 ## Where to start
 
@@ -42,21 +42,21 @@ Each one starts from nothing and ends with something running in the game.
 
 | Page | What's in it |
 |---|---|
-| [`luma.json`](reference/luma-json.md) | Every key of a mod |
-| [Files](reference/files.md) | Every kind of file, what becomes what, where each goes |
-| [Tables](reference/tables.md) | Levels and data tables: adding, changing, removing rows |
+| [`luma.json`](format.md) | Every key of a mod |
+| [Files](REFERENCE.md#7-files-models-textures-sound) | Every kind of file, what becomes what, where each goes |
+| [Tables](REFERENCE.md#8-levels-and-tables) | Levels and data tables: adding, changing, removing rows |
 | [Game settings](reference/settings.md) | Every setting a layer can set |
 | [Player numbers](reference/player-numbers.md) | Every number of how the player moves |
 | [Objects](reference/objects.md) | Every object of the game |
 | [Stage rules](reference/stage-rules.md) | The rules the game keeps by a stage's name |
 | [Plugin interface](reference/plugin-api.md) | Every call, event and number |
-| [Hooks and the game's headers](reference/hooks.md) | Reaching any function of the game |
-| [Shaders](reference/shaders.md) | Hand-written materials |
-| [LumaLink commands](reference/commands.md) | The command line and the window |
-| [What conversion reads](reference/conversion.md) | How each thing in a Wii mod becomes something in Nebula |
-| [Limits that are gone](reference/limits.md) | What the Wii decided, and what Nebula does |
-| [Messages](reference/messages.md) | Every message, what it means, what to do |
-| [Questions](faq.md) | |
+| [Hooks and the game's headers](REFERENCE.md#13-plugins-the-games-headers-and-hooks) | Reaching any function of the game |
+| [Shaders](REFERENCE.md#15-shaders) | Hand-written materials |
+| [LumaLink commands](REFERENCE.md#3-lumalink) | The command line and the window |
+| [What conversion reads](REFERENCE.md#4-what-conversion-does) | How each thing in a Wii mod becomes something in Nebula |
+| [Limits that are gone](REFERENCE.md#14-limits-that-are-gone) | What the Wii decided, and what Nebula does |
+| [Messages](REFERENCE.md#17-messages-and-what-they-mean) | Every message, what it means, what to do |
+| [Questions](REFERENCE.md#18-questions) | |
 
 ## Examples
 
@@ -70,3 +70,8 @@ Each one starts from nothing and ends with something running in the game.
 | `new-cutscene` | A whole cutscene from tables |
 | `one-health`, `coin-kills`, `boss-music`, `double-jump` | Small plugins |
 | `little-boss` | A three-phase boss: model, music, placement, attacks |
+| `gold-flower` | A new power-up: its item, model, particles, sounds, spin animation, fire damage and higher jump |
+| `new-galaxy` | A whole galaxy: planet, ground, gravity, a new enemy, stars, a cutscene with a glTF camera |
+| `new-npc` | A new character made like a Toad, with its own model and talk |
+| `new-talk` | A branching yes/no talk on one of the game's Toads |
+| `new-voice` | The player's voices from the mod's own sounds |

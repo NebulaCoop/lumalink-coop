@@ -59,7 +59,7 @@ One of the game's objects becomes another, or is gone, wherever the game makes i
 ]
 ```
 
-Removing `RestartCube` removes every checkpoint in the game. See [`luma.json`](../reference/luma-json.md#object_changes).
+Removing `RestartCube` removes every checkpoint in the game. See [`luma.json`](../REFERENCE.md#object-changes).
 
 ## Comets
 

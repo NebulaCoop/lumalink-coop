@@ -171,6 +171,7 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `alloc` | `void* alloc(uint64_t bytes)` |
 | `release` | `void release(void* memory)` |
 | `format` | `int32_t format(char* buffer, uint64_t size, const char* format, ...)` |
+| `set_camera_near` | `void set_camera_near(float distance)` |
 
 ## What each does
 
@@ -1493,6 +1494,14 @@ int32_t format(char* buffer, uint64_t size, const char* format, ...)
 ```
 
 printf's formatting into `buffer` of `size` bytes, always ended with a 0 when size is above 0: what snprintf returns (the length the whole text needs; below 0 for a bad format).
+
+### `set_camera_near`
+
+```c
+void set_camera_near(float distance)
+```
+
+The camera's near plane in units: nothing closer to the camera is drawn. 0: the game's (100; 10 in its own first-person view). Kept until set again.
 
 ## Numbers and names
 

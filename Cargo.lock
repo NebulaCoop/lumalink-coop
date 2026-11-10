@@ -2393,6 +2393,7 @@ dependencies = [
 [[package]]
 name = "nebula-import"
 version = "0.1.0"
+source = "git+https://github.com/keepvaibin/nebula.git?branch=main#1ddac4b5204205b9dbef4ad7d1a4c7711d9eb3b0"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -2403,6 +2404,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "windows-sys 0.61.2",
+ "zune-jpeg",
 ]
 
 [[package]]

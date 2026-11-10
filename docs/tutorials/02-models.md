@@ -13,7 +13,7 @@ Nebula turns it into the game's own model when the player applies the mod.
 | In the file | Becomes |
 |---|---|
 | Triangles | The model. A metre is 100 of the game's units |
-| One colour and one PNG or JPEG per material | The material. The material's name is what [hand-written shaders](../reference/shaders.md) use |
+| One colour and one PNG or JPEG per material | The material. The material's name is what [hand-written shaders](../REFERENCE.md#15-shaders) use |
 | A texture's `KHR_texture_transform` | Its texture matrix |
 | A skin | Skinned joints |
 | Each animation | Files named after it, beside the model: `.bck` for what it does to the joints, and [for materials](#a-material-that-moves) `.bpk`, `.btk` and `.btp` |

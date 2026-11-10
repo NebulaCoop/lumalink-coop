@@ -46,7 +46,7 @@ Nebula isn't the Wii's program, so a write over that program is read for what it
 | The hungry Lumas' table, each dome's comets | `event_flags`, `comet_schedule` |
 | The galaxy table | `NebulaData/GalaxyInfoTable.bcsv` |
 
-A write nothing here can read is listed under "code changes Nebula has no version of yet". The mod still converts and everything else in it works. See [What conversion reads](../reference/conversion.md).
+A write nothing here can read is listed under "code changes Nebula has no version of yet". The mod still converts and everything else in it works. See [What conversion reads](../REFERENCE.md#4-what-conversion-does).
 
 ## What it decides for you
 
@@ -70,4 +70,4 @@ Then open it in Nebula, and play. A mod can always be opened: `lumalink unpack "
 
 ## If something didn't convert
 
-Each mod's page says what. A line with an address is a write with no setting yet; the address and what it did are what's needed to add one. See [Messages](../reference/messages.md).
+Each mod's page says what. A line with an address is a write with no setting yet; the address and what it did are what's needed to add one. See [Messages](../REFERENCE.md#17-messages-and-what-they-mean).

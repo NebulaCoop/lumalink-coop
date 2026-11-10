@@ -1,7 +1,15 @@
 # Game settings (tunables)
 
 Every tuning number the game has (a walk speed, a timer, a health count, thousands of them) is a **tunable**, named
-`"<file stem>.<name>"` after the game's source file and the number's name. A layer's `tunables` sets them, and the mod
+after the game's source file:
+
+| Key | Is |
+|---|---|
+| `"<file stem>.<name>"` | A named number: `Kuribo.cWalkSpeed` |
+| `"<file stem>.<function>.<k>"` | The k-th step count (frames) in a function: `Kuribo.exeFlatDown.1`, how long a flattened Goomba stays |
+| `"<file stem>.<function>.<call>.<k>"` | The k-th number a function gives a motion, animation or reach call: `Kuribo.tryActive.isNearPlayerAnyTime.1`, how near the player a Goomba wakes |
+
+A layer's `tunables` sets them, and the mod
 says `"requires": ["tunables"]`. A value is a number, `true` or `false`, a list for a list of numbers (`null` keeps a
 place), or `{ "option": "id" }` to take the number from one of the mod's number options. Where two mods set one, the mod
 higher on the list wins. A plugin reads one with `get_tunable` and sets one with `set_tunable`.
@@ -11,8 +19,8 @@ higher on the list wins. A plugin reads one with `get_tunable` and sets one with
 "layers": [{ "tunables": { "GameRules.cPlayerHealth": 6, "GameDataPlayerStatus.cMaxPlayerLeft": 999, "ScenePlayingResult.cCoinStepNum": 100 } }]
 ```
 
-The whole list, with the game's value for each, is written by the game itself: start Nebula with an enabled mod and
-`GALAXY_DUMP_TUNABLES=<file>`. `lumalink list settings` prints the game's rules below.
+The whole list, with the game's value for each, is written by the game itself: start Nebula with
+`--dump-tunables <file>`. `lumalink list settings` prints the game's rules below.
 
 | Tunable | The game has | What it does |
 |---|---|---|

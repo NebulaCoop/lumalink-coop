@@ -61,7 +61,7 @@ layers/base/merge/StageData/EggStarGalaxy.arc/jmp/placement/common/objinfo.json
 }
 ```
 
-They run in that order: remove, change, add. A row that matches nothing is not an error, since another mod may have taken it. See [Tables](../reference/tables.md).
+They run in that order: remove, change, add. A row that matches nothing is not an error, since another mod may have taken it. See [Tables](../REFERENCE.md#8-levels-and-tables).
 
 In placement tables, "no switch" and "no argument" are `-1`, so write those out. A column you leave out is zero, which means "switch number 0": a real one.
 
