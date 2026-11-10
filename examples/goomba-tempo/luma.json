@@ -1,0 +1,48 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Every Goomba's animation at the speed you pick: half, double or held still. Their walking pace stays the game's.",
+  "format": 1,
+  "game": "RMG",
+  "id": "goomba-tempo",
+  "layers": [],
+  "name": "Goomba Tempo",
+  "options": [
+    {
+      "choices": [
+        {
+          "id": "half",
+          "name": "Half"
+        },
+        {
+          "id": "double",
+          "name": "Double"
+        },
+        {
+          "id": "held",
+          "name": "Held still"
+        }
+      ],
+      "default": "half",
+      "id": "tempo",
+      "name": "Tempo"
+    }
+  ],
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/goomba-tempo-android-arm64.so",
+        "android-x64": "plugins/goomba-tempo-android-x64.so",
+        "linux-arm64": "plugins/goomba-tempo-linux-arm64.so",
+        "linux-x64": "plugins/goomba-tempo-linux-x64.so",
+        "macos-arm64": "plugins/goomba-tempo-macos-arm64.dylib",
+        "macos-x64": "plugins/goomba-tempo-macos-x64.dylib",
+        "windows-arm64": "plugins/goomba-tempo-windows-arm64.dll",
+        "windows-x64": "plugins/goomba-tempo-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

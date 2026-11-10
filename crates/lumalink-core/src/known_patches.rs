@@ -433,6 +433,11 @@ const TUNABLES: &[(u32, &str, &str, Carry)] = &[
     (WATER_AIR, "water_air", "MarioActor.cWaterAir", Carry::Number),
 ];
 
+/// Every tunable key a recognised patch can become.
+pub fn tunable_keys() -> impl Iterator<Item = &'static str> {
+    TUNABLES.iter().map(|t| t.2)
+}
+
 /// A recognised patch as a `luma.json` "tunables" row: the key and its value. None: Nebula covers it by itself.
 pub fn tunable(switch: u32, number: u32) -> Option<(&'static str, serde_json::Value)> {
     let &(_, _, key, carry) = TUNABLES.iter().find(|t| t.0 == switch)?;

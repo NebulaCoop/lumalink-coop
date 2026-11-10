@@ -1,0 +1,23 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "After a Power Star the game moves on twice as soon: the Star Get title, the wipe and the next scene come earlier, by the game's own timing numbers. No code.",
+  "format": 1,
+  "game": "RMG",
+  "id": "quick-star-get",
+  "name": "Quick Star Get",
+  "requires": [
+    "tunables"
+  ],
+  "version": "1.0.0",
+  "layers": [
+    {
+      "tunables": {
+        "GameStageClearSequence.sLayoutStartStepPowerStar": 100,
+        "GameStageClearSequence.sClearDemoWipeStepPowerStar": 160,
+        "GameStageClearSequence.sClearDemoWipeFramePowerStar": 40
+      }
+    }
+  ]
+}

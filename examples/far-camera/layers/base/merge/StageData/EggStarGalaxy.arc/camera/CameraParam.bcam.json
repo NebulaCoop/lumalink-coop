@@ -1,0 +1,13 @@
+{
+  "change": [
+    {
+      "where": {
+        "camtype": "CAM_TYPE_XZ_PARA"
+      },
+      "set": {
+        "dist": 2600.0,
+        "fovy": 55.0
+      }
+    }
+  ]
+}

@@ -637,7 +637,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                 found.problem(format!("{path} isn't in the file"));
                 continue;
             }
-            has_anything |= check_merge(&folder.join("merge"), found);
+            has_anything |= check_merge(&folder.join("merge"), store, found);
             for entry in walkdir::WalkDir::new(folder.join("files")).into_iter().filter_map(std::result::Result::ok) {
                 if !entry.file_type().is_file() {
                     continue;
@@ -672,6 +672,7 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                 if !key.contains('.') || key.starts_with('.') || key.ends_with('.') {
                     found.problem(format!("{name}: {key} is not \"<file stem>.<name>\" (\"GameRules.cPlayerHealth\")"));
                 }
+                check_tunable(&name, key, value, found);
                 let one = |v: &Value| v.is_number() || v.is_boolean();
                 if let Some(option) = value.get("option").and_then(Value::as_str) {
                     if !options.contains_key(option) {
@@ -945,21 +946,140 @@ fn compare_with_like(own: &Path, games: &[(String, Vec<u8>)], name: &str, object
     }
 }
 
+/// A tunable's type, by its key ("GameRules.cPlayerHealth", or a list's place "X.sSteps[2]"): its kind ("f32", "bool") and,
+/// for a list, its length. None: the game has no such tunable.
+pub fn tunable_kind(key: &str) -> Option<(&'static str, Option<usize>)> {
+    let (name, place) = match key.strip_suffix(']').and_then(|k| k.rsplit_once('[')) {
+        Some((name, place)) => (name, Some(place.parse::<usize>().ok()?)),
+        None => (key, None),
+    };
+    let found = crate::tunable_names::TUNABLES.binary_search_by(|(k, _)| k.as_bytes().cmp(name.as_bytes())).ok()?;
+    let kind = crate::tunable_names::TUNABLES[found].1;
+    let (base, length) = match kind.strip_suffix(']').and_then(|k| k.split_once('[')) {
+        Some((base, length)) => (base, length.parse::<usize>().ok()),
+        None => (kind, None),
+    };
+    match (place, length) {
+        (Some(place), Some(length)) if place < length => Some((base, None)),
+        (Some(_), _) => None,
+        (None, length) => Some((base, length)),
+    }
+}
+
+/// The game's tunable nearest a key it lacks, for "did you mean": the same file's name that differs least.
+fn nearest_tunable(key: &str) -> Option<&'static str> {
+    let distance = |a: &str, b: &str| {
+        let b: Vec<char> = b.chars().collect();
+        let mut row: Vec<usize> = (0..=b.len()).collect();
+        for (i, ca) in a.chars().enumerate() {
+            let mut last = row[0];
+            row[0] = i + 1;
+            for (j, cb) in b.iter().enumerate() {
+                let next = (last + usize::from(ca != *cb)).min(row[j] + 1).min(row[j + 1] + 1);
+                last = row[j + 1];
+                row[j + 1] = next;
+            }
+        }
+        row[b.len()]
+    };
+    let lower = key.to_ascii_lowercase();
+    crate::tunable_names::TUNABLES
+        .iter()
+        .map(|(k, _)| (distance(&lower, &k.to_ascii_lowercase()), *k))
+        .filter(|(d, k)| *d <= 3.max(k.len() / 6))
+        .min()
+        .map(|(_, k)| k)
+}
+
+/// A layer's tunable against the game's list: a key it lacks, a list's place past its end, a value its type can't hold.
+fn check_tunable(layer: &str, key: &str, value: &Value, found: &mut Findings) {
+    let Some((kind, length)) = tunable_kind(key) else {
+        let near = nearest_tunable(key).map_or(String::new(), |k| format!(" (did you mean {k}?)"));
+        found.problem(format!("{layer}: the game has no tunable {key}{near}. The whole list: Nebula's docs/modding/TUNABLES.md"));
+        return;
+    };
+    let fits = |v: &Value| -> Option<String> {
+        if v.is_null() || v.get("option").is_some() {
+            return None;
+        }
+        let number = match v {
+            Value::Bool(b) => f64::from(u8::from(*b)),
+            Value::Number(n) => n.as_f64().unwrap_or(0.0),
+            _ => return None,
+        };
+        let range = match kind {
+            "bool" => Some((0.0, 1.0)),
+            "u8" => Some((0.0, 255.0)),
+            "s8" => Some((-128.0, 127.0)),
+            "u16" => Some((0.0, 65535.0)),
+            "s16" => Some((-32768.0, 32767.0)),
+            "u32" => Some((0.0, 4294967295.0)),
+            "s32" => Some((-2147483648.0, 2147483647.0)),
+            _ => None,
+        };
+        match range {
+            Some((low, high)) if number.fract() != 0.0 || number < low || number > high => {
+                Some(format!("{key} is {kind}: a whole number from {low} to {high}"))
+            }
+            _ => None,
+        }
+    };
+    match (value.as_array(), length) {
+        (Some(list), Some(length)) if list.len() > length => {
+            found.problem(format!("{layer}: {key} is a list of {length}; this one has {}", list.len()));
+        }
+        (Some(_), None) => found.problem(format!("{layer}: {key} is one number, not a list")),
+        (None, Some(length)) if value.get("option").is_none() => {
+            found.problem(format!("{layer}: {key} is a list of {length}: a list, or one place of it ({key}[0])"));
+        }
+        _ => {}
+    }
+    let values: Vec<&Value> = value.as_array().map_or_else(|| vec![value], |l| l.iter().collect());
+    if let Some(problem) = values.into_iter().find_map(fits) {
+        found.problem(format!("{layer}: {problem}"));
+    }
+}
+
+/// A table merge tried on the game's own table, as Nebula applies it: a column the table lacks is a problem, a remove or
+/// change that matches no row is a note (Nebula applies the rest and names it in its log). Not tried without the game,
+/// or when the mod brings that table in its own files/.
+fn check_table_merge(layer: &Path, relative: &str, shown: &str, bytes: &[u8], store: Option<&GameStore>, found: &mut Findings) {
+    let Some(store) = store.filter(|s| !s.path.as_os_str().is_empty()) else { return };
+    let table = &relative[..relative.len() - ".json".len()];
+    if layer.join("files").join(table).is_file() {
+        return;
+    }
+    let Ok(game) = nebula_import::cook::store::read_file(&store.path, table) else {
+        found.problem(format!("merge/{shown}: your game has no table {table}; a merge adds to one of the game's"));
+        return;
+    };
+    let tried = nebula_import::cook::table::read_rows(bytes).and_then(|rows| nebula_import::cook::table::merge(&game, bytes, &rows));
+    match tried {
+        Ok((_, unmatched)) => {
+            for words in unmatched {
+                found.note(format!("merge/{shown}: {words} in your game"));
+            }
+        }
+        Err(error) => found.problem(format!("merge/{shown}: {error:#}")),
+    }
+}
+
 /// What a layer adds to files many mods share. Whether it found anything.
-fn check_merge(folder: &Path, found: &mut Findings) -> bool {
+fn check_merge(folder: &Path, store: Option<&GameStore>, found: &mut Findings) -> bool {
     let mut any = false;
     for entry in walkdir::WalkDir::new(folder).into_iter().filter_map(std::result::Result::ok) {
         if !entry.file_type().is_file() {
             continue;
         }
         any = true;
-        let shown = entry.path().strip_prefix(folder).map_or_else(|_| entry.path().display().to_string(), |p| p.display().to_string());
+        // As the game names places, with '/' on every device.
+        let shown = entry.path().strip_prefix(folder).map_or_else(|_| entry.path().display().to_string(), |p| p.display().to_string()).replace('\\', "/");
         let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
         let Ok(bytes) = fs::read(entry.path()) else {
             found.problem(format!("merge/{shown} can't be read"));
             continue;
         };
-        let relative = shown.replace('\\', "/");
+        let relative = shown.clone();
         if let Some(language) = messages_language(&relative) {
             // Lines and talk flows: checked as the cook checks them, the game's lines standing in.
             if let Err(error) = nebula_import::cook::message_merge::check_shape(&bytes, &language) {
@@ -991,6 +1111,9 @@ fn check_merge(folder: &Path, found: &mut Findings) -> bool {
             }
         } else if name.ends_with(".json") {
             let parsed = serde_json::from_slice::<Value>(&bytes).ok();
+            if parsed.is_some() {
+                check_table_merge(folder.parent().unwrap_or(folder), &relative, &shown, &bytes, store, found);
+            }
             if let Some(root) = &parsed {
                 for row in root.get("remove").and_then(Value::as_array).map_or(&[][..], Vec::as_slice) {
                     if !row.is_object() {
@@ -1907,6 +2030,73 @@ mod tests {
         fs::remove_file(project.join(format!("{merge}Other.bin"))).unwrap();
         write(&project, &format!("{merge}Bad.bcsv.json"), r#"{ "rows": [] }"#);
         assert!(problems(&check(&project, None).unwrap()).iter().any(|t| t.contains("rows is a list")));
+    }
+
+    #[test]
+    fn tunables_are_checked_against_the_game() {
+        assert_eq!(tunable_kind("Kuribo.exeFlatDown.1"), Some(("s32", None)));
+        assert_eq!(tunable_kind("GameRules.cDodoryuShellOnly"), Some(("bool", None)));
+        assert_eq!(tunable_kind("GameRules.cPlayerHealthh"), None);
+        assert!(crate::tunable_names::TUNABLES.windows(2).all(|w| w[0].0.as_bytes() < w[1].0.as_bytes()), "sorted, each once");
+        // A list: whole, or one place of it.
+        let list = crate::tunable_names::TUNABLES.iter().find(|(_, k)| k.ends_with("[4]")).unwrap().0;
+        assert_eq!(tunable_kind(&format!("{list}[3]")).map(|k| k.1), Some(None));
+        assert_eq!(tunable_kind(&format!("{list}[4]")), None);
+        assert_eq!(tunable_kind(list).and_then(|k| k.1), Some(4));
+        let check = |key: &str, value: Value| {
+            let mut found = Findings::default();
+            check_tunable("layer 1", key, &value, &mut found);
+            found.0.into_iter().map(|f| f.text).collect::<Vec<_>>()
+        };
+        assert!(check("Kuribo.exeFlatDown.1", json!(600)).is_empty());
+        assert!(check("Kuribo.exeFlatDown.1", json!(1.5))[0].contains("whole number"));
+        assert!(check("GameRules.cDodoryuShellOnly", json!(true)).is_empty());
+        assert!(check("GameRules.cPlayerHealthh", json!(2))[0].contains("did you mean GameRules.cPlayerHealth?"));
+        assert!(check("Kuribo.cWalkSpeed", json!(2))[0].contains("no tunable Kuribo.cWalkSpeed"));
+        assert!(check(list, json!([1, null, 2])).is_empty());
+        assert!(check(list, json!([1, 2, 3, 4, 5]))[0].contains("list of 4"));
+        assert!(check(list, json!(1))[0].contains("list of 4"));
+        assert!(check("GameRules.cPlayerHealth", json!({ "option": "health" })).is_empty());
+        // Every tunable LumaLink writes when it converts a console mod is one the game has.
+        for key in crate::known_patches::tunable_keys() {
+            assert!(tunable_kind(key).is_some(), "{key}");
+        }
+    }
+
+    #[test]
+    fn check_tries_a_table_merge_on_the_game() {
+        use std::io::{Seek, Write};
+        let dir = tempfile::tempdir().unwrap();
+        let pak_path = dir.path().join("game.pak");
+        let table = nebula_import::cook::table::TableIr::from_json(br#"{"rows":[{"name":"Kuribo","scale":1.5}]}"#).unwrap().to_ntbl();
+        let mut pak = fs::File::create(&pak_path).unwrap();
+        pak.write_all(&[0u8; 0x100]).unwrap();
+        let position = pak.stream_position().unwrap();
+        pak.write_all(&table).unwrap();
+        let end = pak.stream_position().unwrap();
+        let placed = [nebula_import::cook::store::Placed { path: "ObjectData/Things/Things.bcsv".into(), position, size: table.len() as u64, folder: false }];
+        nebula_import::cook::store::write_index(&mut pak, end, &placed, b"RMGE01\0\0").unwrap();
+        drop(pak);
+        let store = GameStore::open(&pak_path).unwrap();
+        let project = dir.path().join("proj");
+        new_project(&project, "Changes").unwrap();
+        let merge = "layers/base/merge/ObjectData/Things.arc/Things.bcsv.json";
+        let notes = |found: &[Finding]| found.iter().filter(|f| !f.serious).map(|f| f.text.clone()).collect::<Vec<_>>();
+        write(&project, merge, r#"{ "change": [ { "where": { "name": "Kuribo" }, "set": { "scale": 2.5 } } ] }"#);
+        let found = check(&project, Some(&store)).unwrap();
+        assert!(problems(&found).is_empty() && !notes(&found).iter().any(|t| t.contains("matched no row")), "{found:?}");
+        write(&project, merge, r#"{ "change": [ { "where": { "name": "Kuribo" }, "set": { "scael": 2.5 } } ] }"#);
+        let found = check(&project, Some(&store)).unwrap();
+        assert!(problems(&found).iter().any(|t| t.contains("no column scael")), "{found:?}");
+        // Without the game it can't be tried.
+        assert!(problems(&check(&project, None).unwrap()).is_empty());
+        write(&project, merge, r#"{ "remove": [ { "name": "Nobody" } ] }"#);
+        let found = check(&project, Some(&store)).unwrap();
+        assert!(problems(&found).is_empty() && notes(&found).iter().any(|t| t.contains("matched no row in your game")), "{found:?}");
+        fs::remove_file(project.join(merge)).unwrap();
+        write(&project, "layers/base/merge/ObjectData/Nothing.arc/Nothing.bcsv.json", r#"{ "rows": [ { "name": "New" } ] }"#);
+        let found = check(&project, Some(&store)).unwrap();
+        assert!(problems(&found).iter().any(|t| t.contains("your game has no table")), "{found:?}");
     }
 
     #[test]

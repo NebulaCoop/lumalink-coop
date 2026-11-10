@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "evening-light",
+  "name": "Evening Light",
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Good Egg in an evening's light: the player, enemies and everything the game lights take a warm sun and a dim, warm shade (planets keep their painted colours). Two tables: Good Egg's own light, and its list of lights, whose daytime areas now use it. No code.",
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ]
+}

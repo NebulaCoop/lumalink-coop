@@ -5,7 +5,7 @@ after the game's source file:
 
 | Key | Is |
 |---|---|
-| `"<file stem>.<name>"` | A named number: `Kuribo.cWalkSpeed` |
+| `"<file stem>.<name>"` | A named number: `GameRules.cPlayerHealth`, how many hits Mario takes |
 | `"<file stem>.<function>.<k>"` | The k-th step count (frames) in a function: `Kuribo.exeFlatDown.1`, how long a flattened Goomba stays |
 | `"<file stem>.<function>.<call>.<k>"` | The k-th number a function gives a motion, animation or reach call: `Kuribo.tryActive.isNearPlayerAnyTime.1`, how near the player a Goomba wakes |
 

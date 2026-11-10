@@ -1,0 +1,35 @@
+{
+  "change": [
+    {
+      "where": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      },
+      "set": {
+        "PlanetLight0ColorR": 255,
+        "PlanetLight0ColorG": 140,
+        "PlanetLight0ColorB": 60,
+        "PlanetAmbientR": 70,
+        "PlanetAmbientG": 45,
+        "PlanetAmbientB": 35,
+        "PlayerLight0ColorR": 255,
+        "PlayerLight0ColorG": 140,
+        "PlayerLight0ColorB": 60,
+        "PlayerAmbientR": 70,
+        "PlayerAmbientG": 45,
+        "PlayerAmbientB": 35,
+        "StrongLight0ColorR": 255,
+        "StrongLight0ColorG": 140,
+        "StrongLight0ColorB": 60,
+        "StrongAmbientR": 70,
+        "StrongAmbientG": 45,
+        "StrongAmbientB": 35,
+        "WeakLight0ColorR": 255,
+        "WeakLight0ColorG": 140,
+        "WeakLight0ColorB": 60,
+        "WeakAmbientR": 70,
+        "WeakAmbientG": 45,
+        "WeakAmbientB": 35
+      }
+    }
+  ]
+}

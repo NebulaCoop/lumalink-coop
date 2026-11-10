@@ -27,6 +27,7 @@ pub mod region_map;
 pub mod riivolution;
 pub mod source;
 pub mod texture_pack;
+pub mod tunable_names;
 
 /// The package format this version writes; Nebula refuses a newer one.
 pub const PACKAGE_FORMAT: u32 = 1;

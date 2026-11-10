@@ -1,0 +1,44 @@
+{
+  "change": [
+    {
+      "where": {
+        "AreaLightName": "[共通]昼（どら焼き）"
+      },
+      "set": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      }
+    },
+    {
+      "where": {
+        "AreaLightName": "[共通]昼の影（どら焼き）"
+      },
+      "set": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      }
+    },
+    {
+      "where": {
+        "AreaLightName": "[共通]昼の影（新エデン下）"
+      },
+      "set": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      }
+    },
+    {
+      "where": {
+        "AreaLightName": "[共通]昼の影（明るい）"
+      },
+      "set": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      }
+    },
+    {
+      "where": {
+        "AreaLightName": "[共通]夏の昼"
+      },
+      "set": {
+        "AreaLightName": "[デフォルト]エッグプラネット"
+      }
+    }
+  ]
+}

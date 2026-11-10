@@ -420,6 +420,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn names_the_game_builds_are_known() {
+        // A light table's columns, an animation's file and a camera's vector: no literal of the game spells them whole.
+        let names = column_names();
+        for name in ["PlayerLight0ColorR", "PlanetAmbientA", "StrongLight1FollowCamera", "BckName", "BtpStartFrame", "vpanaxis.Z"] {
+            assert_eq!(names.get(&column_hash(name)), Some(&name), "{name}");
+        }
+    }
+
+    #[test]
     fn a_cooked_table_reads_back_as_the_json_that_made_it() {
         let source = br#"{"columns":{"scale_x":"float"},"rows":[{"name":"Kuribo","scale_x":1.5,"Count":-3},{"name":"","scale_x":2,"Count":7}]}"#;
         let cooked = nebula_import::cook::table::TableIr::from_json(source).unwrap().to_ntbl();

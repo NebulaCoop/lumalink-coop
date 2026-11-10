@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "far-camera",
+  "name": "Far Camera",
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Good Egg's cameras that follow the player across a planet, further back and wider, by the galaxy's camera table. No code.",
+  "layers": [
+    {
+      "path": "layers/base"
+    }
+  ]
+}

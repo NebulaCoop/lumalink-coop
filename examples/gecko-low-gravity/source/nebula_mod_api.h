@@ -672,7 +672,7 @@ typedef struct NebulaModApi {
     int32_t (*set_story)(const char* key, const char* value);
     /* The game writes the save, as it does after a star. */
     void (*save_game)(void);
-    /* A file's tuning number by "<file stem>.<name>" ("Kuribo.cWalkSpeed"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's
+    /* A file's tuning number by "<file stem>.<name>" ("GameRules.cPlayerHealth"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's
        "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds
        round and clamp. 0: done; -1: no such number. */
     int32_t (*set_tunable)(const char* key, double value);
