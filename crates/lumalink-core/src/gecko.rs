@@ -48,7 +48,8 @@ fn read_pairs(pairs: &[(u32, u32)]) -> CodeList {
                 // A run of bytes, in the pairs that follow.
                 let size = second as usize;
                 let lines = size.div_ceil(8);
-                let mut bytes = Vec::with_capacity(lines * 8);
+                // No more room than the list has lines for: a damaged size may say four gigabytes.
+                let mut bytes = Vec::with_capacity(lines.min(pairs.len().saturating_sub(at)) * 8);
                 for pair in pairs.iter().skip(at).take(lines) {
                     bytes.extend_from_slice(&pair.0.to_be_bytes());
                     bytes.extend_from_slice(&pair.1.to_be_bytes());
@@ -258,10 +259,10 @@ pub fn program_changes(changed: &[u8], original: &[u8]) -> Option<Vec<(u32, Vec<
                     at += 4;
                 }
             }
-            out.push((address + start as u32, new_bytes[start..at].to_vec()));
+            out.push((address.checked_add(u32::try_from(start).ok()?)?, new_bytes[start..at].to_vec()));
         }
         if size > old_size {
-            out.push((address + same as u32, changed.get(new_at + same..new_at + size)?.to_vec()));
+            out.push((address.checked_add(u32::try_from(same).ok()?)?, changed.get(new_at + same..new_at + size)?.to_vec()));
         }
     }
     Some(out)
@@ -269,6 +270,20 @@ pub fn program_changes(changed: &[u8], original: &[u8]) -> Option<Vec<(u32, Vec<
 
 #[cfg(test)]
 mod tests {
+    /// A damaged list or program is read as far as it goes, never trusted for its sizes.
+    #[test]
+    fn damaged_sizes_are_not_trusted() {
+        let list = read_pairs(&[(0x0600_1000, 0xFFFF_FFFF), (0x1122_3344, 0x5566_7788)]);
+        assert_eq!(list.writes, vec![(0x8000_1000, vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])]);
+        let mut original = vec![0u8; 0x200];
+        original[0x48..0x4C].copy_from_slice(&0xFFFF_FFF0u32.to_be_bytes());
+        original[0..4].copy_from_slice(&0x100u32.to_be_bytes());
+        original[0x90..0x94].copy_from_slice(&0x100u32.to_be_bytes());
+        let mut changed = original.clone();
+        changed[0x1F0] = 1;
+        assert_eq!(program_changes(&changed, &original), None);
+    }
+
     use super::*;
 
     #[test]
