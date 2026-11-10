@@ -231,7 +231,7 @@ Players choose on the Mods page, and the choice lasts through updates to the mod
 
 ## Your own shaders
 
-Materials build their own shaders, so most mods never think about this. For a special effect, run `lumalink shader model.bdl -o folder`, change the HLSL it writes, and name it:
+Materials build their own shaders, so most mods never think about this. For a special effect, run `lumalink shader model.glb -o folder`, change the HLSL it writes, and name it:
 
 ```json
 "requires": ["custom-shaders"],
@@ -278,6 +278,8 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 | [`boss-music`](../examples/boss-music) | Starting and stopping music |
 | [`double-jump`](../examples/double-jump) | A new move for the player: the buttons, gravity, an animation |
 | [`little-boss`](../examples/little-boss) | A new enemy: its model, music, health, placement and what it does |
+| [`coin-bank`](../examples/coin-bank) | Keeping numbers and words across plays (`store_get`, `store_set_text`), a message when the player has control |
+| [`goomba-tempo`](../examples/goomba-tempo) | Every object of a kind (`find_actor`), its animation's speed, an option |
 | [`pulse`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/pulse) | A new object with the game's headers, and a hook |
 | [`cube`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/cube) | A new object with the stable interface and a glTF model |
 

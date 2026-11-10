@@ -4,7 +4,10 @@
 
    A plugin exports the two functions NEBULA_PLUGIN_ENTRY makes. Fields are only ever added at the end of NebulaModApi:
    a plugin built against this header keeps working on every later Nebula. On an earlier one, a field added after it
-   is not there: NEBULA_MOD_API_HAS(api, field) says whether it is, before the plugin calls it. */
+   is not there: NEBULA_MOD_API_HAS(api, field) says whether it is, before the plugin calls it.
+
+   A null object, layout, point or name where a call needs one makes the call do nothing: it returns 0, null, or -1
+   where -1 means "no such". Where null means something (find_actor's `name`, stop_effect's), the call says so. */
 #ifndef NEBULA_MOD_API_H
 #define NEBULA_MOD_API_H
 
@@ -370,7 +373,7 @@ typedef struct NebulaModApi {
     uint32_t (*buttons_held)(void);
     /* The controls pressed on this frame only: NEBULA_BUTTON_*. */
     uint32_t (*buttons_pressed)(void);
-    /* The stick, each from -1 to 1. */
+    /* The stick, each from -1 to 1 (either may be null). */
     void (*stick)(float* x, float* y);
     /* In a stage: the camera shakes, as when something heavy lands (shake_camera_by chooses how hard). */
     void (*shake_camera)(void);
@@ -509,7 +512,8 @@ typedef struct NebulaModApi {
     /* The rail's whole length. */
     float (*rail_length)(NebulaActor* actor);
 
-    /* The world. 1 and where (`hit`) if the line from `from` to `to` meets the map's collision; 0 if it's clear. */
+    /* The world. 1 and where (`hit`, which may be null) if the line from `from` to `to` meets the map's collision; 0 if
+       it's clear. */
     int32_t (*raycast)(const float* from, const float* to, float* hit);
     /* 1 while it stands on the map: the player, or an object with collision of its own. */
     int32_t (*is_on_ground)(NebulaActor* actor);
@@ -539,7 +543,8 @@ typedef struct NebulaModApi {
     int32_t (*start_cutscene)(NebulaActor* actor, const char* name);
     /* The actor's part in that cutscene ends; the cutscene ends when every part has. */
     void (*end_cutscene)(NebulaActor* actor, const char* name);
-    /* 1 while any cutscene plays. */
+    /* 1 while any cutscene plays, and while the stage starts (its opening camera and the player's arrival, which send no
+       NEBULA_MOD_EVENT_CUTSCENE): the player has control when it is 0. A message is best shown then. */
     int32_t (*is_cutscene_playing)(void);
     /* In a stage: the camera shakes, as hard as `how` (NEBULA_SHAKE_*). */
     void (*shake_camera_by)(NebulaShake how);
@@ -565,9 +570,9 @@ typedef struct NebulaModApi {
     void (*set_event_flag_on)(const char* name);
     /* 1 if the save has that galaxy's star of that number. */
     int32_t (*has_star)(const char* galaxy, int32_t star);
-    /* In a stage: the game's information box (at the bottom, or the middle with `centre` 1) shows a message
-       by its id (the game's or add_text's), else these words (with the game's message tags). It stays until
-       hide_message. */
+    /* In a stage: the game's information box (at the top, or the middle with `centre` 1) shows a message
+       by its id (the game's or add_text's), else these words (with the game's message tags; lines wrap between
+       words). It stays until hide_message. Asked for while the stage starts, it appears when the player has control. */
     void (*show_message)(const char* utf8_or_id, int32_t centre);
     /* The information box goes. */
     void (*hide_message)(void);

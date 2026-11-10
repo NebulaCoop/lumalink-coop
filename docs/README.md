@@ -77,3 +77,9 @@ Each one starts from nothing and ends with something running in the game.
 | `new-npc` | A new character made like a Toad, with its own model and talk |
 | `new-talk` | A branching yes/no talk on one of the game's Toads |
 | `new-voice` | The player's voices from the mod's own sounds |
+| `evening-light` | A stage's light changed by a table merge: warm evening colours on Good Egg |
+| `far-camera` | A stage's camera changed by a merge: further back and wider |
+| `quick-star-get` | Timing by tunables: the star's ending sooner |
+| `glowing-lantern` | A hand-written shader for a model's material (`custom-shaders`) |
+| `coin-bank` | A plugin that keeps numbers and words across plays (its own store) |
+| `goomba-tempo` | A plugin that changes the game's objects' animations, with an option |

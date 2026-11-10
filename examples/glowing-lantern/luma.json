@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "glowing-lantern",
+  "name": "Glowing Lantern",
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "A lantern by the start of Good Egg whose paper glows, drawn by a pixel program of its own (layers/base/shaders/paper.hlsl): the model's materials named in \"materials\", with custom-shaders in requires. The lantern is the Lantern Garden's (new-galaxy).",
+  "requires": [
+    "custom-shaders"
+  ],
+  "layers": [
+    {
+      "path": "layers/base",
+      "object_classes": [
+        {
+          "name": "GlowLantern",
+          "like": "FloaterLandPartsFrame"
+        }
+      ],
+      "materials": {
+        "Lantern_Paper": "layers/base/shaders/paper.hlsl"
+      }
+    }
+  ]
+}

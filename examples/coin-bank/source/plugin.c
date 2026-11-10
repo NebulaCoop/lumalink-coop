@@ -1,7 +1,7 @@
 /* Coin bank: every coin the player has ever picked up, kept across plays in the mod's own store (store_get and
-   store_set), with the last galaxy played (store_get_text and store_set_text). As a stage starts, the box at the bottom
-   shows the total and where the player was last. The store is the mod's own: the game's save is never touched, and it
-   stays when the mod is updated. */
+   store_set), with the last galaxy played (store_get_text and store_set_text). When the player first has control in a
+   stage, the box at the bottom shows the total and where the player was last. The store is the mod's own: the game's
+   save is never touched, and it stays when the mod is updated. */
 #include <nebula_mod_api.h>
 
 static const NebulaModApi* game;
@@ -10,6 +10,7 @@ static int32_t banked;     /* every coin so far, this play's too */
 static int32_t unsaved;    /* coins not yet in the store */
 static int shown;          /* this stage's message has been shown */
 static int32_t up;         /* frames left for it on screen */
+static char here[64];      /* this stage's name */
 
 static void keep(void) {
     if (unsaved != 0) {
@@ -19,15 +20,10 @@ static void keep(void) {
 }
 
 static int32_t stage_start(const NebulaModEventData* data, void* user) {
-    char last[64];
     (void)user;
     shown = 0;
     up = 0;
-    /* Where the player was before this stage: the text kept last time, then this stage's name in its place. */
-    if (game->store_get_text(me, "last", last, sizeof(last)) == 0) last[0] = '\0';
-    if (data->name != 0) game->store_set_text(me, "last", data->name);
-    /* Kept as text to show at the first frame with the player. */
-    game->store_set_text(me, "shown_last", last);
+    game->format(here, sizeof(here), "%s", data->name != 0 ? data->name : "");
     return data->value;
 }
 
@@ -35,13 +31,16 @@ static int32_t stage_frame(const NebulaModEventData* data, void* user) {
     char last[64];
     char line[160];
     (void)user;
-    if (!shown && game->player() != 0) {
+    /* Once the opening camera is over and the player moves: a stage without a player (the title, the file select) is
+       never the last one played. */
+    if (!shown && game->player() != 0 && !game->is_cutscene_playing()) {
         shown = 1;
-        if (game->store_get_text(me, "shown_last", last, sizeof(last)) > 0) {
+        if (game->store_get_text(me, "last", last, sizeof(last)) > 0) {
             game->format(line, sizeof(line), "Coins banked: %d. Last played: %s.", banked, last);
         } else {
             game->format(line, sizeof(line), "Coins banked: %d.", banked);
         }
+        game->store_set_text(me, "last", here);
         game->show_message(line, 0);
         game->log(me, line);
         up = 240;  /* four seconds */

@@ -67,7 +67,7 @@ enum Command {
     },
     /// Write the pixel program Nebula makes for each material of a model, to start a hand-written one from.
     Shader {
-        /// A model (.bdl or .bmd), or an archive holding one.
+        /// A model (.bdl, .bmd, or a mod's .glb or .gltf), or an archive holding one.
         model: PathBuf,
         /// The folder to write to.
         #[arg(short, long, default_value = ".")]

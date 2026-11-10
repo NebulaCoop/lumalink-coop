@@ -390,7 +390,7 @@ The controls pressed on this frame only: NEBULA_BUTTON_*.
 void stick(float* x, float* y)
 ```
 
-The stick, each from -1 to 1.
+The stick, each from -1 to 1 (either may be null).
 
 ### `shake_camera`
 
@@ -830,7 +830,7 @@ The rail's whole length.
 int32_t raycast(const float* from, const float* to, float* hit)
 ```
 
-The world. 1 and where (`hit`) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
+The world. 1 and where (`hit`, which may be null) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
 
 ### `is_on_ground`
 
@@ -926,7 +926,7 @@ The actor's part in that cutscene ends; the cutscene ends when every part has.
 int32_t is_cutscene_playing(void)
 ```
 
-1 while any cutscene plays.
+1 while any cutscene plays, and while the stage starts (its opening camera and the player's arrival, which send no NEBULA_MOD_EVENT_CUTSCENE): the player has control when it is 0. A message is best shown then.
 
 ### `shake_camera_by`
 
@@ -1014,7 +1014,7 @@ int32_t has_star(const char* galaxy, int32_t star)
 void show_message(const char* utf8_or_id, int32_t centre)
 ```
 
-In a stage: the game's information box (at the bottom, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags). It stays until hide_message.
+In a stage: the game's information box (at the top, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags; lines wrap between words). It stays until hide_message. Asked for while the stage starts, it appears when the player has control.
 
 ### `hide_message`
 

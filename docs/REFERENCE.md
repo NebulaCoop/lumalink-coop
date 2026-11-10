@@ -69,7 +69,7 @@ A grid of tiles, one per mod. Drop files or folders on it. Tick the ones you wan
 | `lumalink pack FOLDER [-o FOLDER]` | Builds a project into a `.luma`, checking it first |
 | `lumalink check PATH` | Lists every problem with a project or a `.luma` |
 | `lumalink unpack FILE -o FOLDER` | Opens a `.luma` into a project folder |
-| `lumalink shader MODEL -o FOLDER` | Writes the pixel program Nebula makes for each material, to start a hand-written one |
+| `lumalink shader MODEL -o FOLDER` | Writes the pixel program Nebula makes for each material of a model (.bdl, .bmd, .glb, .gltf, or an archive), to start a hand-written one |
 | `lumalink cook FILE` | Converts one file alone, to test a model, texture or track |
 
 `--game` is your imported game, Nebula's `game.pak`. Mods that name files only by their name (loose `.arc` files with no folders) need it, to find where each one goes. `--game-id` picks the version to check against when you have no game file; a `.luma` works on every version anyway.
@@ -789,7 +789,7 @@ Nobody writes shaders for a mod, and nobody compiles them. A model's materials s
 | Windows | Setup installs Microsoft's dxc beside the game. No download at play time |
 | Linux, Android, Mac | glslang and the SPIR-V tools, built into the game. Nothing to download |
 
-To write one yourself, `lumalink shader model.bdl -o folder`, change the pixel program it writes for a material, and name it:
+To write one yourself, `lumalink shader model.glb -o folder` (or the game's `.bdl`), change the pixel program it writes for a material, and name it:
 
 ```json
 "requires": ["custom-shaders"],

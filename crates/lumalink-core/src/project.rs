@@ -173,25 +173,32 @@ pub fn add_plugin(folder: &Path) -> Result<()> {
 }
 
 /// Writes each material's pixel program as Nebula generates it, as `<material>.hlsl` beside the output with the headers it
-/// includes, from a model or an archive holding one: the start of a mod's own program (a layer's `"materials"`), which
-/// takes the place of the plain form's. What's returned: the files.
+/// includes, from a model (the game's, or a mod's .glb or .gltf, as Nebula converts it) or an archive holding one: the
+/// start of a mod's own program (a layer's `"materials"`), which takes the place of the plain form's. What's returned:
+/// the files.
 pub fn write_generated_shaders(model: &Path, output: &Path) -> Result<Vec<String>> {
     use nebula_import::cook::model_ir::{read_file, Source};
     use nebula_import::cook::programs::{self, Form};
-    use nebula_import::cook::{archive, Stats};
+    use nebula_import::cook::{archive, gltf, Stats};
     let mut bytes = fs::read(model).with_context(|| format!("{} can't be read", model.display()))?;
-    if archive::is_compressed(&bytes) {
-        bytes = archive::expand(&bytes)?;
-    }
-    let is_model = |b: &[u8]| b.starts_with(b"J3D2bmd3") || b.starts_with(b"J3D2bdl4");
-    if archive::is_archive(&bytes) {
-        let members = archive::members(&bytes)?;
-        bytes = members.into_iter().map(|m| m.bytes).find(|b| is_model(b)).context("the archive holds no model")?;
-    }
-    if !is_model(&bytes) {
-        bail!("{} isn't a model", model.display());
-    }
-    let ir = read_file(&bytes, Source::of(&bytes), &mut Stats::default())?;
+    let extension = model.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let ir = if extension == "glb" || extension == "gltf" {
+        // The model as Nebula's conversion makes it, which its programs are written from.
+        gltf::to_ir(&bytes, model.parent()).with_context(|| format!("{} can't be converted", model.display()))?.0
+    } else {
+        if archive::is_compressed(&bytes) {
+            bytes = archive::expand(&bytes)?;
+        }
+        let is_model = |b: &[u8]| b.starts_with(b"J3D2bmd3") || b.starts_with(b"J3D2bdl4");
+        if archive::is_archive(&bytes) {
+            let members = archive::members(&bytes)?;
+            bytes = members.into_iter().map(|m| m.bytes).find(|b| is_model(b)).context("the archive holds no model")?;
+        }
+        if !is_model(&bytes) {
+            bail!("{} isn't a model (.bdl, .bmd, .glb, .gltf, or an archive with one)", model.display());
+        }
+        read_file(&bytes, Source::of(&bytes), &mut Stats::default())?
+    };
     let written = programs::written_or_unknown();
     fs::create_dir_all(output)?;
     for (name, text) in programs::HEADERS {
@@ -207,6 +214,56 @@ pub fn write_generated_shaders(model: &Path, output: &Path) -> Result<Vec<String
         files.push(file);
     }
     Ok(files)
+}
+
+/// The names of the materials of every model in the layers' files/: .glb and .gltf as they are named there, .bdl and
+/// .bmd (alone or in an archive) as the model holds them.
+fn mod_material_names(folder: &Path, layers: &[Value]) -> std::collections::BTreeSet<String> {
+    use nebula_import::cook::model_ir::{read_file, Source};
+    use nebula_import::cook::{archive, Stats};
+    let mut names = std::collections::BTreeSet::new();
+    let from_model = |bytes: &[u8], names: &mut std::collections::BTreeSet<String>| {
+        if bytes.starts_with(b"J3D2bmd3") || bytes.starts_with(b"J3D2bdl4") {
+            if let Ok(ir) = read_file(bytes, Source::of(bytes), &mut Stats::default()) {
+                names.extend(ir.materials.iter().map(|m| m.name.clone()));
+            }
+        }
+    };
+    for layer in layers {
+        let Some(path) = layer.get("path").and_then(Value::as_str).filter(|p| inside(p)) else { continue };
+        for entry in walkdir::WalkDir::new(folder.join(path).join("files")).into_iter().filter_map(std::result::Result::ok) {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let file = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            let Ok(mut bytes) = fs::read(entry.path()) else { continue };
+            if file.ends_with(".glb") || file.ends_with(".gltf") {
+                let json = if bytes.starts_with(b"glTF") && bytes.len() >= 20 {
+                    let length = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+                    bytes.get(20..20 + length).and_then(|b| serde_json::from_slice::<Value>(b).ok())
+                } else {
+                    serde_json::from_slice::<Value>(&bytes).ok()
+                };
+                let materials = json.as_ref().and_then(|j| j.get("materials")).and_then(Value::as_array);
+                names.extend(materials.into_iter().flatten().filter_map(|m| m.get("name").and_then(Value::as_str)).map(str::to_string));
+                continue;
+            }
+            if archive::is_compressed(&bytes) {
+                match archive::expand(&bytes) {
+                    Ok(expanded) => bytes = expanded,
+                    Err(_) => continue,
+                }
+            }
+            if archive::is_archive(&bytes) {
+                for member in archive::members(&bytes).unwrap_or_default() {
+                    from_model(&member.bytes, &mut names);
+                }
+            } else {
+                from_model(&bytes, &mut names);
+            }
+        }
+    }
+    names
 }
 
 /// Starts a project: the folder, its `luma.json`, and the folders a mod usually fills.
@@ -605,6 +662,12 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
         || ["music", "event_flags", "comet_schedule"].iter().any(|k| manifest.get(*k).and_then(Value::as_array).is_some_and(|l| !l.is_empty()));
     has_anything |= check_story(manifest, "the mod", found);
     let says_custom_shaders = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "custom-shaders"));
+    // The materials of the models the mod brings: a hand-written shader applies to those alone.
+    let own_materials = if layers.iter().any(|l| l.get("materials").and_then(Value::as_object).is_some_and(|m| !m.is_empty())) {
+        Some(mod_material_names(folder, layers))
+    } else {
+        None
+    };
     let says_player_animations = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "player-animations"));
     for (i, layer) in layers.iter().enumerate() {
         if layer.get("player_animations").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !says_player_animations {
@@ -623,6 +686,14 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
                     Some(path) if folder.join(path).is_file() => has_anything = true,
                     Some(path) => found.problem(format!("material {name}: {path} isn't in the file")),
                     None => found.problem(format!("material {name}: its shader is a path in the file")),
+                }
+                if let Some(own) = own_materials.as_ref().filter(|own| !own.contains(name)) {
+                    let some: Vec<&str> = own.iter().take(12).map(String::as_str).collect();
+                    found.problem(if some.is_empty() {
+                        format!("material {name}: the mod brings no model; a shader applies to the materials of the models in a layer's files/")
+                    } else {
+                        format!("material {name}: no model the mod brings has it (its materials: {})", some.join(", "))
+                    });
                 }
             }
         }
@@ -1777,6 +1848,33 @@ mod tests {
     }
 
     #[test]
+    fn a_shader_names_a_material_of_the_mods_models() {
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let lantern = examples.join("glowing-lantern");
+        assert!(problems(&check(&lantern, None).unwrap()).is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        for entry in walkdir::WalkDir::new(&lantern).into_iter().filter_map(std::result::Result::ok) {
+            let to = dir.path().join(entry.path().strip_prefix(&lantern).unwrap());
+            if entry.file_type().is_dir() {
+                fs::create_dir_all(&to).unwrap();
+            } else {
+                fs::copy(entry.path(), &to).unwrap();
+            }
+        }
+        let mut manifest = read_manifest(dir.path()).unwrap();
+        manifest["layers"][0]["materials"] = json!({ "Lantern_Papr": "layers/base/shaders/paper.hlsl" });
+        fs::write(dir.path().join("luma.json"), manifest.to_string()).unwrap();
+        let found = problems(&check(dir.path(), None).unwrap()).join("\n");
+        assert!(found.contains("material Lantern_Papr: no model the mod brings has it") && found.contains("Lantern_Paper"), "{found}");
+        // lumalink shader starts from a mod's own .glb.
+        let out = tempfile::tempdir().unwrap();
+        let model = lantern.join("layers/base/files/ObjectData/GlowLantern.arc/GlowLantern.bdl.glb");
+        let written = write_generated_shaders(&model, out.path()).unwrap();
+        assert!(written.contains(&"Lantern_Paper.hlsl".to_string()), "{written:?}");
+        assert!(out.path().join("program.hlsli").is_file());
+    }
+
+    #[test]
     fn achievements_are_checked() {
         let problems = |manifest: Value| {
             let mut found = Findings::default();
@@ -2331,6 +2429,8 @@ mod tests {
         let project = dir.path().join("proj");
         new_project(&project, "Shader").unwrap();
         write(&project, "layers/base/shaders/water.hlsl", "// a shader");
+        // A model of the mod's with that material.
+        write(&project, "layers/base/files/ObjectData/Pool.arc/Pool.bdl.gltf", r#"{ "asset": { "version": "2.0" }, "materials": [{ "name": "Water" }] }"#);
         let with = |requires: &str, materials: &str| {
             let mut manifest: Value = serde_json::from_slice(&fs::read(project.join("luma.json")).unwrap()).unwrap();
             manifest["requires"] = serde_json::from_str(requires).unwrap();
