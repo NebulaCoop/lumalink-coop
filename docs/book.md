@@ -2004,7 +2004,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 167 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](#p-reference-plugin-api) lists all 173 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -2655,7 +2655,7 @@ Its name, icon, description, authors and options are on its row of the Mods page
 
 ## The game in first person: a camera of your own
 
-This tutorial walks through `examples/first-person`, a plugin that plays the whole game through Mario's eyes. It's about 220 lines of C, and it shows how a plugin takes the camera, follows the player on a round planet, hides the player's model and gives the game its cameras back for cutscenes and talks.
+This tutorial walks through `examples/first-person`, a plugin that plays the whole game through Mario's eyes: play, cutscenes, launch stars and conversations. It's about 400 lines of C with no change to the game. It shows how a plugin takes the camera, follows the player on a round planet, keeps the camera out of walls, hides part of a model, reads the game's own camera and moves the talk box.
 
 You need [Your first plugin](#p-tutorials-10-first-plugin) first.
 
@@ -2663,11 +2663,12 @@ You need [Your first plugin](#p-tutorials-10-first-plugin) first.
 
 ### What it does
 
-- The camera sits at Mario's eyes and looks where he faces. Pushing the stick ahead walks ahead; to the side, he turns, and the view turns with him.
-- The pointer above or below the screen's middle tilts the view up or down. Off the screen, the view comes level.
-- The camera button switches between his eyes and the game's camera.
-- Cutscenes, talks, a launch star's flight, a star's "You got a Star!" and every camera a stage starts for an event keep the game's own camera while they last; his eyes come back when they end.
-- Two options: the field of view (60°, 75° or 90°), and whether each stage starts in his eyes or the game's camera.
+- The camera stays at Mario's eyes for the whole stage. In play it looks where he faces; the pointer above or below the screen's middle tilts the view.
+- In a conversation it turns to the speaker's face, and the large talk box moves over the speaker.
+- In a cutscene it looks the way the game's shot looks. In a launch star's flight it looks where he is going.
+- His body stays visible: look down and you see it. Only his head is hidden, so it never fills the view.
+- The camera button switches to the game's camera and back.
+- Options: the field of view (60°, 75° or 90°), and whether each stage starts in first person or the game's camera.
 
 <a id="p-tutorials-18-first-person--each-frame-before-anything-moves"></a>
 
@@ -2680,8 +2681,8 @@ game->get_position(player, at);
 game->get_velocity(player, moving);   /* this frame's step is still to come */
 game->get_gravity(player, down);      /* on a planet, down is no one axis */
 ...
-eye = at + moving + up * eye_height;
-game->set_camera(eye, look, fov);
+eye = at + moving + up * eye_height + front * EYE_FORWARD;
+game->set_camera(eye, target, fov);
 ```
 
 Adding this frame's velocity puts the eye where the player will be once he has moved, so the camera doesn't trail a frame behind.
@@ -2690,7 +2691,7 @@ Adding this frame's velocity puts the eye where the player will be once he has m
 
 ### Up is wherever gravity says
 
-On a small planet, up turns as the player walks around it. The plugin takes up from `get_gravity`, and keeps its forward direction flat against it:
+On a small planet, up turns as the player walks around it. The plugin takes up from `get_gravity` and keeps its forward direction flat against it:
 
 ```c
 along = dot(front, up);
@@ -2698,44 +2699,84 @@ front -= up * along;   /* along the ground */
 normalise(front);
 ```
 
-The forward direction is eased toward the player's (a third of the way each frame), so a sharp turn is felt but not a jolt. The eye height comes from the model's `Head` joint (`get_joint_position`), so crouching, swimming and a dive bring the view down with him.
+The forward direction is eased toward the player's each frame, so a sharp turn is felt but not a jolt. The eye height comes from the model's `Head` joint (`get_joint_position`), so crouching, swimming and a dive bring the view down with him. Before his model is posed (his arrival in a stage) the joint is far from him; the plugin then uses a fixed height.
 
-<a id="p-tutorials-18-first-person--hiding-the-player"></a>
+<a id="p-tutorials-18-first-person--his-head-not-his-body"></a>
 
-### Hiding the player
+### His head, not his body
 
 ```c
-game->show_model(player, 0);
-game->set_camera_near(10.0f);
+game->show_model(player, 1);
+game->show_joint(player, "Head", 0);
 ```
 
-`show_model` hides the model, his hands, face and power-up suit with it; he still moves, animates, touches and is hit, and his shadow stays on the ground under you. `set_camera_near` brings the near plane in from the game's 100 units to 10, as the game's own look-around view does, so a wall right in front of him is drawn instead of cut open.
+`show_joint` hides one joint of a model and every joint under it, on that actor only. For the player, his face and cap go with `Head`, and the hidden head stays hidden in every power-up form. His arms, hands, body and legs still draw, and his shadow keeps its head. When the plugin gives the camera back it shows the head again with `show_joint(player, "Head", 1)`.
+
+<a id="p-tutorials-18-first-person--near-things-stay-drawn"></a>
+
+### Near things stay drawn
+
+With the camera at his eyes, things close to the camera matter. Two settings decide what is drawn:
+
+```c
+game->set_camera_near(8.0f);                                  /* the near plane, from the game's 100 */
+game->set_tunable("ClippingJudge.cNearClip", 8.0);            /* objects hidden near the camera */
+game->set_tunable("ClippingJudge.cNearClipSubjective", 8.0);  /* the same in the game's own first-person view */
+game->set_tunable("ObjUtil.cNearClipScale", 0.0);             /* objects that hide themselves near the camera */
+```
+
+Without these, platforms and enemies right in front of him vanish, since the game hides objects close to its camera. The plugin saves the old values with `get_tunable` and puts them back when it gives the camera back.
+
+<a id="p-tutorials-18-first-person--out-of-walls"></a>
+
+### Out of walls
+
+The eye is in front of the body, so it can end up inside a wall. Before setting the camera, the plugin casts a ray from his chest to the eye; a hit moves the eye back to the wall's near side. Then six short rays (ahead, behind, both sides, up and down) push it off any wall closer than 22 units:
+
+```c
+if (game->raycast(body, eye_plus_gap, hit)) {
+    eye = hit - way * WALL_GAP;
+}
+```
+
+<a id="p-tutorials-18-first-person--cutscenes-and-conversations"></a>
+
+### Cutscenes and conversations
+
+The plugin keeps the camera through every cutscene. It decides where to look from what the game reports:
+
+- `talking_actor()` gives the character in conversation with the player. Small balloons report their speaker through `NEBULA_MOD_EVENT_TALK_LINE` instead, and the plugin keeps that speaker for a few seconds.
+- `game_camera(position, target)` gives the shot the game would show this frame. In a cutscene the plugin looks along it, or straight at what it frames when that is away from Mario.
+- In flight (a launch star), it looks along his velocity.
+
+In play the eye sits over his body; in a cutscene it moves onto the head joint, so his animations (looking around, a bow) move the view. The two blend over a few frames.
+
+<a id="p-tutorials-18-first-person--the-talk-box-over-the-speaker"></a>
+
+### The talk box over the speaker
+
+```c
+head_of(talker, up, point);                 /* the speaker's head joint */
+if (game->screen_position(point, xy)) {
+    game->place_talk_box(1, xy[0], xy[1] - 70.0f);
+}
+```
+
+`place_talk_box` centres the large talk box on a point of the screen and keeps it inside the screen; its pointer turns to the speaker. `place_talk_box(0, 0, 0)` puts it back.
 
 <a id="p-tutorials-18-first-person--giving-the-camera-back"></a>
 
 ### Giving the camera back
 
-The plugin hands back when a cutscene plays, an event camera holds the view, the player is gone, or the camera button says so:
+When the camera button is pressed or the stage ends:
 
 ```c
-if (!wanted || player == 0 || game->is_dead(player) || game->is_cutscene_playing() || event_camera) {
-    game->set_camera(0, 0, 0.0f);      /* the game's camera again */
-    game->set_camera_near(0.0f);       /* the game's near plane */
-    game->show_model(player, 1);
-}
+game->set_camera(0, 0, 0.0f);          /* the game's camera again */
+game->set_camera_near(0.0f);           /* the game's near plane */
+game->show_joint(player, "Head", 1);
 ```
 
-`is_cutscene_playing` covers cutscenes, the stage's start and a star's get sequence. Event cameras (a talk's, a cutscene's, a launch star's, `start_camera`'s) come as `NEBULA_MOD_EVENT_CAMERA_CHANGE` with value 1; when the last one ends and the area's camera takes the view back, the same event comes with value 0:
-
-```c
-static int32_t camera_change(const NebulaModEventData* data, void* user) {
-    (void)user;
-    event_camera = data->value == 1;
-    return data->value;
-}
-```
-
-A launch star shows it: its cameras come one after another as Mario is shot off (value 1 each), and value 0 comes as he lands on the next planet, where his eyes take the view again.
+and the saved tunables go back.
 
 <a id="p-tutorials-18-first-person--no-c-library"></a>
 
@@ -2759,8 +2800,8 @@ lumalink run examples/first-person
 ### Going further
 
 - Turn with the pointer at the screen's edges, as pointer shooters do: rotate `forward` about `up` while the pointer is near the left or right edge.
-- Show the player's hands: a model of your own (`register_object`) placed at the eye each frame.
 - Hide the HUD for a cleaner view: `show_hud(NEBULA_HUD_ALL, 0)`.
+- Move other characters' balloons too: `talking_actor` and `screen_position` give their place.
 
 
 # Reference
@@ -4548,6 +4589,19 @@ static int32_t coin(const NebulaModEventData* data, void* user) {
 `unlock_achievement(self, id)` returns 1 when it unlocked it now, 0 when it was already unlocked or the mod has no
 achievement of that id. Its pop-up shows at once; any thread may call it.
 
+<a id="p-plugins--joints"></a>
+
+### Joints
+
+A model's joints are its bones. `joint_name(actor, i)` lists them (null past the last), `get_joint_position` and
+`get_joint_matrix` give a joint's place and turn this frame, and `show_joint(actor, name, 0)` hides a joint and
+everything under it on that one actor.
+
+The player's joints: `All_Root`, `Center`, `JointRoot`, `Hip`, `LegL1`, `LegL2`, `FootL`, `LegR1`, `LegR2`, `FootR`,
+`Spine1`, `Spine2`, `Head`, `CapPosition`, `Cap0`, `EyePosition`, `Eye0`, `FacePosition`, `Face0`, `ShoulderL`,
+`ArmL1`, `ArmL2`, `HandL`, `HandL0`, `ShoulderR`, `ArmR1`, `ArmR2`, `HandR`, `HandR0`, `PartsControl`. Hiding `Head`
+hides his cap and face too; hiding an arm hides its hand.
+
 <a id="p-plugins--calls-added-later"></a>
 
 ### Calls added later
@@ -4750,6 +4804,12 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `format` | `int32_t format(char* buffer, uint64_t size, const char* format, ...)` |
 | `set_camera_near` | `void set_camera_near(float distance)` |
 | `unlock_achievement` | `int32_t unlock_achievement(const NebulaPlugin* self, const char* id)` |
+| `game_camera` | `int32_t game_camera(float* position, float* target)` |
+| `talking_actor` | `NebulaActor* talking_actor(void)` |
+| `place_talk_box` | `void place_talk_box(float x, float y, int32_t on)` |
+| `show_joint` | `void show_joint(NebulaActor* actor, const char* joint, int32_t on)` |
+| `joint_name` | `const char* joint_name(NebulaActor* actor, int32_t index)` |
+| `get_joint_matrix` | `void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -4763,7 +4823,7 @@ A null object, layout, point or name where a call needs one makes the call do no
 void log(const NebulaPlugin* self, const char* text)
 ```
 
-One line in the game's log.
+Writes one line to the game's log.
 
 <a id="p-reference-plugin-api--option"></a>
 
@@ -4773,7 +4833,7 @@ One line in the game's log.
 const char* option(const NebulaPlugin* self, const char* id)
 ```
 
-The choice a player made for one of the mod's options, by option id: its choice id. Null: no such option.
+The choice id the player picked for one of the mod's options. Null: no such option.
 
 <a id="p-reference-plugin-api--subscribe"></a>
 
@@ -4783,7 +4843,7 @@ The choice a player made for one of the mod's options, by option id: its choice 
 int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)
 ```
 
-Only in nebula_plugin_start: `callback` runs at each `event` (NEBULA_MOD_EVENT_*), with what it's about. What it returns counts where the event says so (a hit refused, coins changed); else return data->value. 0: done.
+Only in nebula_plugin_start. Calls `callback` at each `event` (NEBULA_MOD_EVENT_*). Its return value matters where the event says so (a cancelled hit, changed coins); otherwise return data->value. Returns 0.
 
 <a id="p-reference-plugin-api--registerobject"></a>
 
@@ -4793,7 +4853,7 @@ Only in nebula_plugin_start: `callback` runs at each `event` (NEBULA_MOD_EVENT_*
 int32_t register_object(const NebulaObjectClass* object)
 ```
 
-A class of objects levels can place by its name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name taken, or a class older than Nebula reads.
+Adds an object class that levels can place by name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name already taken, or a class too old to read.
 
 <a id="p-reference-plugin-api--registercreator"></a>
 
@@ -4803,7 +4863,7 @@ A class of objects levels can place by its name, run by the plugin's callbacks (
 int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)
 ```
 
-`create` makes the game's own object (a NameObj) from its placed name; `archive` is loaded for it, or null.
+`create` builds the game's own object type (a NameObj) for a placed name; `archive` is loaded for it, or null.
 
 <a id="p-reference-plugin-api--hook"></a>
 
@@ -4813,7 +4873,7 @@ int32_t register_creator(const char* name, void*(*create)(const char* name), con
 int32_t hook(void* target, void* replacement, void* * original)
 ```
 
-Run `replacement` in place of the game's function at `target`; `original` gets a call to what was there before it, which may be another plugin's. A function the compiler inlined everywhere can't be reached this way: use events. Windows x64, and Linux and Mac on x64 and arm64. Elsewhere, or for a function whose first instructions can't be moved, it answers -1.
+Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved.
 
 <a id="p-reference-plugin-api--findfunction"></a>
 
@@ -4823,7 +4883,7 @@ Run `replacement` in place of the game's function at `target`; `original` gets a
 void* find_function(const char* symbol)
 ```
 
-A game function by its symbol: on Windows, as dumpbin /exports names it. Null: no such function.
+A game function by its symbol (on Windows, as dumpbin /exports names it). Null: not found.
 
 <a id="p-reference-plugin-api--player"></a>
 
@@ -4833,7 +4893,7 @@ A game function by its symbol: on Windows, as dumpbin /exports names it. Null: n
 NebulaActor* player(void)
 ```
 
-Null when no stage is running, or outside a stage's frame.
+The player. Null when no stage is running, or outside a stage frame.
 
 <a id="p-reference-plugin-api--getposition"></a>
 
@@ -4843,7 +4903,7 @@ Null when no stage is running, or outside a stage's frame.
 void get_position(NebulaActor* actor, float* xyz)
 ```
 
-Where it is: x, y, z in the level's units.
+Position: x, y, z in level units.
 
 <a id="p-reference-plugin-api--setposition"></a>
 
@@ -4853,7 +4913,7 @@ Where it is: x, y, z in the level's units.
 void set_position(NebulaActor* actor, const float* xyz)
 ```
 
-It is there at once. The player is put there as after a warp; an object just moves.
+Moves it there at once. The player is placed as after a warp; an object just moves.
 
 <a id="p-reference-plugin-api--getvelocity"></a>
 
@@ -4863,7 +4923,7 @@ It is there at once. The player is put there as after a warp; an object just mov
 void get_velocity(NebulaActor* actor, float* xyz)
 ```
 
-How far it moves each frame: x, y, z. The player's is the game's own.
+Movement per frame: x, y, z. For the player, the game's own.
 
 <a id="p-reference-plugin-api--setvelocity"></a>
 
@@ -4873,7 +4933,7 @@ How far it moves each frame: x, y, z. The player's is the game's own.
 void set_velocity(NebulaActor* actor, const float* xyz)
 ```
 
-Its movement from now: the game's gravity and friction go on from it.
+Sets the movement; the game's gravity and friction continue from it.
 
 <a id="p-reference-plugin-api--value"></a>
 
@@ -4883,7 +4943,7 @@ Its movement from now: the game's gravity and friction go on from it.
 int32_t value(NebulaModValue what)
 ```
 
-One of the game's numbers (NEBULA_VALUE_*). The player's are 0 with no stage running.
+A game value (NEBULA_VALUE_*). Player values are 0 when no stage is running.
 
 <a id="p-reference-plugin-api--setvalue"></a>
 
@@ -4893,7 +4953,7 @@ One of the game's numbers (NEBULA_VALUE_*). The player's are 0 with no stage run
 void set_value(NebulaModSet what, int32_t value)
 ```
 
-Sets one (NEBULA_SET_*); nothing with no stage running. Life 0 or less: the player dies; more than the most: the most. A power-up: the game's (NEBULA_POWER_UP_*) or one add_power_up gave.
+Sets a value (NEBULA_SET_*); does nothing when no stage is running. Life 0 or less kills the player; above the maximum is clamped. A power-up is the game's (NEBULA_POWER_UP_*) or one from add_power_up.
 
 <a id="p-reference-plugin-api--killplayer"></a>
 
@@ -4903,7 +4963,7 @@ Sets one (NEBULA_SET_*); nothing with no stage running. Life 0 or less: the play
 void kill_player(void)
 ```
 
-The player dies, as from a fall out of the level.
+Kills the player, as a fall out of the level does.
 
 <a id="p-reference-plugin-api--jumpplayer"></a>
 
@@ -4913,7 +4973,7 @@ The player dies, as from a fall out of the level.
 void jump_player(const float* velocity)
 ```
 
-The player leaves the ground with this velocity, as a spring sends them.
+Launches the player off the ground with this velocity, like a spring.
 
 <a id="p-reference-plugin-api--appear"></a>
 
@@ -4923,7 +4983,7 @@ The player leaves the ground with this velocity, as a spring sends them.
 void appear(NebulaActor* actor)
 ```
 
-It comes into the level (one killed, or one not yet shown): drawn, moving and touchable, as the game's appear.
+Brings it into the level (after a kill, or before its first appearance): drawn, moving and touchable.
 
 <a id="p-reference-plugin-api--kill"></a>
 
@@ -4933,7 +4993,7 @@ It comes into the level (one killed, or one not yet shown): drawn, moving and to
 void kill(NebulaActor* actor)
 ```
 
-It leaves the level, as a beaten enemy: not drawn, moved or touched. appear brings it back.
+Removes it from the level, like a defeated enemy: not drawn, moved or touched. appear brings it back.
 
 <a id="p-reference-plugin-api--isdead"></a>
 
@@ -4943,7 +5003,7 @@ It leaves the level, as a beaten enemy: not drawn, moved or touched. appear brin
 int32_t is_dead(NebulaActor* actor)
 ```
 
-1 while it's out of the level (killed, or not yet appeared).
+1 while it is out of the level (killed, or not yet appeared).
 
 <a id="p-reference-plugin-api--showmodel"></a>
 
@@ -4953,7 +5013,7 @@ int32_t is_dead(NebulaActor* actor)
 void show_model(NebulaActor* actor, int32_t show)
 ```
 
-Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model. The player: his hands, face and power-up suit with it; his shadow stays.
+Shows (1) or hides (0) its model; it still moves and collides. Does nothing for an object without a model. For the player this covers hands, face and power-up suit; the shadow stays.
 
 <a id="p-reference-plugin-api--play"></a>
 
@@ -4963,7 +5023,7 @@ Its model drawn (1) or not (0); it still moves and touches. Nothing for an objec
 int32_t play(NebulaActor* actor, NebulaModPlay what, const char* name)
 ```
 
-1: it started. 0: the object has no such thing, or nothing to play it with.
+1: started. 0: the object has no such animation, effect or sound, or nothing to play it on.
 
 <a id="p-reference-plugin-api--actorname"></a>
 
@@ -4973,7 +5033,7 @@ int32_t play(NebulaActor* actor, NebulaModPlay what, const char* name)
 const char* actor_name(NebulaActor* actor)
 ```
 
-The name it was made with: a placed object's is its name in the level (Kuribo); some of the game's own objects have Japanese names.
+The name it was created with: a placed object's level name (Kuribo). Some of the game's own objects have Japanese names.
 
 <a id="p-reference-plugin-api--stagename"></a>
 
@@ -4983,7 +5043,7 @@ The name it was made with: a placed object's is its name in the level (Kuribo); 
 const char* stage_name(void)
 ```
 
-The stage being played (EggStarGalaxy); null with none.
+The current stage (EggStarGalaxy); null when there is none.
 
 <a id="p-reference-plugin-api--spawn"></a>
 
@@ -4993,7 +5053,7 @@ The stage being played (EggStarGalaxy); null with none.
 NebulaActor* spawn(const char* name, const float* xyz)
 ```
 
-A registered object at a place. Its archive must already be loaded: a level places it, or the stage holds it. Null: it can't be made now.
+Creates a registered object at a point. Its archive must already be loaded (placed in the level, or part of the stage). Null: it can't be created now.
 
 <a id="p-reference-plugin-api--buttonsheld"></a>
 
@@ -5003,7 +5063,7 @@ A registered object at a place. Its archive must already be loaded: a level plac
 uint32_t buttons_held(void)
 ```
 
-The controls held now: NEBULA_BUTTON_*, any together. 0 with no stage running.
+Buttons held now: NEBULA_BUTTON_* flags. 0 when no stage is running.
 
 <a id="p-reference-plugin-api--buttonspressed"></a>
 
@@ -5013,7 +5073,7 @@ The controls held now: NEBULA_BUTTON_*, any together. 0 with no stage running.
 uint32_t buttons_pressed(void)
 ```
 
-The controls pressed on this frame only: NEBULA_BUTTON_*.
+Buttons pressed this frame only: NEBULA_BUTTON_* flags.
 
 <a id="p-reference-plugin-api--stick"></a>
 
@@ -5023,7 +5083,7 @@ The controls pressed on this frame only: NEBULA_BUTTON_*.
 void stick(float* x, float* y)
 ```
 
-The stick, each from -1 to 1 (either may be null).
+The stick, each axis from -1 to 1 (either pointer may be null).
 
 <a id="p-reference-plugin-api--shakecamera"></a>
 
@@ -5033,7 +5093,7 @@ The stick, each from -1 to 1 (either may be null).
 void shake_camera(void)
 ```
 
-In a stage: the camera shakes, as when something heavy lands (shake_camera_by chooses how hard).
+In a stage: shakes the camera as when something heavy lands (shake_camera_by sets the strength).
 
 <a id="p-reference-plugin-api--addgalaxy"></a>
 
@@ -5043,7 +5103,7 @@ In a stage: the camera shakes, as when something heavy lands (shake_camera_by ch
 int32_t add_galaxy(const NebulaGalaxy* galaxy)
 ```
 
-Only in nebula_plugin_start. 0: done; -2: the galaxy has no scenario archive (StageData/<name>/<name>Scenario.arc in the mod, StageData/<name>Scenario in the store), so it is left out; -1: anything else (its name clashes with one the game has).
+Only in nebula_plugin_start. Adds a galaxy. 0: done; -2: no scenario archive (StageData/<name>/<name>Scenario.arc in the mod, StageData/<name>Scenario in the store), so it is skipped; -1: any other problem (its name is already one of the game's).
 
 <a id="p-reference-plugin-api--addhungryluma"></a>
 
@@ -5053,7 +5113,7 @@ Only in nebula_plugin_start. 0: done; -2: the galaxy has no scenario archive (St
 int32_t add_hungry_luma(const char* galaxy, int32_t slot, int32_t star_bits)
 ```
 
-A hungry Luma: placed in a level as TicoGalaxy with its Arg7 at `slot`, it opens `galaxy` when fed `star_bits`. The game's own are slots 0 to 6: using one takes its place.
+A hungry Luma: placed in a level as TicoGalaxy with Arg7 set to `slot`, it opens `galaxy` when fed `star_bits`. The game uses slots 0 to 6; using one replaces the game's Luma.
 
 <a id="p-reference-plugin-api--addtext"></a>
 
@@ -5063,7 +5123,7 @@ A hungry Luma: placed in a level as TicoGalaxy with its Arg7 at `slot`, it opens
 int32_t add_text(const char* id, const char* utf8)
 ```
 
-A message of the game by its id, in place of its own or new: GalaxyName_<galaxy>, ScenarioName_<galaxy><n>, a talk's id. A line of the game keeps its talk settings. The words may hold the game's message tags in brackets (nebula_text_tags.h).
+Replaces or adds a message by id: GalaxyName_<galaxy>, ScenarioName_<galaxy><n>, a conversation's id. An existing line keeps its talk settings. The text may use the game's message tags in brackets (nebula_text_tags.h).
 
 <a id="p-reference-plugin-api--addpowerup"></a>
 
@@ -5073,7 +5133,7 @@ A message of the game by its id, in place of its own or new: GalaxyName_<galaxy>
 int32_t add_power_up(const NebulaPowerUpClass* power_up)
 ```
 
-Its number, for set_value. Below 0: it can't be added.
+Adds a power-up and returns its number for set_value; below 0 when it can't be added.
 
 <a id="p-reference-plugin-api--getgravity"></a>
 
@@ -5083,7 +5143,7 @@ Its number, for set_value. Below 0: it can't be added.
 void get_gravity(NebulaActor* actor, float* xyz)
 ```
 
-Which way is down for it, a unit length: on a planet that is no one axis.
+Its down direction, unit length (on a planet this is not a fixed axis).
 
 <a id="p-reference-plugin-api--addmusic"></a>
 
@@ -5093,7 +5153,7 @@ Which way is down for it, a unit length: on a planet that is no one axis.
 int32_t add_music(const char* name, const char* file)
 ```
 
-Only in nebula_plugin_start. A music track: `file` is its place in the game, AudioRes/Stream/MyTrack.wav (.ogg, .ast). `name` is yours to choose, not starting SE_, BGM_, MBGM_, STM_ or ME_, which are the game's. 0: done.
+Only in nebula_plugin_start. Adds a music track: `file` is its path in the game, AudioRes/Stream/MyTrack.wav (.ogg, .ast). Pick any `name` not starting with SE_, BGM_, MBGM_, STM_ or ME_, which are the game's. 0: done.
 
 <a id="p-reference-plugin-api--setstagemusic"></a>
 
@@ -5103,7 +5163,7 @@ Only in nebula_plugin_start. A music track: `file` is its place in the game, Aud
 int32_t set_stage_music(const char* stage, int32_t scenario, const char* name)
 ```
 
-Only in nebula_plugin_start. What a stage plays: `scenario` is a mission, 0 for all it has no row for.
+Only in nebula_plugin_start. The music a stage plays: `scenario` is a mission, 0 for every mission without its own entry.
 
 <a id="p-reference-plugin-api--setareamusic"></a>
 
@@ -5113,7 +5173,7 @@ Only in nebula_plugin_start. What a stage plays: `scenario` is a mission, 0 for 
 int32_t set_area_music(const char* stage, int32_t area, const char* name)
 ```
 
-Only in nebula_plugin_start. What a ChangeBgmCube in the stage starts, with its Obj_arg1 at `area`.
+Only in nebula_plugin_start. The music a ChangeBgmCube with Obj_arg1 equal to `area` starts in the stage.
 
 <a id="p-reference-plugin-api--playmusic"></a>
 
@@ -5123,7 +5183,7 @@ Only in nebula_plugin_start. What a ChangeBgmCube in the stage starts, with its 
 int32_t play_music(const char* name)
 ```
 
-In a stage: this track, a mod's or the game's by its name, in place of what's playing. 1: it started.
+In a stage: plays this track (a mod's or the game's, by name) instead of the current one. 1: started.
 
 <a id="p-reference-plugin-api--stopmusic"></a>
 
@@ -5133,7 +5193,7 @@ In a stage: this track, a mod's or the game's by its name, in place of what's pl
 void stop_music(int32_t frames)
 ```
 
-In a stage: what's playing fades out over this many frames.
+In a stage: fades out the current music over this many frames.
 
 <a id="p-reference-plugin-api--playmovie"></a>
 
@@ -5143,7 +5203,7 @@ In a stage: what's playing fades out over this many frames.
 int32_t play_movie(const char* file)
 ```
 
-In a stage: a movie over the game, by its place in the game: MovieData/MyMovie.thp. The game waits while it plays. 1: it started.
+In a stage: plays a movie over the game by its path, MovieData/MyMovie.thp. The game waits while it plays. 1: started.
 
 <a id="p-reference-plugin-api--stopmovie"></a>
 
@@ -5153,7 +5213,7 @@ In a stage: a movie over the game, by its place in the game: MovieData/MyMovie.t
 void stop_movie(void)
 ```
 
-The movie playing ends now; the game goes on.
+Ends the movie now; the game continues.
 
 <a id="p-reference-plugin-api--ismovieplaying"></a>
 
@@ -5173,7 +5233,7 @@ int32_t is_movie_playing(void)
 int32_t set_event_flag(const char* name, int32_t kind, int32_t a, int32_t b, const char* first, const char* second)
 ```
 
-Only in nebula_plugin_start. A row of the game's progression, by its name: what opens what, and what each hungry Luma costs. A name the game has is changed, a new one added. `kind`: 1 stars, 2 a galaxy's stars, 3 a special star, 4 two flags, 5 story, 6 a galaxy, 7 a comet, 8 a hungry Luma. `a` and `b` follow the kind: the star's number, or the Luma's slot and its price. 0: done.
+Only in nebula_plugin_start. Changes or adds a progression row by name: what unlocks what, and what each hungry Luma costs. `kind`: 1 stars, 2 a galaxy's stars, 3 a special star, 4 two flags, 5 story, 6 a galaxy, 7 a comet, 8 a hungry Luma. `a` and `b` depend on the kind: a star number, or a Luma's slot and price. 0: done.
 
 <a id="p-reference-plugin-api--setcometschedule"></a>
 
@@ -5183,7 +5243,7 @@ Only in nebula_plugin_start. A row of the game's progression, by its name: what 
 int32_t set_comet_schedule(int32_t dome, const char* const* galaxies, const int32_t* coins, int32_t count)
 ```
 
-Only in nebula_plugin_start. A dome's comets (domes 1 to 6 are the game's; 7, 8 and on add domes while they run on unbroken), in the order they come, for the whole of its schedule: `galaxies[i]` with `coins[i]` at 1 for the hundred purple coins.
+Only in nebula_plugin_start. A dome's full comet schedule, in order (domes 1 to 6 are the game's; 7, 8 and up add domes as long as the numbers have no gap): `galaxies[i]`, with `coins[i]` 1 for the purple coin comet.
 
 <a id="p-reference-plugin-api--setobjectchange"></a>
 
@@ -5193,7 +5253,7 @@ Only in nebula_plugin_start. A dome's comets (domes 1 to 6 are the game's; 7, 8 
 int32_t set_object_change(int32_t where, const char* object, const char* becomes)
 ```
 
-One of the game's objects becomes another, or (`becomes` null) is gone. Where: NEBULA_OBJECTS_*. Before stages load.
+Replaces one of the game's objects with another, or removes it (`becomes` null). Where: NEBULA_OBJECTS_*. Call before stages load.
 
 <a id="p-reference-plugin-api--setcomettimelimit"></a>
 
@@ -5203,7 +5263,7 @@ One of the game's objects becomes another, or (`becomes` null) is gone. Where: N
 int32_t set_comet_time_limit(const char* galaxy, int32_t mission, int32_t seconds)
 ```
 
-A comet mission's time limit in seconds, for a galaxy and mission of the player's comets.
+A comet mission's time limit in seconds.
 
 <a id="p-reference-plugin-api--isanimationdone"></a>
 
@@ -5213,7 +5273,7 @@ A comet mission's time limit in seconds, for a galaxy and mission of the player'
 int32_t is_animation_done(NebulaActor* actor)
 ```
 
-An object's skeleton animation (what play's NEBULA_PLAY_ANIMATION started): 1 once it has reached its end, 0 while it plays on.
+The skeleton animation started by play(NEBULA_PLAY_ANIMATION): 1 when it has reached its end, 0 while playing.
 
 <a id="p-reference-plugin-api--animationframe"></a>
 
@@ -5223,7 +5283,7 @@ An object's skeleton animation (what play's NEBULA_PLAY_ANIMATION started): 1 on
 float animation_frame(NebulaActor* actor)
 ```
 
-Its frame now, from 0; 0 with no model.
+Current frame, from 0; 0 without a model.
 
 <a id="p-reference-plugin-api--animationlength"></a>
 
@@ -5233,7 +5293,7 @@ Its frame now, from 0; 0 with no model.
 float animation_length(NebulaActor* actor)
 ```
 
-Its last frame; 0 with no model.
+Last frame; 0 without a model.
 
 <a id="p-reference-plugin-api--setanimationframe"></a>
 
@@ -5243,7 +5303,7 @@ Its last frame; 0 with no model.
 void set_animation_frame(NebulaActor* actor, float frame)
 ```
 
-It goes on from this frame.
+Continues from this frame.
 
 <a id="p-reference-plugin-api--setanimationrate"></a>
 
@@ -5253,7 +5313,7 @@ It goes on from this frame.
 void set_animation_rate(NebulaActor* actor, float rate)
 ```
 
-Its speed: 1 its own, 2 twice, 0 held, below 0 backwards.
+Playback speed: 1 normal, 2 double, 0 paused, below 0 backwards.
 
 <a id="p-reference-plugin-api--stopeffect"></a>
 
@@ -5263,7 +5323,7 @@ Its speed: 1 its own, 2 twice, 0 held, below 0 backwards.
 void stop_effect(NebulaActor* actor, const char* name)
 ```
 
-Its effect of that name stops; null: all of them.
+Stops its effect with this name; null stops all of them.
 
 <a id="p-reference-plugin-api--stopsound"></a>
 
@@ -5273,7 +5333,7 @@ Its effect of that name stops; null: all of them.
 void stop_sound(NebulaActor* actor, const char* name)
 ```
 
-Its sound of that name stops.
+Stops its sound with this name.
 
 <a id="p-reference-plugin-api--setstate"></a>
 
@@ -5283,7 +5343,7 @@ Its sound of that name stops.
 void set_state(NebulaActor* actor, int32_t state)
 ```
 
-An object of register_object's own step in what it's doing: a number of the plugin's own (its enum of steps), starting at 0; state_frames counts from the set_state that began it.
+For register_object objects: the current step of the object's behaviour, a number of the plugin's choosing (from 0). state_frames counts from the set_state call that started it.
 
 <a id="p-reference-plugin-api--state"></a>
 
@@ -5293,7 +5353,7 @@ An object of register_object's own step in what it's doing: a number of the plug
 int32_t state(NebulaActor* actor)
 ```
 
-Its state: what set_state set last, 0 before that or for an object not register_object's.
+The last value given to set_state; 0 before that, or for objects not from register_object.
 
 <a id="p-reference-plugin-api--stateframes"></a>
 
@@ -5313,7 +5373,7 @@ Frames since that set_state, from 0.
 const char* nerve(NebulaActor* actor)
 ```
 
-The game's own objects (and screens, and the states objects hand their work to) run one nerve at a time: Kuribo walks in "Kuribo.Walk". A nerve's name is "<class>.<nerve>", as docs/modding/NERVES.md lists every one. nerve: the object's now; null for one without nerves (register_object's objects have set_state). nerve_frames: its frames in it, from 0. set_nerve: it goes to another nerve of the class its nerve now is of, from its next frame (the game's code of that nerve runs, as when the game sets it). 0: done; -1: no such nerve of its class.
+The game's own objects (and screens, and the states objects delegate to) run one nerve at a time: Kuribo walks in "Kuribo.Walk". Names are "<class>.<nerve>"; docs/modding/NERVES.md lists them all. nerve: the object's current nerve, or null for objects without nerves (register_object objects use set_state).
 
 <a id="p-reference-plugin-api--nerveframes"></a>
 
@@ -5323,7 +5383,7 @@ The game's own objects (and screens, and the states objects hand their work to) 
 int32_t nerve_frames(NebulaActor* actor)
 ```
 
-Its frames in the nerve, from 0.
+Frames spent in the current nerve, from 0.
 
 <a id="p-reference-plugin-api--setnerve"></a>
 
@@ -5333,7 +5393,7 @@ Its frames in the nerve, from 0.
 int32_t set_nerve(NebulaActor* actor, const char* nerve)
 ```
 
-It goes to another nerve of its class (as nerve names it) from its next frame. 0: done; -1: no such nerve.
+Switches to another nerve of the same class from the next frame; the game's code for that nerve runs as if the game set it. 0: done; -1: no such nerve in its class.
 
 <a id="p-reference-plugin-api--hooknerve"></a>
 
@@ -5343,7 +5403,7 @@ It goes to another nerve of its class (as nerve names it) from its next frame. 0
 int32_t hook_nerve(const char* nerve, NebulaNerveCallback callback, void* user)
 ```
 
-Only in nebula_plugin_start. `callback` runs for every object in the nerve: as it enters, every frame of it, and as it leaves. 0: done; -1: no such nerve.
+Only in nebula_plugin_start. Calls `callback` for every object in this nerve: on entry, every frame, and on exit. 0: done; -1: no such nerve.
 
 <a id="p-reference-plugin-api--nerveat"></a>
 
@@ -5353,7 +5413,7 @@ Only in nebula_plugin_start. `callback` runs for every object in the nerve: as i
 const char* nerve_at(int32_t index)
 ```
 
-The index-th nerve's name, for listing them all. Null: past the last.
+The name of the index-th nerve, for listing them all. Null: past the last.
 
 <a id="p-reference-plugin-api--getrotation"></a>
 
@@ -5363,7 +5423,7 @@ The index-th nerve's name, for listing them all. Null: past the last.
 void get_rotation(NebulaActor* actor, float* xyz)
 ```
 
-Its rotation about x, y and z, in degrees, as levels place it.
+Rotation about x, y and z in degrees, as levels place it.
 
 <a id="p-reference-plugin-api--setrotation"></a>
 
@@ -5373,7 +5433,7 @@ Its rotation about x, y and z, in degrees, as levels place it.
 void set_rotation(NebulaActor* actor, const float* xyz)
 ```
 
-Its rotation, in degrees. A register_object object with a front (set_front) turns by that instead.
+Sets the rotation in degrees. A register_object object with a front (set_front) turns by that instead.
 
 <a id="p-reference-plugin-api--getscale"></a>
 
@@ -5383,7 +5443,7 @@ Its rotation, in degrees. A register_object object with a front (set_front) turn
 void get_scale(NebulaActor* actor, float* xyz)
 ```
 
-Its size on each axis: 1 its own.
+Scale on each axis; 1 is normal size.
 
 <a id="p-reference-plugin-api--setscale"></a>
 
@@ -5393,7 +5453,7 @@ Its size on each axis: 1 its own.
 void set_scale(NebulaActor* actor, const float* xyz)
 ```
 
-Its size on each axis.
+Sets the scale on each axis.
 
 <a id="p-reference-plugin-api--setfront"></a>
 
@@ -5403,7 +5463,7 @@ Its size on each axis.
 void set_front(NebulaActor* actor, const float* xyz)
 ```
 
-register_object's objects: the way it faces, standing against gravity. Its model then turns with this, not with its rotation.
+For register_object objects: the facing direction, upright against gravity. Its model then turns by this, not by its rotation.
 
 <a id="p-reference-plugin-api--getfront"></a>
 
@@ -5413,7 +5473,7 @@ register_object's objects: the way it faces, standing against gravity. Its model
 void get_front(NebulaActor* actor, float* xyz)
 ```
 
-The way it faces (set_front's, or as it turned to the player); 0, 0, 1 for others.
+The facing direction (from set_front, or from turning to the player); 0, 0, 1 for other objects.
 
 <a id="p-reference-plugin-api--turntoplayer"></a>
 
@@ -5423,7 +5483,7 @@ The way it faces (set_front's, or as it turned to the player); 0, 0, 1 for other
 void turn_to_player(NebulaActor* actor, float degrees)
 ```
 
-It turns to face the player, at most `degrees` this frame.
+Turns to face the player, by at most `degrees` this frame.
 
 <a id="p-reference-plugin-api--settouchable"></a>
 
@@ -5433,7 +5493,7 @@ It turns to face the player, at most `degrees` this frame.
 void set_touchable(NebulaActor* actor, int32_t touchable)
 ```
 
-register_object's objects: whether anything can touch it, and hurting the player.
+For register_object objects: whether anything can touch it, including touches that hurt the player.
 
 <a id="p-reference-plugin-api--hitplayer"></a>
 
@@ -5443,7 +5503,7 @@ register_object's objects: whether anything can touch it, and hurting the player
 int32_t hit_player(NebulaActor* actor, NebulaHit how)
 ```
 
-It hurts the player as the game's enemies do (NEBULA_HIT_*), through its body. 1 if the player took it.
+Hurts the player through its body, as the game's enemies do (NEBULA_HIT_*). 1 if the player was hit.
 
 <a id="p-reference-plugin-api--placementnumber"></a>
 
@@ -5453,7 +5513,7 @@ It hurts the player as the game's enemies do (NEBULA_HIT_*), through its body. 1
 int32_t placement_number(NebulaActor* actor, const char* column, double* value)
 ```
 
-register_object's objects: a column of its row in the level, by the column's name, as a level editor shows it: Obj_arg0 to Obj_arg7 (-1 where the level sets none), CommonPath_ID, ShapeModelNo, CameraSetId, MessageId, GroupId, ClippingGroupId, DemoGroupId, ViewGroupId, CastId, ParentID, the SW_ columns, l_id... placement_number: 1 and the number for a number column (whole or not); 0 for a column the row lacks or one of words, or an object the level didn't place (spawn). placement_text: a column of words (name), or null.
+For register_object objects: a column of its row in the level, by the name level editors show: Obj_arg0 to Obj_arg7 (-1 when unset), CommonPath_ID, ShapeModelNo, CameraSetId, MessageId, GroupId, ClippingGroupId, DemoGroupId, ViewGroupId, CastId, ParentID, the SW_ columns, l_id... placement_number returns 1 and the value for a number column; 0 for a missing or text column, or for an object not placed by the level (spawn). placement_text reads text columns (name), or returns null.
 
 <a id="p-reference-plugin-api--placementtext"></a>
 
@@ -5463,7 +5523,7 @@ register_object's objects: a column of its row in the level, by the column's nam
 const char* placement_text(NebulaActor* actor, const char* column)
 ```
 
-A column of words of its row (its name in the level, a camera's name), or null.
+A text column of its row (its level name, a camera name), or null.
 
 <a id="p-reference-plugin-api--hasswitch"></a>
 
@@ -5473,7 +5533,7 @@ A column of words of its row (its name in the level, a camera's name), or null.
 int32_t has_switch(NebulaActor* actor, NebulaSwitch which)
 ```
 
-Its switches (NEBULA_SWITCH_*): 1 when the level set that one. The other switch calls do nothing for one it didn't.
+Its stage switches (NEBULA_SWITCH_*): 1 when the level assigned that switch. The other switch calls do nothing for an unassigned one.
 
 <a id="p-reference-plugin-api--isswitchon"></a>
 
@@ -5493,7 +5553,7 @@ int32_t is_switch_on(NebulaActor* actor, NebulaSwitch which)
 void set_switch(NebulaActor* actor, NebulaSwitch which, int32_t on)
 ```
 
-It turns that switch on or off, for all the level's objects that listen to it.
+Turns that switch on or off for every object in the level that listens to it.
 
 <a id="p-reference-plugin-api--hasrail"></a>
 
@@ -5503,7 +5563,7 @@ It turns that switch on or off, for all the level's objects that listen to it.
 int32_t has_rail(NebulaActor* actor)
 ```
 
-Its rail from the level (CommonPath_ID): 1 when it has one. The rail calls do nothing, or answer 0, for an object without.
+Its rail from the level (CommonPath_ID): 1 when it has one. Without one, the rail calls do nothing or return 0.
 
 <a id="p-reference-plugin-api--moveonrail"></a>
 
@@ -5513,7 +5573,7 @@ Its rail from the level (CommonPath_ID): 1 when it has one. The rail calls do no
 void move_on_rail(NebulaActor* actor, float speed)
 ```
 
-It goes `speed` along its rail (below 0: back) and is put there.
+Moves it `speed` along its rail (below 0: backwards) and places it there.
 
 <a id="p-reference-plugin-api--railatend"></a>
 
@@ -5523,7 +5583,7 @@ It goes `speed` along its rail (below 0: back) and is put there.
 int32_t rail_at_end(NebulaActor* actor)
 ```
 
-1 once it has come to the end it moves to.
+1 once it reached the end it is moving toward.
 
 <a id="p-reference-plugin-api--railturnback"></a>
 
@@ -5533,7 +5593,7 @@ int32_t rail_at_end(NebulaActor* actor)
 void rail_turn_back(NebulaActor* actor)
 ```
 
-It moves the other way along it from now.
+Reverses its direction on the rail.
 
 <a id="p-reference-plugin-api--railcoord"></a>
 
@@ -5543,7 +5603,7 @@ It moves the other way along it from now.
 float rail_coord(NebulaActor* actor)
 ```
 
-How far along it is, in the level's units from the rail's start.
+Distance along the rail from its start, in level units.
 
 <a id="p-reference-plugin-api--setrailcoord"></a>
 
@@ -5553,7 +5613,7 @@ How far along it is, in the level's units from the rail's start.
 void set_rail_coord(NebulaActor* actor, float coord)
 ```
 
-It is put this far along (the next move_on_rail moves it from there).
+Places it this far along the rail (the next move_on_rail continues from there).
 
 <a id="p-reference-plugin-api--raillength"></a>
 
@@ -5563,7 +5623,7 @@ It is put this far along (the next move_on_rail moves it from there).
 float rail_length(NebulaActor* actor)
 ```
 
-The rail's whole length.
+The rail's total length.
 
 <a id="p-reference-plugin-api--raycast"></a>
 
@@ -5573,7 +5633,7 @@ The rail's whole length.
 int32_t raycast(const float* from, const float* to, float* hit)
 ```
 
-The world. 1 and where (`hit`, which may be null) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
+The world. Returns 1 and the hit point (`hit` may be null) when the line from `from` to `to` crosses the map's collision; 0 when it is clear.
 
 <a id="p-reference-plugin-api--isonground"></a>
 
@@ -5583,7 +5643,7 @@ The world. 1 and where (`hit`, which may be null) if the line from `from` to `to
 int32_t is_on_ground(NebulaActor* actor)
 ```
 
-1 while it stands on the map: the player, or an object with collision of its own.
+1 while standing on the map: the player, or an object with its own collision.
 
 <a id="p-reference-plugin-api--istouchingwall"></a>
 
@@ -5593,7 +5653,7 @@ int32_t is_on_ground(NebulaActor* actor)
 int32_t is_touching_wall(NebulaActor* actor)
 ```
 
-1 while it touches a wall of the map (objects with collision of their own).
+1 while touching a wall of the map (objects with their own collision).
 
 <a id="p-reference-plugin-api--isinwater"></a>
 
@@ -5613,7 +5673,7 @@ int32_t is_in_water(const float* xyz)
 float distance_to_player(NebulaActor* actor)
 ```
 
-How far it is from the player; 0 with no player.
+Distance to the player; 0 when there is no player.
 
 <a id="p-reference-plugin-api--getjointposition"></a>
 
@@ -5623,7 +5683,7 @@ How far it is from the player; 0 with no player.
 void get_joint_position(NebulaActor* actor, const char* joint, float* xyz)
 ```
 
-Where one of its model's joints is now; its position with no such joint or model.
+Current position of one of its model's joints; its own position when there is no such joint or model.
 
 <a id="p-reference-plugin-api--playerfront"></a>
 
@@ -5633,7 +5693,7 @@ Where one of its model's joints is now; its position with no such joint or model
 void player_front(float* xyz)
 ```
 
-The way the player faces, a unit length; 0, 0, 1 with no player.
+The player's facing direction, unit length; 0, 0, 1 when there is no player.
 
 <a id="p-reference-plugin-api--setplayercontrol"></a>
 
@@ -5643,7 +5703,7 @@ The way the player faces, a unit length; 0, 0, 1 with no player.
 void set_player_control(int32_t on)
 ```
 
-The player's controls: 0 takes them (the player stands still, as in a cutscene), 1 gives them back.
+0 takes the player's controls away (they stand still, as in a cutscene); 1 gives them back.
 
 <a id="p-reference-plugin-api--declareitem"></a>
 
@@ -5653,7 +5713,7 @@ The player's controls: 0 takes them (the player stands still, as in a cutscene),
 void declare_item(NebulaActor* actor, NebulaItem what, int32_t count)
 ```
 
-Items an object gives: declared in its class's `start` (the game readies them with the stage), then appear_item at the moment one comes out.
+Items an object gives: declare them in the class's `start` (the game prepares them with the stage), then call appear_item when one comes out.
 
 <a id="p-reference-plugin-api--appearitem"></a>
 
@@ -5663,7 +5723,7 @@ Items an object gives: declared in its class's `start` (the game readies them wi
 void appear_item(NebulaActor* actor, NebulaItem what, const float* xyz, int32_t count)
 ```
 
-One comes out at a point: coins and star bits pop out `count` at a time; a power star, the star of number `count` (below 0: the stage's).
+Releases items at a point: `count` coins or star bits at a time, or the power star numbered `count` (below 0: the stage's).
 
 <a id="p-reference-plugin-api--startcutscene"></a>
 
@@ -5673,7 +5733,7 @@ One comes out at a point: coins and star bits pop out `count` at a time; a power
 int32_t start_cutscene(NebulaActor* actor, const char* name)
 ```
 
-A cutscene of the stage's (its DemoGroupId's, by name): the actor's part in it starts. 1 when it began; 0 while another plays (ask again next frame).
+Starts the actor's part in a stage cutscene (by name, from its DemoGroupId). 1: started; 0: another cutscene is playing (try again next frame).
 
 <a id="p-reference-plugin-api--endcutscene"></a>
 
@@ -5683,7 +5743,7 @@ A cutscene of the stage's (its DemoGroupId's, by name): the actor's part in it s
 void end_cutscene(NebulaActor* actor, const char* name)
 ```
 
-The actor's part in that cutscene ends; the cutscene ends when every part has.
+Ends the actor's part in that cutscene; the cutscene ends when all parts have.
 
 <a id="p-reference-plugin-api--iscutsceneplaying"></a>
 
@@ -5693,7 +5753,7 @@ The actor's part in that cutscene ends; the cutscene ends when every part has.
 int32_t is_cutscene_playing(void)
 ```
 
-1 while any cutscene plays, while the stage starts (its opening camera and the player's arrival) and while a star's get sequence plays ("You got a Star!"), which send no NEBULA_MOD_EVENT_CUTSCENE: the player has control when it is 0. A message is best shown then.
+1 while any cutscene plays, while the stage opens (the opening camera and the player's arrival), and during a star's "You got a Star!" sequence, none of which send NEBULA_MOD_EVENT_CUTSCENE. The player has control when it is 0, which is the best time to show a message.
 
 <a id="p-reference-plugin-api--shakecameraby"></a>
 
@@ -5703,7 +5763,7 @@ int32_t is_cutscene_playing(void)
 void shake_camera_by(NebulaShake how)
 ```
 
-In a stage: the camera shakes, as hard as `how` (NEBULA_SHAKE_*).
+In a stage: shakes the camera with this strength (NEBULA_SHAKE_*).
 
 <a id="p-reference-plugin-api--startcamera"></a>
 
@@ -5713,7 +5773,7 @@ In a stage: the camera shakes, as hard as `how` (NEBULA_SHAKE_*).
 void start_camera(const char* name, int32_t frames)
 ```
 
-In a stage: one of its event cameras (by name, as the stage's camera table has it) takes the view over `frames` frames.
+In a stage: switches the view to one of the stage's event cameras (by its name in the camera table) over `frames` frames.
 
 <a id="p-reference-plugin-api--endcamera"></a>
 
@@ -5723,7 +5783,7 @@ In a stage: one of its event cameras (by name, as the stage's camera table has i
 void end_camera(const char* name, int32_t frames)
 ```
 
-That camera hands the view back over `frames` frames.
+Hands the view back from that camera over `frames` frames.
 
 <a id="p-reference-plugin-api--fadeout"></a>
 
@@ -5733,7 +5793,7 @@ That camera hands the view back over `frames` frames.
 void fade_out(int32_t frames)
 ```
 
-In a stage: the screen fades to black over `frames` frames.
+In a stage: fades the screen to black over `frames` frames.
 
 <a id="p-reference-plugin-api--fadein"></a>
 
@@ -5743,7 +5803,7 @@ In a stage: the screen fades to black over `frames` frames.
 void fade_in(int32_t frames)
 ```
 
-In a stage: the screen fades back in over `frames` frames.
+In a stage: fades the screen back in over `frames` frames.
 
 <a id="p-reference-plugin-api--changestage"></a>
 
@@ -5753,7 +5813,7 @@ In a stage: the screen fades back in over `frames` frames.
 void change_stage(const char* galaxy, int32_t mission)
 ```
 
-The player goes to a galaxy's mission, as a launch star sends them (the stage ends, the new one loads).
+Sends the player to a galaxy's mission, as a launch star does (the stage ends and the new one loads).
 
 <a id="p-reference-plugin-api--backtodome"></a>
 
@@ -5763,7 +5823,7 @@ The player goes to a galaxy's mission, as a launch star sends them (the stage en
 void back_to_dome(void)
 ```
 
-In a stage: the player goes back to the dome, as when a galaxy is left.
+In a stage: sends the player back to the dome, as leaving a galaxy does.
 
 <a id="p-reference-plugin-api--iseventflagon"></a>
 
@@ -5773,7 +5833,7 @@ In a stage: the player goes back to the dome, as when a galaxy is left.
 int32_t is_event_flag_on(const char* name)
 ```
 
-1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on. "SpinAndStarPointer" is the spin and the Star Pointer the Gateway's Luma grants.
+1 if the save has this event flag on (a progression name, or one added with set_event_flag). "SpinAndStarPointer" is the spin and Star Pointer the Gateway's Luma gives.
 
 <a id="p-reference-plugin-api--seteventflagon"></a>
 
@@ -5783,7 +5843,7 @@ int32_t is_event_flag_on(const char* name)
 void set_event_flag_on(const char* name)
 ```
 
-Turns it on in the save (written with the next save). "SpinAndStarPointer" grants the spin and the Star Pointer at once, in the stage being played too.
+Turns the flag on in the save (written at the next save). "SpinAndStarPointer" also grants the spin and the Star Pointer at once, in the current stage too.
 
 <a id="p-reference-plugin-api--hasstar"></a>
 
@@ -5793,7 +5853,7 @@ Turns it on in the save (written with the next save). "SpinAndStarPointer" grant
 int32_t has_star(const char* galaxy, int32_t star)
 ```
 
-1 if the save has that galaxy's star of that number.
+1 if the save has that galaxy's star with that number.
 
 <a id="p-reference-plugin-api--showmessage"></a>
 
@@ -5803,7 +5863,7 @@ int32_t has_star(const char* galaxy, int32_t star)
 void show_message(const char* utf8_or_id, int32_t centre)
 ```
 
-In a stage: the game's information box (at the top, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags; lines wrap between words). It stays until hide_message. Asked for while the stage starts, it appears when the player has control.
+In a stage: shows the game's information box (at the top, or in the middle when `centre` is 1) with a message id (the game's or add_text's) or with this text (message tags allowed; lines wrap between words). It stays until hide_message. Requested while the stage opens, it appears once the player has control.
 
 <a id="p-reference-plugin-api--hidemessage"></a>
 
@@ -5813,7 +5873,7 @@ In a stage: the game's information box (at the top, or the middle with `centre` 
 void hide_message(void)
 ```
 
-The information box goes.
+Hides the information box.
 
 <a id="p-reference-plugin-api--storeget"></a>
 
@@ -5823,7 +5883,7 @@ The information box goes.
 int32_t store_get(const NebulaPlugin* self, const char* key, int32_t missing)
 ```
 
-A number kept for this mod across plays (in the mods folder's .plugin-data, written at once). Keys: no '=' or line ends. `missing`: what a key never set answers.
+A number saved for this mod across sessions (in the mods folder's .plugin-data, written at once). Keys can't contain '=' or line breaks. `missing` is returned for a key never set.
 
 <a id="p-reference-plugin-api--storeset"></a>
 
@@ -5833,7 +5893,7 @@ A number kept for this mod across plays (in the mods folder's .plugin-data, writ
 void store_set(const NebulaPlugin* self, const char* key, int32_t value)
 ```
 
-Keeps `value` under `key`.
+Saves `value` under `key`.
 
 <a id="p-reference-plugin-api--setstagerules"></a>
 
@@ -5843,7 +5903,7 @@ Keeps `value` under `key`.
 int32_t set_stage_rules(const char* stage, int32_t scenario, const char* acts_as, int32_t own_rules)
 ```
 
-Only in nebula_plugin_start. A stage plays by another's rules: the game's rules that go by a stage's name (a Bowser arena's star, a hub's counters, an ocean's swimming) then count it as `acts_as`. own_rules 0: it no longer counts as itself. `scenario`: one mission, 0 for all. 0: done.
+Only in nebula_plugin_start. Makes a stage follow another stage's rules: the game's stage-specific rules (a Bowser arena's star, a hub's counters, ocean swimming) treat it as `acts_as`. own_rules 0: its own rules no longer apply. `scenario`: one mission, 0 for all. 0: done.
 
 <a id="p-reference-plugin-api--setplayerconstant"></a>
 
@@ -5853,7 +5913,7 @@ Only in nebula_plugin_start. A stage plays by another's rules: the game's rules 
 int32_t set_player_constant(int32_t character, const char* name, int32_t index, float value)
 ```
 
-A number of the player's table by its name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi. `index`: its place in a list, else 0. Any time. 0: done; -1: no such number.
+Sets a value in the player's constants table by name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi. `index`: position in a list, else 0. Any time. 0: done; -1: no such value.
 
 <a id="p-reference-plugin-api--playerconstant"></a>
 
@@ -5863,7 +5923,7 @@ A number of the player's table by its name (mJumpHeight, mFireModeTime). `charac
 float player_constant(int32_t character, const char* name, int32_t index)
 ```
 
-The number now; 0 with no such number.
+The current value; 0 when there is no such value.
 
 <a id="p-reference-plugin-api--setobjectclass"></a>
 
@@ -5873,7 +5933,7 @@ The number now; 0 with no such number.
 int32_t set_object_class(const char* name, const char* like)
 ```
 
-Only in nebula_plugin_start. A new name levels can place, made as the game's object `like`, with its files from ObjectData/<name>.arc. No code needed. 0: done.
+Only in nebula_plugin_start. A new object name levels can place, built like the game's object `like`, with its files from ObjectData/<name>.arc. No code needed. 0: done.
 
 <a id="p-reference-plugin-api--addsoundeffect"></a>
 
@@ -5883,7 +5943,7 @@ Only in nebula_plugin_start. A new name levels can place, made as the game's obj
 int32_t add_sound_effect(const char* name, const char* file)
 ```
 
-Only in nebula_plugin_start. A sound by its name, played from a file (AudioRes/Stream/Boom.wav, .ogg, .ast): a new name, or one of the game's (SE_OJ_COIN_GET) to replace it wherever it plays, by name or by number (the player's voices, SE_PV_*). "<name>@luigi": in its place while Luigi plays. 0: done.
+Only in nebula_plugin_start. A sound effect played from a file (AudioRes/Stream/Boom.wav, .ogg, .ast): a new name, or one of the game's (SE_OJ_COIN_GET) to replace it everywhere, whether played by name or by number (player voices, SE_PV_*). "<name>@luigi" replaces it only while playing as Luigi. 0: done.
 
 <a id="p-reference-plugin-api--findactor"></a>
 
@@ -5893,7 +5953,7 @@ Only in nebula_plugin_start. A sound by its name, played from a file (AudioRes/S
 NebulaActor* find_actor(const char* name, NebulaActor* after)
 ```
 
-Finding things. An actor by the name levels place it under; `after` null starts, a found one goes on from it. `name` null: every actor.
+Finds an actor by its level name. Pass `after` null to start, or a found actor to continue from it. `name` null matches every actor.
 
 <a id="p-reference-plugin-api--actorsnear"></a>
 
@@ -5903,7 +5963,7 @@ Finding things. An actor by the name levels place it under; `after` null starts,
 int32_t actors_near(const float* xyz, float radius, NebulaActor* * out, int32_t max)
 ```
 
-Living actors within `radius`. Their count; up to `max` go in `out`.
+Living actors within `radius`. Returns how many; up to `max` are written to `out`.
 
 <a id="p-reference-plugin-api--attackactor"></a>
 
@@ -5913,7 +5973,7 @@ Living actors within `radius`. Their count; up to `max` go in `out`.
 int32_t attack_actor(NebulaActor* target, NebulaActor* by, NebulaAttack how)
 ```
 
-As the player's attack `how`, on any actor. 1 if it took it. `by`: where it comes from, null for the player.
+Attacks any actor as the player's attack `how` would. 1 if it hit. `by`: the attacker, null for the player.
 
 <a id="p-reference-plugin-api--actordata"></a>
 
@@ -5923,7 +5983,7 @@ As the player's attack `how`, on any actor. 1 if it took it. `by`: where it come
 void* actor_data(NebulaActor* actor)
 ```
 
-A pointer of your own on one of register_object's objects: what set_actor_data put there, else null.
+The plugin's own pointer stored on a register_object object (set_actor_data), else null.
 
 <a id="p-reference-plugin-api--setactordata"></a>
 
@@ -5933,7 +5993,7 @@ A pointer of your own on one of register_object's objects: what set_actor_data p
 void set_actor_data(NebulaActor* actor, void* data)
 ```
 
-Puts a pointer of your own on it: yours to free (at its class's `kill` or the STAGE_END event).
+Stores a pointer of the plugin's on the object; the plugin frees it (in the class's `kill` or at STAGE_END).
 
 <a id="p-reference-plugin-api--actorplacedname"></a>
 
@@ -5943,7 +6003,7 @@ Puts a pointer of your own on it: yours to free (at its class's `kill` or the ST
 const char* actor_placed_name(NebulaActor* actor)
 ```
 
-The name levels place it under.
+Its level name.
 
 <a id="p-reference-plugin-api--stopscene"></a>
 
@@ -5953,7 +6013,7 @@ The name levels place it under.
 void stop_scene(int32_t frames)
 ```
 
-Run again at `frames` frames, or not at all with 0: a plain hit-stop: the whole scene holds still.
+Freezes the whole scene for `frames` frames (0 resumes at once): a hit-stop.
 
 <a id="p-reference-plugin-api--gravityat"></a>
 
@@ -5963,7 +6023,7 @@ Run again at `frames` frames, or not at all with 0: a plain hit-stop: the whole 
 void gravity_at(const float* xyz, float* out)
 ```
 
-Which way is down at a point, a unit length: from the stage's gravity, as an object there would fall.
+The down direction at a point, unit length, from the stage's gravity.
 
 <a id="p-reference-plugin-api--isinarea"></a>
 
@@ -5973,7 +6033,7 @@ Which way is down at a point, a unit length: from the stage's gravity, as an obj
 int32_t is_in_area(const char* area, const float* xyz)
 ```
 
-1 if a point is in one of the stage's areas of that kind (WaterArea, DeathArea, a ChangeBgmCube...).
+1 if a point is inside one of the stage's areas of that kind (WaterArea, DeathArea, ChangeBgmCube...).
 
 <a id="p-reference-plugin-api--cameraposition"></a>
 
@@ -5983,7 +6043,7 @@ int32_t is_in_area(const char* area, const float* xyz)
 void camera_position(float* xyz)
 ```
 
-Where the camera is.
+The camera's position.
 
 <a id="p-reference-plugin-api--cameratarget"></a>
 
@@ -5993,7 +6053,7 @@ Where the camera is.
 void camera_target(float* xyz)
 ```
 
-A point the camera looks at, 1000 units before it.
+A point 1000 units in front of the camera.
 
 <a id="p-reference-plugin-api--screenposition"></a>
 
@@ -6003,7 +6063,7 @@ A point the camera looks at, 1000 units before it.
 int32_t screen_position(const float* xyz, float* xy)
 ```
 
-Where a point is on the screen; 0 if behind the camera.
+Where a point appears on the screen; returns 0 if it is behind the camera.
 
 <a id="p-reference-plugin-api--playsystemsound"></a>
 
@@ -6013,7 +6073,7 @@ Where a point is on the screen; 0 if behind the camera.
 void play_system_sound(const char* name)
 ```
 
-A sound in no place; an effect's named sound at a point.
+Plays a sound not tied to a place.
 
 <a id="p-reference-plugin-api--pointer"></a>
 
@@ -6023,7 +6083,7 @@ A sound in no place; an effect's named sound at a point.
 int32_t pointer(float* xy)
 ```
 
-The pointer on the screen, in the screen's own coordinates. 0: off it.
+The pointer's position in screen coordinates. 0: off the screen.
 
 <a id="p-reference-plugin-api--eventvalue"></a>
 
@@ -6033,7 +6093,7 @@ The pointer on the screen, in the screen's own coordinates. 0: off it.
 int32_t event_value(const char* name)
 ```
 
-Save data. An event value (a named number the save keeps), by its name.
+Save data: an event value (a named number kept in the save).
 
 <a id="p-reference-plugin-api--seteventvalue"></a>
 
@@ -6043,7 +6103,7 @@ Save data. An event value (a named number the save keeps), by its name.
 void set_event_value(const char* name, int32_t value)
 ```
 
-Sets it, held between 0 and 65535 (the save keeps 16 bits).
+Sets it, clamped to 0..65535 (the save keeps 16 bits).
 
 <a id="p-reference-plugin-api--setstar"></a>
 
@@ -6053,7 +6113,7 @@ Sets it, held between 0 and 65535 (the save keeps 16 bits).
 void set_star(const char* galaxy, int32_t star, int32_t have)
 ```
 
-A star as if won, or taken away.
+Gives or takes away a star.
 
 <a id="p-reference-plugin-api--starsingalaxy"></a>
 
@@ -6083,7 +6143,7 @@ How many of them the save has.
 int32_t get_tunable(const char* key, double* value, double* game_value)
 ```
 
-A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the number now and the game's. 0: done; -1: no such number. Interface 2: it took the place of setting and setting_by_number.
+Reads a tunable by its key, as set_tunable takes it ("GameRules.cPlayerHealth"): the current value and the game's default. 0: done; -1: no such tunable. Added in version 2 in place of setting and setting_by_number.
 
 <a id="p-reference-plugin-api--layoutopen"></a>
 
@@ -6093,7 +6153,7 @@ A tuning number by its key, as set_tunable takes it ("GameRules.cPlayerHealth"):
 NebulaLayout* layout_open(const char* name)
 ```
 
-A layout on the screen (LayoutData/<name>.arc, the game's or a mod's), for this stage: it goes with the stage. Null if there is no such archive.
+Opens a screen layout (LayoutData/<name>.arc, the game's or a mod's) for the current stage; it is removed with the stage. Null if there is no such archive.
 
 <a id="p-reference-plugin-api--layoutshow"></a>
 
@@ -6103,7 +6163,7 @@ A layout on the screen (LayoutData/<name>.arc, the game's or a mod's), for this 
 void layout_show(NebulaLayout* layout, int32_t show)
 ```
 
-Shown (1) or hidden (0).
+Shows (1) or hides (0) it.
 
 <a id="p-reference-plugin-api--layoutsettext"></a>
 
@@ -6113,7 +6173,7 @@ Shown (1) or hidden (0).
 void layout_set_text(NebulaLayout* layout, const char* pane, const char* utf8)
 ```
 
-A pane's text: these words, with the game's message tags.
+Sets a pane's text (message tags allowed).
 
 <a id="p-reference-plugin-api--layoutsetnumber"></a>
 
@@ -6123,7 +6183,7 @@ A pane's text: these words, with the game's message tags.
 void layout_set_number(NebulaLayout* layout, const char* pane, int32_t number)
 ```
 
-A pane's text as a number, in the game's digits.
+Sets a pane's text to a number in the game's digits.
 
 <a id="p-reference-plugin-api--layoutshowpane"></a>
 
@@ -6133,7 +6193,7 @@ A pane's text as a number, in the game's digits.
 void layout_show_pane(NebulaLayout* layout, const char* pane, int32_t show)
 ```
 
-A pane shown (1) or hidden (0), with the panes in it.
+Shows (1) or hides (0) a pane and the panes inside it.
 
 <a id="p-reference-plugin-api--layoutmovepane"></a>
 
@@ -6143,7 +6203,7 @@ A pane shown (1) or hidden (0), with the panes in it.
 void layout_move_pane(NebulaLayout* layout, const char* pane, float x, float y)
 ```
 
-A pane moved to x, y on the screen, where screen_position puts a point; it stays there.
+Moves a pane to x, y on the screen (screen_position's coordinates); it stays there.
 
 <a id="p-reference-plugin-api--layoutplay"></a>
 
@@ -6153,7 +6213,7 @@ A pane moved to x, y on the screen, where screen_position puts a point; it stays
 void layout_play(NebulaLayout* layout, const char* animation)
 ```
 
-Its animation by name.
+Plays one of its animations by name.
 
 <a id="p-reference-plugin-api--layoutisplaying"></a>
 
@@ -6173,7 +6233,7 @@ int32_t layout_is_playing(NebulaLayout* layout)
 void layout_set_alpha(NebulaLayout* layout, float alpha)
 ```
 
-How opaque it is: 1 as made, 0 not seen.
+Opacity: 1 as designed, 0 invisible.
 
 <a id="p-reference-plugin-api--storegettext"></a>
 
@@ -6183,7 +6243,7 @@ How opaque it is: 1 as made, 0 not seen.
 int32_t store_get_text(const NebulaPlugin* self, const char* key, char* out, int32_t size)
 ```
 
-Text kept for this mod across plays, beside store_get's numbers: up to `size` - 1 bytes and an end go in `out`; how many were read (0 for a key never set).
+Text saved for this mod across sessions, next to store_get's numbers. Writes up to `size` - 1 bytes and a terminator to `out`; returns how many bytes were read (0 for a key never set).
 
 <a id="p-reference-plugin-api--storesettext"></a>
 
@@ -6193,7 +6253,7 @@ Text kept for this mod across plays, beside store_get's numbers: up to `size` - 
 void store_set_text(const NebulaPlugin* self, const char* key, const char* text)
 ```
 
-Keeps `text` under `key`.
+Saves `text` under `key`.
 
 <a id="p-reference-plugin-api--openscenarioselect"></a>
 
@@ -6203,7 +6263,7 @@ Keeps `text` under `key`.
 void open_scenario_select(const char* galaxy)
 ```
 
-The star-choosing screen of a galaxy, as a launch star opens it.
+Opens a galaxy's star select screen, as a launch star does.
 
 <a id="p-reference-plugin-api--setstory"></a>
 
@@ -6213,7 +6273,7 @@ The star-choosing screen of a galaxy, as a launch star opens it.
 int32_t set_story(const char* key, const char* value)
 ```
 
-Only in nebula_plugin_start. The game's journey: "first_stage" (and "first_mission", a number as text) is where a new file begins, in place of the prologue; "hub" is where the player goes after a galaxy, in place of the Comet Observatory; "story_scenes" "off" leaves out the game's own story scenes. 0: done.
+Only in nebula_plugin_start. Changes the game's story: "first_stage" (with "first_mission", a number as text) is where a new file starts instead of the prologue; "hub" is where the player returns after a galaxy instead of the Comet Observatory; "story_scenes" "off" skips the game's story scenes. 0: done.
 
 <a id="p-reference-plugin-api--savegame"></a>
 
@@ -6223,7 +6283,7 @@ Only in nebula_plugin_start. The game's journey: "first_stage" (and "first_missi
 void save_game(void)
 ```
 
-The game writes the save, as it does after a star.
+Writes the save, as the game does after a star.
 
 <a id="p-reference-plugin-api--settunable"></a>
 
@@ -6233,7 +6293,7 @@ The game writes the save, as it does after a star.
 int32_t set_tunable(const char* key, double value)
 ```
 
-A file's tuning number by "<file stem>.<name>" ("GameRules.cPlayerHealth"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds round and clamp. 0: done; -1: no such number.
+Sets a tunable, keyed "<file stem>.<name>" ("GameRules.cPlayerHealth") or "<file stem>.<name>[<i>]" for a list entry, the same keys as luma.json's "tunables". Any time; most are read when an object starts, so luma.json's are applied before the first stage. Integer types are rounded and clamped. 0: done; -1: no such tunable.
 
 <a id="p-reference-plugin-api--tunableat"></a>
 
@@ -6243,7 +6303,7 @@ A file's tuning number by "<file stem>.<name>" ("GameRules.cPlayerHealth"), or a
 int32_t tunable_at(int32_t index, const char* * file, const char* * name, int32_t* place, int32_t* kind, double* game_value, double* value)
 ```
 
-The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), name, place in its list (-1: one number), kind (1 f32, 2 f64, 3 s32, 4 u32, 5 s16, 6 u16, 7 s8, 8 u8, 9 bool), the game's number and the number now. 0: done; -1: past the last.
+The index-th tunable (each list entry counts): its file ("Kuribo.cpp"), name, list position (-1: not a list), type (1 f32, 2 f64, 3 s32, 4 u32, 5 s16, 6 u16, 7 s8, 8 u8, 9 bool), the game's default and the current value. 0: done; -1: past the last.
 
 <a id="p-reference-plugin-api--setgravityscale"></a>
 
@@ -6253,7 +6313,7 @@ The index-th tuning number (a list counts each place): its file ("Kuribo.cpp"), 
 void set_gravity_scale(float scale)
 ```
 
-The game's rules as a plugin changes them, any time. Each holds until set again; a stage change keeps it. How hard gravity pulls: the player's fall and every object's. 1 the game's, 0.5 half, 0 none; below 0 pulls away.
+Game rules a plugin can change at any time. Each setting holds until changed and survives stage changes. Gravity strength for the player and every object: 1 normal, 0.5 half, 0 none; below 0 pushes away.
 
 <a id="p-reference-plugin-api--gravityscale"></a>
 
@@ -6263,7 +6323,7 @@ The game's rules as a plugin changes them, any time. Each holds until set again;
 float gravity_scale(void)
 ```
 
-The scale now.
+The current gravity scale.
 
 <a id="p-reference-plugin-api--timer"></a>
 
@@ -6273,7 +6333,7 @@ The scale now.
 int32_t timer(float* seconds_left, float* seconds_limit)
 ```
 
-The countdown on the screen (a comet's time limit). 1 while one runs, with its seconds left and its whole length; 0 when none does.
+The on-screen countdown (a comet's time limit). Returns 1 while one runs, with the seconds left and the total; 0 when none runs.
 
 <a id="p-reference-plugin-api--settimer"></a>
 
@@ -6283,7 +6343,7 @@ The countdown on the screen (a comet's time limit). 1 while one runs, with its s
 int32_t set_timer(float seconds_left)
 ```
 
-Its seconds left, within its length. 0: done; -1: no countdown runs.
+Sets the seconds left, within the total. 0: done; -1: no countdown is running.
 
 <a id="p-reference-plugin-api--pausetimer"></a>
 
@@ -6293,7 +6353,7 @@ Its seconds left, within its length. 0: done; -1: no countdown runs.
 void pause_timer(int32_t paused)
 ```
 
-1 holds every countdown where it is, 0 lets them run.
+1 freezes every countdown, 0 lets them run.
 
 <a id="p-reference-plugin-api--setcamera"></a>
 
@@ -6303,7 +6363,7 @@ void pause_timer(int32_t paused)
 void set_camera(const float* position, const float* target, float fov)
 ```
 
-The camera at `position` looking at `target`, with `fov` degrees from the picture's top to its bottom. A null point or a fov of 0 leaves that to the game; all three left: the game's camera again. A position set is where the camera is that frame, with no easing, and it passes through walls.
+Places the camera at `position` looking at `target`, with a vertical field of view of `fov` degrees. Null for a point, or 0 for fov, leaves that part to the game; all three left: the game's camera again. A set position is used that frame exactly, with no easing, and passes through walls.
 
 <a id="p-reference-plugin-api--camerafov"></a>
 
@@ -6313,7 +6373,7 @@ The camera at `position` looking at `target`, with `fov` degrees from the pictur
 float camera_fov(void)
 ```
 
-The angle of view the camera drew with last, in degrees.
+The vertical field of view of the last drawn frame, in degrees.
 
 <a id="p-reference-plugin-api--showhud"></a>
 
@@ -6323,7 +6383,7 @@ The angle of view the camera drew with last, in degrees.
 void show_hud(uint32_t parts, int32_t show)
 ```
 
-HUD parts (NEBULA_HUD_*) hidden (0) or shown as the game shows them (1).
+Hides (0) or shows (1, as the game normally would) HUD parts (NEBULA_HUD_*).
 
 <a id="p-reference-plugin-api--setgamespeed"></a>
 
@@ -6333,7 +6393,7 @@ HUD parts (NEBULA_HUD_*) hidden (0) or shown as the game shows them (1).
 void set_game_speed(float speed)
 ```
 
-The scene's speed: 1 the game's, 0.5 one step every other frame, 0 held (menus and the HUD still run). Between 0 and 1. Set in a STAGE_FRAME callback, it counts from that frame.
+Scene speed: 1 normal, 0.5 one step every other frame, 0 frozen (menus and the HUD still run). Between 0 and 1. Set in a STAGE_FRAME callback, it applies from that frame.
 
 <a id="p-reference-plugin-api--stepgame"></a>
 
@@ -6343,7 +6403,7 @@ The scene's speed: 1 the game's, 0.5 one step every other frame, 0 held (menus a
 void step_game(int32_t steps)
 ```
 
-While held: the scene runs this many steps, one a frame.
+While frozen: runs this many scene steps, one per frame.
 
 <a id="p-reference-plugin-api--drawtext"></a>
 
@@ -6353,7 +6413,7 @@ While held: the scene runs this many steps, one a frame.
 int32_t draw_text(int32_t line, float x, float y, float size, uint32_t rgba, const char* utf8)
 ```
 
-A line of text over the game, in the game's message font. `line`: its slot, 0-15. x, y: its top-left corner, 0 to 1 across and down the screen. `size`: its height, of the screen's height (0.04 reads like the HUD's numbers). `rgba`: its colour, 0xRRGGBBAA. Null or "" takes the line away; it stays until then, across stages. 0: done; -1: no such slot.
+Draws a line of text over the game in the game's message font. `line`: slot 0-15. x, y: top-left corner, 0 to 1 across and down the screen. `size`: height as a fraction of the screen height (0.04 matches the HUD numbers). `rgba`: colour, 0xRRGGBBAA. Null or "" removes the line; otherwise it stays, across stages. 0: done; -1: no such slot.
 
 <a id="p-reference-plugin-api--addtextlike"></a>
 
@@ -6363,7 +6423,7 @@ A line of text over the game, in the game's message font. `line`: its slot, 0-15
 int32_t add_text_like(const char* id, const char* utf8, const char* like_id)
 ```
 
-As add_text, and a new line takes the talk (camera, sound, talk and balloon type) of the game's message `like_id`; null or "": add_text. The words may hold the game's message tags in brackets ([wait 30], [color 1], [player]...: nebula_text_tags.h), as add_text's may.
+Like add_text; a new message also copies the camera, sound, talk and balloon settings of the game's message `like_id` (null or "" behaves like add_text). The text may use the game's message tags in brackets ([wait 30], [color 1], [player]...; see nebula_text_tags.h).
 
 <a id="p-reference-plugin-api--addplayeranimation"></a>
 
@@ -6373,7 +6433,7 @@ As add_text, and a new line takes the talk (camera, sound, talk and balloon type
 int32_t add_player_animation(const char* name, const char* file, float rate, int32_t blend_frames)
 ```
 
-A player animation: `name` plays the bck `file` of the player's animations (ObjectData/MarioAnime.arc: the game's or one the mod adds there, a .bck or an animation in a .glb), at `rate` (1: the bck's own speed), blended in over `blend_frames` frames (0: the game's 6). Played by name (NEBULA_PLAY_PLAYER_ANIMATION), and where the game plays that name: a name the game has (its own animation table's) is played from the mod's bck. Called from the plugin's entry, before the first stage: 0 done; -1 a bad name or file, or too late.
+A player animation: `name` plays the bck `file` from the player's animations (ObjectData/MarioAnime.arc: the game's, or one the mod adds there as a .bck or inside a .glb) at `rate` (1: the bck's own speed), blended in over `blend_frames` frames (0: the game's 6). Play it by name (NEBULA_PLAY_PLAYER_ANIMATION); a name the game already uses replaces that animation wherever the game plays it. Call from the plugin's entry, before the first stage. 0: done; -1: bad name or file, or called too late.
 
 <a id="p-reference-plugin-api--alloc"></a>
 
@@ -6383,7 +6443,7 @@ A player animation: `name` plays the bck `file` of the player's animations (Obje
 void* alloc(uint64_t bytes)
 ```
 
-Memory of the plugin's own, from the game's C library: a plugin built with none (as one built for every device is) has no malloc. alloc: null for 0 bytes or when none is left; the memory is aligned for any type. release(null) does nothing. Kept until released; a plugin's memory is never moved or reused under it.
+Memory from the game's C library, for plugins built without one (as portable plugins are, so they have no malloc). alloc returns null for 0 bytes or when memory runs out; the memory is aligned for any type. release(null) does nothing. Memory stays valid until released and is never moved.
 
 <a id="p-reference-plugin-api--release"></a>
 
@@ -6393,7 +6453,7 @@ Memory of the plugin's own, from the game's C library: a plugin built with none 
 void release(void* memory)
 ```
 
-Memory of the plugin's own, from the game's C library: a plugin built with none (as one built for every device is) has no malloc. alloc: null for 0 bytes or when none is left; the memory is aligned for any type. release(null) does nothing. Kept until released; a plugin's memory is never moved or reused under it.
+Memory from the game's C library, for plugins built without one (as portable plugins are, so they have no malloc). alloc returns null for 0 bytes or when memory runs out; the memory is aligned for any type. release(null) does nothing. Memory stays valid until released and is never moved.
 
 <a id="p-reference-plugin-api--format"></a>
 
@@ -6403,7 +6463,7 @@ Memory of the plugin's own, from the game's C library: a plugin built with none 
 int32_t format(char* buffer, uint64_t size, const char* format, ...)
 ```
 
-printf's formatting into `buffer` of `size` bytes, always ended with a 0 when size is above 0: what snprintf returns (the length the whole text needs; below 0 for a bad format).
+printf-style formatting into `buffer` of `size` bytes, always zero-terminated when size is above 0. Returns what snprintf would: the length the full text needs, or below 0 for a bad format.
 
 <a id="p-reference-plugin-api--setcameranear"></a>
 
@@ -6413,7 +6473,7 @@ printf's formatting into `buffer` of `size` bytes, always ended with a 0 when si
 void set_camera_near(float distance)
 ```
 
-The camera's near plane in units: nothing closer to the camera is drawn. 0: the game's (100; 10 in its own first-person view). Kept until set again.
+The camera's near plane in units: nothing closer is drawn. 0: the game's (100; 10 in its own first-person view). Kept until set again. The distances at which the game hides objects near its camera are tunables: ClippingJudge.cNearClip (500), ClippingJudge.cNearClipSubjective (100) and ObjUtil.cNearClipScale (1).
 
 <a id="p-reference-plugin-api--unlockachievement"></a>
 
@@ -6423,7 +6483,67 @@ The camera's near plane in units: nothing closer to the camera is drawn. 0: the 
 int32_t unlock_achievement(const NebulaPlugin* self, const char* id)
 ```
 
-One of the mod's achievements (its luma.json "achievements", by id) is unlocked: 1 now, 0 when it was already or the mod has none of that id. Its pop-up shows; the board keeps it under Mods.
+Unlocks one of the mod's achievements (luma.json "achievements", by id). Returns 1 when newly unlocked, 0 when already unlocked or the mod has no such id. Its pop-up shows and the board lists it under Mods.
+
+<a id="p-reference-plugin-api--gamecamera"></a>
+
+#### `game_camera`
+
+```c
+int32_t game_camera(float* position, float* target)
+```
+
+The game's own camera this frame, before set_camera changes it: its position and the point it looks at (either may be null). In a cutscene or a conversation this is the shot the game frames. 1 in a stage, 0 otherwise.
+
+<a id="p-reference-plugin-api--talkingactor"></a>
+
+#### `talking_actor`
+
+```c
+NebulaActor* talking_actor(void)
+```
+
+The character in conversation with the player now, or null when there is none.
+
+<a id="p-reference-plugin-api--placetalkbox"></a>
+
+#### `place_talk_box`
+
+```c
+void place_talk_box(float x, float y, int32_t on)
+```
+
+While `on` is 1, the large talk box (the one with the A button, also used by signs) is centred on x, y in screen_position's coordinates, kept inside the screen, and its pointer turns to the speaker. 0 puts it back in its own place. Small balloons already follow their speaker. Reset when the stage ends.
+
+<a id="p-reference-plugin-api--showjoint"></a>
+
+#### `show_joint`
+
+```c
+void show_joint(NebulaActor* actor, const char* joint, int32_t on)
+```
+
+`on` 0 hides one joint of an actor's model and every joint under it, on that actor only; 1 shows them again. The player keeps it in every form, and his face and hands go with the joint they hang from ("Head" takes his head, cap and face). Joint names as in get_joint_position. A new stage starts with all shown.
+
+<a id="p-reference-plugin-api--jointname"></a>
+
+#### `joint_name`
+
+```c
+const char* joint_name(NebulaActor* actor, int32_t index)
+```
+
+The name of joint `index` of an actor's model (0 is the root), or null past the last joint or without a model. Names are what get_joint_position and show_joint take.
+
+<a id="p-reference-plugin-api--getjointmatrix"></a>
+
+#### `get_joint_matrix`
+
+```c
+void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)
+```
+
+A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Columns 0, 1 and 2 are the joint's own x, y and z axes in the world (scaled with the model), column 3 its position. Without the joint or a model: no turn, at the actor's position.
 
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
@@ -6444,71 +6564,70 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 #### `NebulaModEvent`
 
 ```c
-    /* Every frame, in any scene: menus too. player() is null here. */
+    /* Every frame, in every scene including menus. player() is null here. */
     NEBULA_MOD_EVENT_FRAME = 0,
-    /* Every frame of a stage, before its objects move. */
+    /* Every frame of a stage, before objects move. */
     NEBULA_MOD_EVENT_STAGE_FRAME,
-    /* A stage has started. name: the stage. value: the mission. */
+    /* A stage started. name: the stage. value: the mission. */
     NEBULA_MOD_EVENT_STAGE_START,
-    /* The player is about to lose one health. Return 0 to refuse the hit. */
+    /* The player is about to lose one health. Return 0 to cancel the hit. */
     NEBULA_MOD_EVENT_PLAYER_DAMAGE,
-    /* The player is about to die. value: how (0 a fall out of the level). Return -1 to refuse it: the player lives on where
-       they are, so move them somewhere safe (set_position) and give back life (set_value) as the plugin's rule says. */
+    /* The player is about to die. value: the cause (0 is falling out of the level). Return -1 to cancel: the player
+       stays where they are, so move them somewhere safe (set_position) and restore health (set_value) yourself. */
     NEBULA_MOD_EVENT_PLAYER_MISS,
-    /* The player's power-up is about to change. value: the new one (NEBULA_POWER_UP_*); what you return is used. */
+    /* The player's power-up is about to change. value: the new one (NEBULA_POWER_UP_*). The return value is used. */
     NEBULA_MOD_EVENT_POWER_UP,
-    /* Coins are about to be added. value: how many; what you return is added. */
+    /* Coins are about to be added. value: how many. The return value is added instead. */
     NEBULA_MOD_EVENT_COIN,
-    /* Star bits are about to be added. value: how many; what you return is added. */
+    /* Star bits are about to be added. value: how many. The return value is added instead. */
     NEBULA_MOD_EVENT_STAR_BIT,
-    /* A star has been won. name: the galaxy. value: the star's number. */
+    /* A star was collected. name: the galaxy. value: the star number. */
     NEBULA_MOD_EVENT_STAR_GET,
-    /* A cutscene starts or ends. name: the cutscene. */
+    /* A cutscene started or ended. name: the cutscene. */
     NEBULA_MOD_EVENT_CUTSCENE_START,
     NEBULA_MOD_EVENT_CUTSCENE_END,
-    /* Any object appears or dies. actor: the object. name: its name. Subscribing to these costs a call per object. */
+    /* An object appeared or was killed. actor: the object. name: its name. Costs one call per object. */
     NEBULA_MOD_EVENT_ACTOR_APPEAR,
     NEBULA_MOD_EVENT_ACTOR_KILL,
-    /* The player's spin starts. */
+    /* The player started a spin. */
     NEBULA_MOD_EVENT_PLAYER_SPIN,
-    /* The player leaves the ground in a jump; lands. */
+    /* The player jumped off the ground, or landed. */
     NEBULA_MOD_EVENT_PLAYER_JUMP,
     NEBULA_MOD_EVENT_PLAYER_LAND,
-    /* The pause menu opens or closes. value: 1 open, 0 closed. */
+    /* The pause menu opened (value 1) or closed (value 0). */
     NEBULA_MOD_EVENT_PAUSE,
-    /* The stage is ending: every actor and layout of it goes after this. name: the stage. */
+    /* The stage is ending; all its actors and layouts are destroyed after this. name: the stage. */
     NEBULA_MOD_EVENT_STAGE_END,
     /* The game is about to write the save. */
     NEBULA_MOD_EVENT_GAME_SAVE,
-    /* A power star comes into the stage. value: its number. */
+    /* A power star appeared in the stage. value: its number. */
     NEBULA_MOD_EVENT_POWER_STAR_APPEAR,
-    /* A line of talk opens in its balloon. actor: who talks. name: the line's message id, as luma.json "text" and
-       add_text name it (null for a line with no id). */
+    /* A line of dialogue opened in its balloon. actor: the speaker. name: the message id, as used by luma.json "text"
+       and add_text (null for a line without an id). */
     NEBULA_MOD_EVENT_TALK_LINE,
-    /* The player answered a talk's yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's
-       message id. */
+    /* The player answered a yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's message id. */
     NEBULA_MOD_EVENT_TALK_CHOICE,
-    /* A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the
-       cutscene's time sheet names it. */
+    /* A part of a cutscene started. value: the part's index, from 0. name: the part's name in the cutscene's
+       time sheet. */
     NEBULA_MOD_EVENT_CUTSCENE_PART,
-    /* The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view
-       back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. */
+    /* The camera changed. value: 0 for an area camera (also when the last event camera ends), 1 for an event camera
+       (from a cutscene, a conversation or start_camera). name: its id in the stage's camera table. */
     NEBULA_MOD_EVENT_CAMERA_CHANGE,
-    /* A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another
-       sound's, or -1 for none. Subscribing costs a call per sound. */
+    /* A sound effect is about to play. value: its number. name: its name. The returned number plays instead (the same,
+       another sound's, or -1 for silence). Costs one call per sound. */
     NEBULA_MOD_EVENT_SOUND_START,
-    /* An object starts one of its effects. actor: the object. name: the effect, as the object's effect table names
-       it. Subscribing costs a call per effect. */
+    /* An object started an effect. actor: the object. name: the effect's name in the object's effect table. Costs one
+       call per effect. */
     NEBULA_MOD_EVENT_EFFECT_START,
-    /* A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its
-       name in the game's code. */
+    /* A screen layout (a counter, a menu, a message box) was shown (value 1) or removed (value 0). name: its name in
+       the game's code. */
     NEBULA_MOD_EVENT_SCREEN,
-    /* An object gets a message from another: an attack, a stomp, a push, a grab (docs/modding/EVENTS.md lists the
-       numbers). actor: who gets it. name: its name. value: the message. Return -1 to refuse it: the object acts as if
-       it never came. Subscribing costs a call per message. */
+    /* An object received a message from another: an attack, a stomp, a push, a grab (numbers in
+       docs/modding/EVENTS.md). actor: the receiver. name: its name. value: the message. Return -1 to cancel it, as if
+       it was never sent. Costs one call per message. */
     NEBULA_MOD_EVENT_ACTOR_MESSAGE,
-    /* The player starts an action of their own: a swim, a hang, a slide, a fall (docs/modding/EVENTS.md lists the
-       numbers). value: the action. */
+    /* The player started an action: swimming, hanging, sliding, falling (numbers in docs/modding/EVENTS.md).
+       value: the action. */
     NEBULA_MOD_EVENT_PLAYER_ACTION,
     NEBULA_MOD_EVENT_COUNT
 ```
@@ -6538,7 +6657,7 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
     NEBULA_VALUE_MISSION,
     NEBULA_VALUE_POWER_STARS,
     NEBULA_VALUE_WATER_LIFE,
-    /* 0 or 1, what the player is doing. */
+    /* 0 or 1: what the player is doing. */
     NEBULA_VALUE_SPINNING,
     NEBULA_VALUE_JUMP_RISING,
     NEBULA_VALUE_DAMAGED,
@@ -6585,11 +6704,11 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 #### `NebulaModPlay`
 
 ```c
-    NEBULA_PLAY_ANIMATION = 0, /* its action: animations, effects and sounds together */
+    NEBULA_PLAY_ANIMATION = 0, /* an action: its animations, effects and sounds together */
     NEBULA_PLAY_EFFECT,
     NEBULA_PLAY_SOUND,
-    NEBULA_PLAY_PLAYER_ANIMATION, /* on the player, by the animation's name */
-    /* One part of a model's animation by its file's name, leaving the others playing. */
+    NEBULA_PLAY_PLAYER_ANIMATION, /* on the player, by animation name */
+    /* One part of a model's animation by file name; the other parts keep playing. */
     NEBULA_PLAY_SKELETON,        /* .bck */
     NEBULA_PLAY_TEXTURE_MOVE,    /* .btk */
     NEBULA_PLAY_COLOUR,          /* .brk */
@@ -6605,21 +6724,21 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 ```c
     uint32_t size;
     const char* name;
-    const char* archive; /* its model and animations: ObjectData/<archive>.arc. Null: nothing to see */
-    float radius;        /* what it touches with */
+    const char* archive; /* model and animations: ObjectData/<archive>.arc. Null: invisible */
+    float radius;        /* collision radius for touching */
     void* user;
     void (*start)(NebulaActor* actor, void* user);
     void (*update)(NebulaActor* actor, void* user);
     void (*touch_player)(NebulaActor* actor, void* user);
-    /* The player attacked it. Return 1 if it took the attack. */
+    /* The player attacked it. Return 1 if the attack hit. */
     int32_t (*attacked)(NebulaActor* actor, void* user);
-    /* The same, saying how: NEBULA_ATTACK_*. If set, it's called in place of `attacked`. */
+    /* Like `attacked`, with the kind of attack (NEBULA_ATTACK_*). Called instead of `attacked` when set. */
     int32_t (*attacked_by)(NebulaActor* actor, int32_t how, void* user);
-    /* What follows may be left out of an older plugin's class: `size` says. */
-    int32_t kind;         /* NEBULA_OBJECT_*: how it touches things and where it's drawn */
-    int32_t collision;    /* 1: its archive's collision model is solid, and moves with it */
-    float shadow_radius;  /* a round shadow under it; 0: none */
-    float clip_radius;    /* not run or drawn when off screen past this; 0: always */
+    /* The fields below may be missing from an older plugin's class; `size` tells. */
+    int32_t kind;         /* NEBULA_OBJECT_*: what it collides with and how it is drawn */
+    int32_t collision;    /* 1: the archive's collision model is solid and moves with the object */
+    float shadow_radius;  /* round shadow underneath; 0: none */
+    float clip_radius;    /* not updated or drawn when this far off screen; 0: always */
     void (*appeared)(NebulaActor* actor, void* user);
     void (*killed)(NebulaActor* actor, void* user);
 ```
@@ -6630,10 +6749,10 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 
 ```c
     NEBULA_OBJECT_ENEMY = 0,
-    NEBULA_OBJECT_MAP,      /* a platform, a wall: the player stands on it */
+    NEBULA_OBJECT_MAP,      /* a platform or wall the player can stand on */
     NEBULA_OBJECT_NPC,
     NEBULA_OBJECT_RIDE,
-    NEBULA_OBJECT_DECORATION  /* nothing touches it */
+    NEBULA_OBJECT_DECORATION  /* nothing collides with it */
 ```
 
 <a id="p-reference-plugin-api--nebulaattack"></a>
@@ -6682,7 +6801,7 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 ```c
     NEBULA_ITEM_COINS = 0,
     NEBULA_ITEM_STAR_BITS,
-    NEBULA_ITEM_POWER_STAR /* count: the star's number in the galaxy; -1: the next */
+    NEBULA_ITEM_POWER_STAR /* count: the star's number in the galaxy; -1: the next one */
 ```
 
 <a id="p-reference-plugin-api--nebulashake"></a>
@@ -6704,12 +6823,12 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 ```c
     uint32_t size;
     const char* name;
-    const char* map_pane;           /* its icon's pane in the map's layout (MapGrandGalaxy). Null: not on the map */
-    const char* open_condition[3];  /* the event flags that open it, or null */
-    int32_t stars_to_open;          /* power stars it takes to open */
-    int32_t dome;                   /* the dome it belongs to: 1 to 6, 0 for none */
-    int32_t has_map_position;       /* 1: the game makes its icon's pane, at map_position */
-    float map_position[2];          /* from the middle of its dome's page, or of the grand map with no dome: right and up, 608 wide by 456 high */
+    const char* map_pane;           /* its icon's pane in the map layout (MapGrandGalaxy). Null: not on the map */
+    const char* open_condition[3];  /* event flags that open it, or null */
+    int32_t stars_to_open;          /* power stars needed to open it */
+    int32_t dome;                   /* its dome: 1 to 6, 0 for none */
+    int32_t has_map_position;       /* 1: the game creates the icon's pane at map_position */
+    float map_position[2];          /* right and up from the middle of the dome's page (or the grand map with no dome), on a 608 x 456 page */
 ```
 
 <a id="p-reference-plugin-api--nebulapowerupclass"></a>
@@ -6719,17 +6838,17 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 ```c
     uint32_t size;
     const char* name;
-    int32_t frames;       /* how long it lasts, at 60 a second. 0: until something ends it */
-    const char* music;    /* the music while it lasts: a BGM_ name, or null */
-    int32_t color_frame;  /* the player's colours: a frame of Mario.arc's ColorChange (0 his own, 1 Flying's, 2 Fire's). 0: those of
-                             looks_like. A mod's Mario.arc can add more. */
+    int32_t frames;       /* how long it lasts, at 60 per second. 0: until something ends it */
+    const char* music;    /* music while it lasts: a BGM_ name, or null */
+    int32_t color_frame;  /* the player's colours: a frame of Mario.arc's ColorChange (0 normal, 1 Flying, 2 Fire). 0: those of
+                             looks_like. A mod's Mario.arc can add more frames. */
     void* user;
     void (*start)(void* user);
-    void (*update)(void* user); /* every frame it lasts */
+    void (*update)(void* user); /* every frame while it lasts */
     void (*end)(void* user);
-    /* What follows may be left out of an older plugin's class: `size` says. */
-    const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the game's */
-    int32_t looks_like;   /* with no model: the look of one of the game's (NEBULA_POWER_UP_*) */
+    /* The fields below may be missing from an older plugin's class; `size` tells. */
+    const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the normal model */
+    int32_t looks_like;   /* without a model: look like this power-up (NEBULA_POWER_UP_*) */
 ```
 
 <a id="p-reference-plugin-api--nebulanervephase"></a>
@@ -6738,8 +6857,8 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 
 ```c
     NEBULA_NERVE_ENTER = 0, /* frames is 0 */
-    NEBULA_NERVE_FRAME,     /* before the game's frame of it: return 0 and the game's is not run (yours stands in) */
-    NEBULA_NERVE_LEAVE      /* another nerve was set; the game's own end of this one has run */
+    NEBULA_NERVE_FRAME,     /* before the game's code for this frame; return 0 to skip the game's code */
+    NEBULA_NERVE_LEAVE      /* another nerve was set; the game's exit code for this one has run */
 ```
 
 <a id="p-reference-plugin-api--nebulahudpart"></a>
@@ -6762,8 +6881,8 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 #### `NebulaObjectsIn`
 
 ```c
-    NEBULA_OBJECTS_PLACED = 0,       /* whatever the game creates by name: a level's objects, areas */
-    NEBULA_OBJECTS_DISPLAY_MODEL = 1, /* the still models things show before they're collected */
+    NEBULA_OBJECTS_PLACED = 0,       /* anything the game creates by name: a level's objects, areas */
+    NEBULA_OBJECTS_DISPLAY_MODEL = 1, /* the still models shown before an item is collected */
     NEBULA_OBJECTS_TREASURE_BOX = 2, /* what a treasure box holds */
     NEBULA_OBJECTS_IN_COUNT
 ```
@@ -6774,10 +6893,10 @@ One of the mod's achievements (its luma.json "achievements", by id) is unlocked:
 
 ```c
     NEBULA_BUTTON_JUMP = 1u << 0,
-    NEBULA_BUTTON_SPIN = 1u << 1, /* the player's spin: held while it lasts, pressed on the frame it starts */
+    NEBULA_BUTTON_SPIN = 1u << 1, /* held while the spin lasts, pressed on the frame it starts */
     NEBULA_BUTTON_CROUCH = 1u << 2,
     NEBULA_BUTTON_CAMERA = 1u << 3,
-    NEBULA_BUTTON_FIRE = 1u << 4, /* the star-bit shot */
+    NEBULA_BUTTON_FIRE = 1u << 4, /* the star bit shot */
     NEBULA_BUTTON_DPAD_UP = 1u << 5,
     NEBULA_BUTTON_DPAD_DOWN = 1u << 6,
     NEBULA_BUTTON_DPAD_LEFT = 1u << 7,
@@ -18897,7 +19016,7 @@ for each one's own table of that name.
 
 ## Tunables
 
-Generated by tools/modding/tunables_list.py from the game's source: 4874 numbers and lists, by the game's folders.
+Generated by tools/modding/tunables_list.py from the game's source: 4877 numbers and lists, by the game's folders.
 
 A mod sets one by its key in a luma.json layer's `"tunables"` (with `"requires": ["tunables"]`), or from a
 plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. Values are the game's, as written.
@@ -21331,6 +21450,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `ClippingActorHolder.sTableSize` | u32 | `8192` |
 | `ClippingActorInfo.sClipLeaveMargin` | f32 | `150.0f` |
 | `ClippingGroupHolder.sGroupCapacity` | s32 | `0x40` |
+| `ClippingJudge.cNearClip` | f32 | `500.0f` |
+| `ClippingJudge.cNearClipSubjective` | f32 | `100.0f` |
 | `DynamicJointCtrl.sDefaultCtrlTime` | s32 | `10` |
 | `FaceJointCtrl.sDefaultDegreeMax` | f32 | `45.0f` |
 | `LodCtrl.sOff` | bool | `false` |
@@ -23924,6 +24045,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NPCUtil.sStarAppearSeStepPenguinCoach` | s32 | `95` |
 | `NPCUtil.sStarAppearSeStepTeresaRacer` | s32 | `89` |
 | `NPCUtil.sStarAppearSeStepTrickRabbit` | s32 | `22` |
+| `ObjUtil.cNearClipScale` | f32 | `1.0f` |
 | `OctahedronBezierSurface.sCoefTableDivideNum` | s32 | `6` |
 | `SceneUtil.cHiddenStarTable` | bool | `true` |
 | `SceneUtil.cSuddenDeathDodoryu` | bool | `true` |

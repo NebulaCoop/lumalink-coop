@@ -232,6 +232,17 @@ static int32_t coin(const NebulaModEventData* data, void* user) {
 `unlock_achievement(self, id)` returns 1 when it unlocked it now, 0 when it was already unlocked or the mod has no
 achievement of that id. Its pop-up shows at once; any thread may call it.
 
+## Joints
+
+A model's joints are its bones. `joint_name(actor, i)` lists them (null past the last), `get_joint_position` and
+`get_joint_matrix` give a joint's place and turn this frame, and `show_joint(actor, name, 0)` hides a joint and
+everything under it on that one actor.
+
+The player's joints: `All_Root`, `Center`, `JointRoot`, `Hip`, `LegL1`, `LegL2`, `FootL`, `LegR1`, `LegR2`, `FootR`,
+`Spine1`, `Spine2`, `Head`, `CapPosition`, `Cap0`, `EyePosition`, `Eye0`, `FacePosition`, `Face0`, `ShoulderL`,
+`ArmL1`, `ArmL2`, `HandL`, `HandL0`, `ShoulderR`, `ArmR1`, `ArmR2`, `HandR`, `HandR0`, `PartsControl`. Hiding `Head`
+hides his cap and face too; hiding an arm hides its hand.
+
 ## Calls added later
 
 Calls are only ever added at the end of `NebulaModApi`, so a plugin keeps working on every later Nebula. On an

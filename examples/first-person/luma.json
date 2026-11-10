@@ -2,7 +2,7 @@
   "authors": [
     "Nebula examples"
   ],
-  "description": "Play through Mario's eyes: the camera at his eyes, looking where he faces, the pointer tilting the view up and down. The camera button switches to the game's camera and back. Cutscenes and talks keep the game's own cameras.",
+  "description": "Play through Mario's eyes for the whole game. The camera stays on his head in play, cutscenes and conversations: it turns to whoever is talking, and the talk box sits over them. His body stays visible. The camera button switches to the game's camera and back.",
   "format": 1,
   "game": "RMG",
   "id": "first-person",
@@ -59,5 +59,5 @@
       }
     }
   ],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

@@ -143,7 +143,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ## Everything else
 
-[The whole interface](../reference/plugin-api.md) lists all 167 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](../REFERENCE.md#13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](../reference/plugin-api.md) lists all 173 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](../REFERENCE.md#13-plugins-the-games-headers-and-hooks) reach any function.
 
 ## Examples
 
