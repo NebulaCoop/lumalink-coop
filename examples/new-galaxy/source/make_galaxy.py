@@ -8,7 +8,7 @@ music program could have written them. Python 3 alone, no packages.
   Goomba's (`lumalink list models --filter objectdata/kuribo.arc`), three materials with their own textures, and the 23
   animations the Goomba's code plays, by their names. Where it plays one once (squashed, hit), the game plays this
   one once too. The Goomba's tables and sounds come from the game.
-- The galaxy: StageData/LanternGardenGalaxy.arc (where Mario starts, the planet, its gravity, Goombas, Bramblets,
+- The galaxy: StageData/LanternGardenGalaxy.arc (where Mario starts, the planet, its gravity, the game's sky, Goombas, Bramblets,
   coins, a star for each of two missions, a cutscene when Mario arrives) and its missions,
   StageData/LanternGardenGalaxy/LanternGardenGalaxyScenario.arc. Tables as JSON, as `lumalink extract` writes them.
 - The cutscene: ObjectData/DemoSheet.arc/demolanterngardenarrival (Mario looks up, then waves, to the galaxy's theme).
@@ -639,7 +639,8 @@ def galaxy_tables():
     out[stage + "placement/common/planetobjinfo.json"] = table([
         dict(placed("GlobalPointGravity", 1, (0.0, 0.0, 0.0)), Range=5000.0, Distant=0.0, Priority=15, Inverse=-1,
              Power="Normal", Gravity_type="Normal", FollowId=-1, ChildObjId=-1, Obj_ID=-1)], floats=("Range", "Distant"))
-    common = [placed("LanternGardenPlanet", 2, (0.0, 0.0, 0.0))]
+    # The sky: the game's starry one (VROrbit, as the Good Egg has), which stays round the camera.
+    common = [placed("LanternGardenPlanet", 2, (0.0, 0.0, 0.0)), placed("VROrbit", 3, (0.0, 0.0, 0.0))]
     l_id = 10
     for angle in (-40.0, -105.0):
         at, d = on_surface_z(angle, 10.0)
