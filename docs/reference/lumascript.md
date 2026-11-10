@@ -212,7 +212,23 @@ they are the same kind and the same value.
 | `random(lo, hi)` | from `lo` up to, not including, `hi`: an int when both are ints, else a float |
 | `int(x)`, `float(x)` | conversions |
 | `format("{} of {}", a, b)` | text |
-| `registry("form/Gold Flower")` | the row's index in the game's registry (resolved at load) |
+| `registry("form/Gold Flower")` | the row's number: a form's id, a message's number, a floor code, or its place in the game's table; -1 for no such row (resolved at load). The game's lists: Nebula's `docs/modding/REGISTRIES.md` |
+
+## Registries
+
+Every kind of thing the game has is a registry, by name: `object`, `form`, `area`, `camera`, `gravity`, `message`,
+`floor`, `comet`, `hud`, `character`, and `player_state`, `attack`, `star`, `ride`, `item`, `projectile` as those parts
+of the game become moddable. A kind holds the game's own rows and the ones mods add (`add_power_up` adds a `form`,
+`register_object` an `object`); a later row of the same name replaces an earlier one, and the log says which mod won.
+
+```
+let fire = registry("form/fire")               // 2: compare with a power_up event's value
+let kinds = nebula.registry_count("object")    // the game's objects and every mod's
+let first = nebula.registry_name("object", 0)
+let place = nebula.registry_find("area", "SwitchArea")
+let code = nebula.registry_value("floor", "Slip")
+let by = nebula.registry_mod("form", nebula.registry_find("form", "Gold Flower"))   // the mod that added it
+```
 
 ## The game's functions (toolkit)
 

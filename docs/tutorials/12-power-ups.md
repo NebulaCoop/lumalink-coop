@@ -66,4 +66,4 @@ static void touch_player(NebulaActor* actor, void* user) {
 static NebulaObjectClass item = { sizeof(NebulaObjectClass), "WingItem", "WingItem", 80.0f, 0, 0, 0, touch_player, 0, 0, NEBULA_OBJECT_MAP };
 ```
 
-Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](../REFERENCE.md#13-plugins-the-games-headers-and-hooks) the function, or read the buttons as this example does.
+Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](../REFERENCE.md#13-plugins-function-hooks) the function, or read the buttons as this example does.

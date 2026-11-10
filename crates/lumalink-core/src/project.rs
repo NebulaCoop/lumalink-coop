@@ -305,6 +305,7 @@ pub fn new_project(folder: &Path, name: &str) -> Result<()> {
         "name": name,
         "version": "1.0.0",
         "game": crate::plan::ANY_VERSION,
+        "regions": "any",
         "authors": [],
         "layers": [{ "path": "layers/base" }],
     });
@@ -329,6 +330,10 @@ fn layer_changes(folder: &Path, layer: &Value) -> Vec<Change> {
         .filter(|e| e.file_type().is_file())
         .filter_map(|e| {
             let relative = e.path().strip_prefix(&files).ok()?.to_string_lossy().replace('\\', "/");
+            // A system's or version control's hidden files (.DS_Store, .gitkeep) are not the mod's.
+            if relative.split('/').any(|part| part.starts_with('.')) {
+                return None;
+            }
             Some(Change { path: relative, source: e.path().to_path_buf(), merge: false })
         })
         .collect()
@@ -552,6 +557,32 @@ fn string_list<'a>(value: &'a Value, field: &str, found: &mut Findings) -> Vec<&
         None => {
             found.problem(format!("{field} is a list"));
             Vec::new()
+        }
+    }
+}
+
+/// The discs a mod is for: "any" (region-free), or a list of US, PAL, JP and KR. Nebula refuses a luma.json with
+/// anything else, and blocks the mod on other discs, naming the ones it is for.
+const REGIONS: [&str; 4] = ["US", "PAL", "JP", "KR"];
+
+fn check_regions(manifest: &Value, found: &mut Findings) {
+    let Some(regions) = manifest.get("regions") else {
+        return;
+    };
+    if regions.as_str() == Some("any") {
+        return;
+    }
+    if regions.is_string() {
+        found.problem("regions is \"any\" or a list of the discs it is for, like [\"US\", \"PAL\"]");
+        return;
+    }
+    let list = string_list(regions, "regions", found);
+    if regions.as_array().is_some_and(Vec::is_empty) {
+        found.problem("regions lists no disc: write \"any\" for every disc");
+    }
+    for region in list {
+        if !REGIONS.contains(&region) {
+            found.problem(format!("regions: {region} isn't a region ({})", REGIONS.join(", ")));
         }
     }
 }
@@ -1736,6 +1767,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
             }
         }
     }
+    check_regions(&manifest, found);
     if let Some(nebula) = manifest.get("nebula") {
         if !nebula.as_str().is_some_and(valid_version) {
             found.problem("nebula has to be numbers with dots, like 2.1.0");
@@ -1991,6 +2023,25 @@ mod tests {
         let written = write_generated_shaders(&model, out.path()).unwrap();
         assert!(written.contains(&"Lantern_Paper.hlsl".to_string()), "{written:?}");
         assert!(out.path().join("program.hlsli").is_file());
+    }
+
+    #[test]
+    fn regions_are_checked() {
+        let problems = |regions: Value| {
+            let mut found = Findings::default();
+            check_regions(&json!({ "regions": regions }), &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!("any")), 0);
+        assert_eq!(problems(json!(["US", "PAL"])), 0);
+        assert_eq!(problems(json!(["KR"])), 0);
+        assert_eq!(problems(json!("US")), 1);
+        assert_eq!(problems(json!([])), 1);
+        assert_eq!(problems(json!(["EU"])), 1);
+        assert_eq!(problems(json!([1])), 1);
+        let mut found = Findings::default();
+        check_regions(&json!({}), &mut found);
+        assert!(found.0.is_empty());
     }
 
     #[test]
@@ -2453,6 +2504,20 @@ mod tests {
         assert!(calls > 150, "{calls} calls read from the header");
         let tutorial = include_str!("../../../docs/tutorials/10-first-plugin.md");
         assert!(tutorial.contains(&format!("lists all {calls} calls")), "docs/tutorials/10-first-plugin.md counts the calls: {calls}");
+    }
+
+    #[test]
+    fn hidden_files_are_not_a_layers() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = dir.path().join("layers/base/files");
+        fs::create_dir_all(files.join(".git")).unwrap();
+        fs::write(files.join(".gitkeep"), b"").unwrap();
+        fs::write(files.join(".DS_Store"), b"x").unwrap();
+        fs::write(files.join(".git/HEAD"), b"x").unwrap();
+        fs::create_dir_all(files.join("ObjectData")).unwrap();
+        fs::write(files.join("ObjectData/.DS_Store"), b"x").unwrap();
+        let changes = layer_changes(dir.path(), &serde_json::json!({"path": "layers/base"}));
+        assert!(changes.is_empty(), "{:?}", changes.iter().map(|c| &c.path).collect::<Vec<_>>());
     }
 
     #[test]

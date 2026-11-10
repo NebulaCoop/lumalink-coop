@@ -62,7 +62,8 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `name` | yes | Text, shown to players. |
 | `version` | yes | Numbers with dots: `2.1.0`. Compared number by number. |
 | `game` | yes | `RMG`: Super Mario Galaxy. Any other value is another game and the mod is refused by name. |
-| `versions` | no | The versions it works on, from `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Only for a mod that truly cannot work on the others. |
+| `regions` | no | `"any"`: every disc (`lumalink new` writes this). Or the discs it is for, from `US`, `PAL` (Europe and Australia), `JP`, `KR`: `["US", "PAL"]`. On another disc the mod is blocked, and its page names the discs it is for. Only for a mod that truly cannot work on the others, such as one that replaces one region's text or layouts. Any other value refuses the file. |
+| `versions` | no | The same by the disc's letter, from older files: `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Write `regions` instead. |
 | `nebula` | no | The oldest Nebula it works on: `2.1.0`. |
 | `requires` | no | Names of format features it cannot work without (see "Later additions"). |
 | `authors` | no | Names. |
@@ -408,6 +409,7 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` name it lacks, or `nebula` above its version. |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5`. |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game`. |
+| THIS MOD IS ONLY FOR: {REGIONS} | `regions` leaves out the disc being played. The words are in the player's language; the region names stay as written. |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves out the version being played. |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off, or can't be used. |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | A mod in `needs` is older than it says. |

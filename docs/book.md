@@ -39,11 +39,13 @@ Every page of LumaLink's docs and Nebula's generated lists, in reading order. Wr
   - [Game settings (tunables)](#p-reference-settings)
   - [Player numbers](#p-reference-player-numbers)
   - [Stage rules](#p-reference-stage-rules)
+  - [LumaScript](#p-reference-lumascript)
 - **The game's lists**
   - [Events](#p-nebula-events)
   - [Nerves](#p-nebula-nerves)
   - [The game's tables](#p-nebula-tables)
   - [Tunables](#p-nebula-tunables)
+  - [Registries](#p-nebula-registries)
 
 # Start
 
@@ -110,7 +112,8 @@ Each one starts from nothing and ends with something running in the game.
 | [Objects](#p-reference-objects) | Every object of the game |
 | [Stage rules](#p-reference-stage-rules) | The rules the game keeps by a stage's name |
 | [Plugin interface](#p-reference-plugin-api) | Every call, event and number |
-| [Hooks and the game's headers](#p-reference--13-plugins-the-games-headers-and-hooks) | Reaching any function of the game |
+| [LumaScript](#p-reference-lumascript) | Objects with their own logic, no code: the language |
+| [Function hooks](#p-reference--13-plugins-function-hooks) | A native plugin's code in place of any function of the game |
 | [Shaders](#p-reference--15-shaders) | Hand-written materials |
 | [LumaLink commands](#p-reference--3-lumalink) | The command line and the window |
 | [What conversion reads](#p-reference--4-what-conversion-does) | How each thing in a Wii mod becomes something in Nebula |
@@ -395,8 +398,9 @@ From the simplest to the most powerful. Use the first one that does what you wan
 | **Rows** (`music`, `text`, `event_flags`, `stages`, `object_classes`, ...) | The game's tables: what plays where, what opens what | Yes, per row |
 | **Merge** (`merge/`) | Rows in levels and tables: add, change, remove | Yes, all kept |
 | **Files** (`files/`) | Anything that's a file: models, textures, levels, sounds | The higher replaces |
-| **Plugin, stable interface** | Anything, through 140 plain C calls and events. Survives Nebula updates | Yes |
-| **Plugin, game's headers and hooks** | Any function of the game | Yes, in a chain |
+| **Scripts** (`objects`, `scripts`) | New objects and rules in LumaScript: the game's events, messages, any `MR::` function and field, the plugin interface. Every device, iOS included | Yes |
+| **Plugin, stable interface** | Anything, through 196 plain C calls and events. Survives Nebula updates | Yes |
+| **Plugin, hooks** | Any function of the game, where a device lets plugins patch code | Yes, in a chain |
 
 <a id="p-concepts--layers-and-options"></a>
 
@@ -745,7 +749,8 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 | [`coin-bank`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-bank) | Keeping numbers and words across plays (`store_get`, `store_set_text`), a message when the player has control |
 | [`goomba-tempo`](https://github.com/keepvaibin/lumalink/blob/main/examples/goomba-tempo) | Every object of a kind (`find_actor`), its animation's speed, an option |
 | [`first-person`](https://github.com/keepvaibin/lumalink/blob/main/examples/first-person) | A camera of the plugin's own every frame (`set_camera`, `set_camera_near`), the player's model hidden, the game's cameras back for cutscenes ([tutorial 18](#p-tutorials-18-first-person)) |
-| [`pulse`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/pulse) | A new object with the game's headers, and a hook |
+| [`scripted-goomba`](https://github.com/keepvaibin/lumalink/blob/main/examples/scripted-goomba) | A new object in LumaScript: it follows the player, pays coins, naps |
+| [`coin-rules`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-rules) | A rule for the whole game in LumaScript: every coin counts twice |
 | [`cube`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/cube) | A new object with the stable interface and a glTF model |
 
 A new object is one call, `register_object`, and then levels place it by its name. A new power-up is `add_power_up`. A new Mario move is the player's buttons and `jump_player` or `play`, or a hook on the player's functions. All of it is in [plugins.md](#p-plugins).
@@ -2021,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 180 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](#p-reference-plugin-api) lists all 196 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -2268,7 +2273,7 @@ static void touch_player(NebulaActor* actor, void* user) {
 static NebulaObjectClass item = { sizeof(NebulaObjectClass), "WingItem", "WingItem", 80.0f, 0, 0, 0, touch_player, 0, 0, NEBULA_OBJECT_MAP };
 ```
 
-Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](#p-reference--13-plugins-the-games-headers-and-hooks) the function, or read the buttons as this example does.
+Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](#p-reference--13-plugins-function-hooks) the function, or read the buttons as this example does.
 
 
 <a id="p-tutorials-13-screens"></a>
@@ -2848,7 +2853,7 @@ Everything about making, converting, packaging and running mods for Nebula, in o
 10. [Galaxies and progression](#p-reference--10-galaxies-and-progression)
 11. [Plugins: the interface](#p-reference--11-plugins-the-interface)
 12. [Plugins: writing a whole boss](#p-reference--12-plugins-writing-a-whole-boss)
-13. [Plugins: the game's headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks)
+13. [Plugins: function hooks](#p-reference--13-plugins-function-hooks)
 14. [Limits that are gone](#p-reference--14-limits-that-are-gone)
 15. [Shaders](#p-reference--15-shaders)
 16. [Devices](#p-reference--16-devices)
@@ -3052,7 +3057,8 @@ My Mod.luma
 | `name` | yes | Text |
 | `version` | yes | Numbers with dots, compared number by number |
 | `game` | yes | `RMG`. `SB4` and `SB5` are refused as Galaxy 2, others as another game |
-| `versions` | no | The versions it works on: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
+| `regions` | no | `"any"` (every disc), or the discs it is for: `["US", "PAL"]` from `US`, `PAL`, `JP`, `KR`. Left out: any |
+| `versions` | no | The same by the disc's letter, from older files: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
 | `nebula` | no | The oldest Nebula it works on |
 | `requires` | no | Format features it can't work without, such as `custom-shaders` |
 | `authors`, `license`, `homepage` | no | Shown on its page |
@@ -3444,7 +3450,7 @@ clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NO
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so my.c
 ```
 
-These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `register_creator`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
+These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
 
 <a id="p-reference--events"></a>
 
@@ -3631,32 +3637,21 @@ Being hit is `attacked_by`: refuse it outside the state where it's vulnerable, s
 - **Moving between points** is a rail from the level: `move_on_rail`, `rail_at_end`.
 - **Attacks that fly** are objects of your own, made with `spawn`.
 
-<a id="p-reference--13-plugins-the-games-headers-and-hooks"></a>
+<a id="p-reference--13-plugins-function-hooks"></a>
 
-### 13. Plugins: the game's headers and hooks
+### 13. Plugins: function hooks
 
-The stable interface above survives Nebula updates. For anything beyond it:
+The stable interface above survives Nebula updates, and LumaScript reaches the same calls and every `MR::` function
+on every device. A hook goes one step further: a native plugin's code in place of any function of the game.
 
-| Level | What it gives you | Survives updates |
-|---|---|---|
-| Stable interface | This page | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
-| Hooks | Your code in place of any function, calling the original when you choose | While the function exists |
+| Route | What it gives you | Devices | Survives updates |
+|---|---|---|---|
+| Rows and LumaScript | Every table, tunable and object; any `MR::` function and field; the plugin interface as `nebula.*` | All, iOS included | Yes |
+| Stable interface | This page | Those that load plugins | Yes |
+| Hooks | Your code in place of any function, calling the original when you choose | Windows x64; Linux and Mac on x64 and arm64 | While the function exists |
 
-Every function of the game is reachable: the game's module exports all of them, so there is no list of what's allowed.
-
-```cpp
-#include <nebula_game_sdk.h>   /* first */
-
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-Build with the flags the game uses, linking `smg_game.lib`. The plugin names the exact headers it was built from; on a Nebula built from others it isn't started, and the log says so.
+A hook rewrites a function's first instructions, which a device that loads no plugin code (iOS) never allows: a mod
+that must run everywhere does the same with events, rows and scripts.
 
 ```cpp
 void (*original)(MarioActor*, u16);
@@ -3676,7 +3671,7 @@ When a plugin can't start it's left out and the log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include |
-| it was built for another version of the game | A function it calls is gone, or the headers changed |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only |
 | it is not for this kind of computer | The wrong build |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start` |
 | it needs a newer Nebula | Built against a later interface |
@@ -3749,6 +3744,7 @@ A mod that can't be used stays in the list, off, with one line:
 | THESE TEXTURES ARE FOR ANOTHER GAME | A texture pack none of whose textures this game has |
 | THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
 | MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
+| THIS MOD IS ONLY FOR: US, PAL | `regions` leaves out the disc being played |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off or unusable |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | |
@@ -3807,7 +3803,7 @@ A mod with its own code asks first, by name, as the Mods page shows: Allow keeps
 | `ID: the music NAME can't be added: its name is the game's` | |
 | `ID: the object / sound / player animation / row … can't be added` or `can't be set` | Past what the game holds, or a name it already uses |
 | `NAME started` | A plugin is running |
-| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or another version of the game |
+| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or with the game's headers |
 | `the last run crashed with mods' code on: it stays off for this run` | Windows; restart to try again |
 | `its shaders are for another build of Nebula: the ones it needs are built here` | A `.luma`'s shader cache is from another build; nothing is lost |
 | `the mods' files could not be cooked: the game runs without them: WHY` | The game's converter failed as a whole; the game runs as it is. Report WHY with the mods you have on |
@@ -3920,7 +3916,8 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `name` | yes | Text, shown to players. |
 | `version` | yes | Numbers with dots: `2.1.0`. Compared number by number. |
 | `game` | yes | `RMG`: Super Mario Galaxy. Any other value is another game and the mod is refused by name. |
-| `versions` | no | The versions it works on, from `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Only for a mod that truly cannot work on the others. |
+| `regions` | no | `"any"`: every disc (`lumalink new` writes this). Or the discs it is for, from `US`, `PAL` (Europe and Australia), `JP`, `KR`: `["US", "PAL"]`. On another disc the mod is blocked, and its page names the discs it is for. Only for a mod that truly cannot work on the others, such as one that replaces one region's text or layouts. Any other value refuses the file. |
+| `versions` | no | The same by the disc's letter, from older files: `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Write `regions` instead. |
 | `nebula` | no | The oldest Nebula it works on: `2.1.0`. |
 | `requires` | no | Names of format features it cannot work without (see "Later additions"). |
 | `authors` | no | Names. |
@@ -4300,6 +4297,7 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` name it lacks, or `nebula` above its version. |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5`. |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game`. |
+| THIS MOD IS ONLY FOR: {REGIONS} | `regions` leaves out the disc being played. The words are in the player's language; the region names stay as written. |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves out the version being played. |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off, or can't be used. |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | A mod in `needs` is older than it says. |
@@ -4364,10 +4362,11 @@ Most mods don't need one. Levels, models, textures, music and text are files. Wr
 | Level | What it gives you | Survives Nebula updates |
 |---|---|---|
 | Stable interface | `nebula_mod_api.h`: events, the player, objects, new object kinds | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
 | Function hooks | Run your code in place of any game function, and call the original | As long as the function exists |
 
-Start with the stable interface. Go further only for what it can't do.
+Start with the stable interface. Go further only for what it can't do. Every call of the interface is also a
+LumaScript call (`nebula.get_position(self)`), and scripts run on every device, iOS included, where no plugin can
+load; a hook works only where a device lets a plugin patch code.
 
 <a id="p-plugins--the-smallest-plugin"></a>
 
@@ -4493,24 +4492,6 @@ game->add_music("MyBossTheme", "AudioRes/Stream/MyBossTheme.wav");
 game->set_stage_music("MyGalaxy", 0, "MyBossTheme");
 ```
 
-<a id="p-plugins--with-the-games-headers"></a>
-
-### With the game's headers
-
-Include `nebula_game_sdk.h` first and use `NEBULA_GAME_PLUGIN_ENTRY`. You build with the flags the game is built with, and link against `smg_game.lib`.
-
-```cpp
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-The plugin names the exact headers it was built from. On a Nebula built from other headers it isn't started, and the log says it was built for another version of the game. Rebuild it for each Nebula update that changes them.
-
 <a id="p-plugins--function-hooks"></a>
 
 ### Function hooks
@@ -4544,7 +4525,7 @@ A plugin that can't start is left out, and the game's log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include. |
-| it was built for another version of the game | A game function it calls is gone, or the headers changed. |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only. |
 | it is not for this kind of computer | The wrong build for the device. |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start`. |
 | it needs a newer Nebula | It was built against a later interface. |
@@ -4637,14 +4618,10 @@ added after the oldest Nebula the mod names in `nebula`, as above.
 ### Building on Linux and Mac
 
 ```console
-# the stable interface: builds anywhere
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so source/plugin.c
-
-# with the game's headers on a Mac, whose linker wants to know where the game's functions will come from
-c++ -std=gnu++17 -O2 -shared -fPIC -undefined dynamic_lookup -o plugins/my.dylib source/plugin.cpp
 ```
 
-On Linux, a library's undefined functions are found when it's loaded, in the game. Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.
+Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.
 
 
 <a id="p-reference-plugin-api"></a>
@@ -4663,7 +4640,6 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `option` | `const char* option(const NebulaPlugin* self, const char* id)` |
 | `subscribe` | `int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)` |
 | `register_object` | `int32_t register_object(const NebulaObjectClass* object)` |
-| `register_creator` | `int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)` |
 | `hook` | `int32_t hook(void* target, void* replacement, void* * original)` |
 | `find_function` | `void* find_function(const char* symbol)` |
 | `player` | `NebulaActor* player(void)` |
@@ -4839,6 +4815,23 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `water_point` | `int32_t water_point(int32_t index, float* xyz)` |
 | `circle_wipe` | `int32_t circle_wipe(int32_t open, int32_t frames)` |
 | `grant_spin_and_pointer` | `int32_t grant_spin_and_pointer(void)` |
+| `toolkit_find` | `int32_t toolkit_find(const char* name)` |
+| `toolkit_call` | `int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)` |
+| `actor_value` | `NebulaValue actor_value(NebulaActor* actor)` |
+| `value_actor` | `NebulaActor* value_actor(const NebulaValue* value)` |
+| `field_find` | `int32_t field_find(const NebulaValue* object, const char* name)` |
+| `field_get` | `int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)` |
+| `field_set` | `int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)` |
+| `class_name` | `const char* class_name(uint32_t id, uint32_t* parent)` |
+| `is_a` | `int32_t is_a(const NebulaValue* object, const char* class_name)` |
+| `luma_start` | `void luma_start(const struct NebulaModApi* api)` |
+| `add_script_object` | `int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)` |
+| `add_mod_script` | `int32_t add_mod_script(const NebulaPlugin* mod, const char* script)` |
+| `registry_count` | `int32_t registry_count(const char* kind)` |
+| `registry_name` | `const char* registry_name(const char* kind, int32_t index)` |
+| `registry_find` | `int32_t registry_find(const char* kind, const char* name)` |
+| `registry_value` | `int32_t registry_value(const char* kind, const char* name)` |
+| `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -4884,16 +4877,6 @@ int32_t register_object(const NebulaObjectClass* object)
 
 Adds an object class that levels can place by name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name already taken, or a class too old to read.
 
-<a id="p-reference-plugin-api--registercreator"></a>
-
-#### `register_creator`
-
-```c
-int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)
-```
-
-`create` builds the game's own object type (a NameObj) for a placed name; `archive` is loaded for it, or null.
-
 <a id="p-reference-plugin-api--hook"></a>
 
 #### `hook`
@@ -4902,7 +4885,7 @@ int32_t register_creator(const char* name, void*(*create)(const char* name), con
 int32_t hook(void* target, void* replacement, void* * original)
 ```
 
-Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved.
+Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved. A native plugin's route only: a device that loads no plugin code (iOS) has none, so a mod that must run everywhere changes the game through events, rows and scripts instead.
 
 <a id="p-reference-plugin-api--findfunction"></a>
 
@@ -6644,6 +6627,176 @@ int32_t grant_spin_and_pointer(void)
 
 The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a new file has not reached. 0: refused (no stage); 1: done.
 
+<a id="p-reference-plugin-api--toolkitfind"></a>
+
+#### `toolkit_find`
+
+```c
+int32_t toolkit_find(const char* name)
+```
+
+The toolkit: every game function scripts and plugins call (docs/modding/TOOLKIT.md). Its index by name ("MR::startBck"; an overloaded name with its value letters after ':'), or -1.
+
+<a id="p-reference-plugin-api--toolkitcall"></a>
+
+#### `toolkit_call`
+
+```c
+int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)
+```
+
+Calls it. `out` gets the result, then each value an in-out parameter gives back; returns how many values were written, or -1 when the call was refused (a missing or stale handle, a wrong class, too few arguments: logged once per reason).
+
+<a id="p-reference-plugin-api--actorvalue"></a>
+
+#### `actor_value`
+
+```c
+NebulaValue actor_value(NebulaActor* actor)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+<a id="p-reference-plugin-api--valueactor"></a>
+
+#### `value_actor`
+
+```c
+NebulaActor* value_actor(const NebulaValue* value)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+<a id="p-reference-plugin-api--fieldfind"></a>
+
+#### `field_find`
+
+```c
+int32_t field_find(const NebulaValue* object, const char* name)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--fieldget"></a>
+
+#### `field_get`
+
+```c
+int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--fieldset"></a>
+
+#### `field_set`
+
+```c
+int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--classname"></a>
+
+#### `class_name`
+
+```c
+const char* class_name(uint32_t id, uint32_t* parent)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+<a id="p-reference-plugin-api--isa"></a>
+
+#### `is_a`
+
+```c
+int32_t is_a(const NebulaValue* object, const char* class_name)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+<a id="p-reference-plugin-api--lumastart"></a>
+
+#### `luma_start`
+
+```c
+void luma_start(const struct NebulaModApi* api)
+```
+
+The host's: the table it completed (log, store, format), once, before any mod row. Plugins never call it.
+
+<a id="p-reference-plugin-api--addscriptobject"></a>
+
+#### `add_script_object`
+
+```c
+int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)
+```
+
+An object a script runs (luma.json "objects"): the mod's /LumaScripts/<mod id>/<script>.lumascript on `shape`, whose callbacks the script's handlers take. 0: added; -1: refused (logged with the reason).
+
+<a id="p-reference-plugin-api--addmodscript"></a>
+
+#### `add_mod_script`
+
+```c
+int32_t add_mod_script(const NebulaPlugin* mod, const char* script)
+```
+
+The host's: a mod-wide script (luma.json "scripts"), the mod's /LumaScripts/<mod id>/<script>.lumascript, one instance for the whole run. 0: started; -1: refused (logged with the reason).
+
+<a id="p-reference-plugin-api--registrycount"></a>
+
+#### `registry_count`
+
+```c
+int32_t registry_count(const char* kind)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryname"></a>
+
+#### `registry_name`
+
+```c
+const char* registry_name(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryfind"></a>
+
+#### `registry_find`
+
+```c
+int32_t registry_find(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryvalue"></a>
+
+#### `registry_value`
+
+```c
+int32_t registry_value(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registrymod"></a>
+
+#### `registry_mod`
+
+```c
+const char* registry_mod(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -6769,6 +6922,58 @@ The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a
     NEBULA_VALUE_LUIGI
 ```
 
+<a id="p-reference-plugin-api--nebulakind"></a>
+
+#### `NebulaKind`
+
+```c
+    NEBULA_KIND_NONE = 0,
+    NEBULA_KIND_BOOL,
+    NEBULA_KIND_INT,
+    NEBULA_KIND_FLOAT,
+    NEBULA_KIND_VEC3,
+    NEBULA_KIND_MATRIX, /* a handle to 12 floats (3 rows of 4) */
+    NEBULA_KIND_TEXT,   /* UTF-8, owned by whoever made the value; valid for the call */
+    NEBULA_KIND_HANDLE, /* one of the game's things: an object, a sensor, a triangle... (NebulaValue.type) */
+    NEBULA_KIND_VEC4,
+    NEBULA_KIND_VEC2
+```
+
+<a id="p-reference-plugin-api--nebulavalue"></a>
+
+#### `NebulaValue`
+
+```c
+    uint32_t kind; /* NebulaKind */
+    uint32_t type; /* handles: NEBULA_HANDLE_* in the low 16 bits; for objects, the class id in the upper 16 */
+    union {
+        int64_t i;  /* bool and int */
+        double f;   /* float */
+        float v[4]; /* vec2, vec3, vec4 */
+        const char* s;
+        struct {
+            void* p;
+            uint32_t generation; /* the scene it was made in; a later scene reads it as none */
+        } h;
+    } u;
+```
+
+<a id="p-reference-plugin-api--nebulahandletype"></a>
+
+#### `NebulaHandleType`
+
+```c
+    NEBULA_HANDLE_OBJECT = 1, /* an actor, area, layout or other scene object */
+    NEBULA_HANDLE_SENSOR,
+    NEBULA_HANDLE_TRIANGLE,
+    NEBULA_HANDLE_COLLISION,
+    NEBULA_HANDLE_JOINT,
+    NEBULA_HANDLE_PLACEMENT,
+    NEBULA_HANDLE_MATRIX,
+    NEBULA_HANDLE_TALK,
+    NEBULA_HANDLE_CAMERA_INFO
+```
+
 <a id="p-reference-plugin-api--nebulamodset"></a>
 
 #### `NebulaModSet`
@@ -6840,6 +7045,10 @@ The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a
     float clip_radius;    /* not updated or drawn when this far off screen; 0: always */
     void (*appeared)(NebulaActor* actor, void* user);
     void (*killed)(NebulaActor* actor, void* user);
+    /* Any message another object sends it (an attack, a push, a grab: docs/modding/EVENTS.md lists the numbers), from
+       `from` (null when it has no sender). Return 1 to take it; 0 leaves it to the game's own handling (attacked_by for
+       the player's attacks). */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
 ```
 
 <a id="p-reference-plugin-api--nebulaobjectkind"></a>
@@ -9170,6 +9379,302 @@ These are what each name brings. `lumalink list rules` prints this.
 | `FishTunnelGalaxy` | Toad as here |
 | `SurfingLv1Galaxy` | The surfing race's restart |
 | `SurfingLv2Galaxy` | The same, harder |
+
+
+<a id="p-reference-lumascript"></a>
+
+<a id="p-reference-lumascript--lumascript"></a>
+
+## LumaScript
+
+A mod's logic as text. `lumalink pack` compiles each script to a `.lumascript` file the game runs the same way on
+Windows, Linux, Android, macOS and iOS: no native code, no compiler on the player's side.
+
+```text
+// scripts/gumbo.lscript
+var home: vec3
+var paid: int
+
+on start {
+    home = self.mPosition
+    goto walk
+}
+
+state walk {
+    on frame {
+        let away = MR::getPlayerPos() - self.mPosition
+        if length(away) < 1200.0 {
+            self.mPosition = self.mPosition + normalize(away) * 4.0
+        }
+    }
+}
+
+on touch_player {
+    if paid < 3 {
+        paid = paid + 1
+        MR::incCoin(3)
+        goto rest
+    }
+}
+
+state rest {
+    on enter { wait 120; goto walk }
+}
+```
+
+The whole sample is `examples/scripted-goomba`.
+
+<a id="p-reference-lumascript--using-a-script"></a>
+
+### Using a script
+
+A layer's `objects` rows name new objects and their scripts:
+
+```json
+"objects": [
+  {"name": "Gumbo", "script": "gumbo", "archive": "Kuribo", "kind": "npc",
+   "radius": 80, "shadow_radius": 60, "clip_radius": 3000}
+]
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | The object's name: what a stage places, or what an `object_changes` row turns a placed object into. |
+| `script` | `scripts/<script>.lscript` in the project. Folders are allowed (`enemies/gumbo`). |
+| `archive` | The model archive it shows (`ObjectData/<archive>.arc`, the game's or the mod's). |
+| `kind` | `enemy`, `map`, `npc`, `ride` or `decoration`: how the game groups it (clipping, sensors). |
+| `radius` | Its body's sensor radius. |
+| `shadow_radius` | Its drop shadow; 0 for none. |
+| `clip_radius` | Past this distance from the camera it is clipped: not drawn, and its `frame` handler does not run. |
+
+A layer's `scripts` list runs scripts for the whole mod, not tied to an object (see Mod-wide scripts):
+
+```json
+"scripts": ["rules"]
+```
+
+`lumalink check` compiles every script and reports problems with their lines. `lumalink inspect file.lscript` prints
+the compiled steps.
+
+<a id="p-reference-lumascript--values"></a>
+
+### Values
+
+| Kind | Written | Notes |
+|---|---|---|
+| `int` | `3`, `-12` | 64-bit; overflow wraps. |
+| `float` | `2.5`, `1.0` | 64-bit. A number with a `.` is a float. |
+| `bool` | `true`, `false` | |
+| `vec3` | `vec(1.0, 0.0, 0.0)` | Three floats. `.x` `.y` `.z` read a component. |
+| `text` | `"Run"` | |
+| object | `self`, a toolkit result | One of the game's things: an actor, a sensor. Read as none after its scene ends. |
+| none | `none` | Nothing. |
+
+`int` and `float` mix: the result is a float. Two ints give an int (`7 / 2` is `3`). `vec3 * float` and
+`vec3 / float` scale; `vec3 + vec3`, `vec3 - vec3` add and subtract. Dividing by zero, or arithmetic on values that do
+not mix (text, none), gives none.
+
+<a id="p-reference-lumascript--variables"></a>
+
+### Variables
+
+```text
+var speed: float = 2.5   // each object's own
+global hits: int         // the mod's, shared by all its objects in the scene
+saved best: int          // kept in the save file, per mod
+let d = length(a - b)    // inside a handler or function, until the end of its block
+let ok, ground = MR::calcGravity(self, none)   // a call that gives several values
+```
+
+Kinds: `int`, `float`, `bool`, `text`, `vec3`, `any`. A declared variable starts at its kind's zero (`0`, `0.0`,
+`false`, `""`, `(0, 0, 0)`); `any` starts as none. A starting value (`= 2.5`) is set before `on start` runs.
+
+<a id="p-reference-lumascript--handlers"></a>
+
+### Handlers
+
+```text
+on start { }                 // once, when the object is made
+on frame { }                 // every frame the object is not clipped
+on touch_player { }          // the player touched it
+on attacked(how) { }         // the player attacked it; return true to take the hit
+on appear { }                // it appeared (after being hidden)
+on kill { }                  // it was killed
+on message(number, from) { }     // any message another object sends it; return true to take it
+on message ACTMES_PUSH(from) { } // one message, by its name or number
+on event gumbo_paid(value) { }   // another script's `emit gumbo_paid value`
+on coin(value, name, actor) { }  // one of the game's events (below)
+```
+
+A name the game has no handler for is refused when the script compiles.
+
+Messages are the game's way for objects to act on each other: a punch, a stomp, a push, a grab. `from` is the object
+that sent it (none when nothing did). Returning `true` takes the message: the game's own handling does not run. Any
+other result leaves it to the game (for the player's attacks, `on attacked`). A message's name is one of the game's
+`ACTMES_` names; the SDK's `messages.tsv` lists all 183 with their numbers.
+
+A handler outside a state runs in every state. Inside a state it runs only in that state:
+
+```text
+state chase {
+    on enter { }   // on goto chase
+    on frame { }
+    on leave { }   // on goto elsewhere
+}
+```
+
+`goto <state>` switches at the start of the next frame: `leave` of the old state, then `enter` of the new. A `goto`
+to the state it is already in does nothing.
+
+<a id="p-reference-lumascript--game-events"></a>
+
+### Game events
+
+Any script, an object's or a mod-wide one, answers the game's events by name. Each handler gets three values:
+`value`, `name` (text or none) and `actor` (an object or none). Where the event uses a returned number, a handler that
+returns a number (or a bool: 1 or 0) changes it, and the next script gets the changed value. Returning nothing keeps
+it.
+
+| Event | When | value, name, actor | A returned number |
+|---|---|---|---|
+| `stage_frame` | every frame of a stage, before objects move | | |
+| `stage_start` | a stage started | the mission, the stage | |
+| `stage_end` | the stage is ending (its objects go after this) | name: the stage | |
+| `player_damage` | the player is about to lose one health | | 0 cancels the hit |
+| `player_miss` | the player is about to die | the cause (0: fell out) | -1 cancels: move the player and restore health yourself |
+| `power_up` | the player's form is about to change | the new form | the form used |
+| `coin` | coins are about to be added | how many | added instead |
+| `star_bit` | star bits are about to be added | how many | added instead |
+| `star_get` | a star was collected | the star, the galaxy | |
+| `power_star_appear` | a power star appeared | its number | |
+| `cutscene_start`, `cutscene_end` | a cutscene started, ended | name: the cutscene | |
+| `cutscene_part` | a part of a cutscene started | its index, its name | |
+| `actor_appear`, `actor_kill` | an object appeared, was killed | its name, the object | |
+| `actor_message` | an object received a message | the message, its name, the receiver | -1 cancels it |
+| `player_spin`, `player_jump`, `player_land` | the player spun, jumped, landed | | |
+| `player_action` | the player started an action (swimming, hanging, sliding) | the action | |
+| `pause` | the pause menu opened (1) or closed (0) | 1 or 0 | |
+| `game_save` | the game is about to write the save | | |
+| `talk_line` | a line of dialogue opened | its message id, the speaker | |
+| `talk_choice` | the player answered a yes/no question | 1 yes, 0 no; the question's id; who asked | |
+| `camera_change` | the camera changed | 0 area, 1 event camera; its id | |
+| `sound_start` | a sound effect is about to play | its number, its name | the sound played instead (-1: silence) |
+| `effect_start` | an object started an effect | its name, the object | |
+| `screen` | a screen layout was shown (1) or removed (0) | 1 or 0, its name | |
+
+Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
+
+<a id="p-reference-lumascript--mod-wide-scripts"></a>
+
+### Mod-wide scripts
+
+A script named in a layer's `scripts` runs once for the whole run, from the game's start: `self` is none, its `var`s
+last the whole run, and `on frame` runs every frame. It answers the game's events and other scripts' `emit`s, and
+calls the toolkit and the plugin API like any script. Rules that are not about one object belong here:
+
+```text
+// Every coin counts twice.
+on coin(value, name, actor) { return value * 2 }
+```
+
+<a id="p-reference-lumascript--statements"></a>
+
+### Statements
+
+| Statement | Meaning |
+|---|---|
+| `x = expr` | Set a variable. |
+| `self.mField = expr` | Set an object's field (see Fields). |
+| `if c { } else if c { } else { }` | |
+| `while c { }`, `break` | |
+| `return [expr]` | |
+| `wait n` | In a handler: continue after `n` frames. The object keeps running its other handlers meanwhile. |
+| `goto state` | |
+| `emit name [expr]` | Runs `on event name` in every script of the scene with the value. |
+| `f(a, b)` | A call whose result is not used. |
+
+`;` separates statements on one line.
+
+<a id="p-reference-lumascript--operators"></a>
+
+### Operators
+
+From lowest to highest: `or` (`||`), `and` (`&&`), `==` `!=`, `<` `<=` `>` `>=`, `+` `-`, `*` `/` `%`, then unary `-`
+`!` (`not`). `and` and `or` stop early. Numbers compare by value (`1 == 1.0` is true); other values are equal when
+they are the same kind and the same value.
+
+<a id="p-reference-lumascript--built-in-functions"></a>
+
+### Built-in functions
+
+| Function | Gives |
+|---|---|
+| `vec(x, y, z)` | vec3 |
+| `length(v)`, `normalize(v)`, `dot(a, b)`, `cross(a, b)` | |
+| `lerp(a, b, t)` | numbers or vec3 |
+| `min(a, b)`, `max(a, b)`, `abs(x)`, `floor(x)`, `sqrt(x)` | |
+| `sin(x)`, `cos(x)`, `atan2(y, x)` | radians |
+| `random(lo, hi)` | from `lo` up to, not including, `hi`: an int when both are ints, else a float |
+| `int(x)`, `float(x)` | conversions |
+| `format("{} of {}", a, b)` | text |
+| `registry("form/Gold Flower")` | the row's number: a form's id, a message's number, a floor code, or its place in the game's table; -1 for no such row (resolved at load). The game's lists: Nebula's `docs/modding/REGISTRIES.md` |
+
+<a id="p-reference-lumascript--registries"></a>
+
+### Registries
+
+Every kind of thing the game has is a registry, by name: `object`, `form`, `area`, `camera`, `gravity`, `message`,
+`floor`, `comet`, `hud`, `character`, and `player_state`, `attack`, `star`, `ride`, `item`, `projectile` as those parts
+of the game become moddable. A kind holds the game's own rows and the ones mods add (`add_power_up` adds a `form`,
+`register_object` an `object`); a later row of the same name replaces an earlier one, and the log says which mod won.
+
+```
+let fire = registry("form/fire")               // 2: compare with a power_up event's value
+let kinds = nebula.registry_count("object")    // the game's objects and every mod's
+let first = nebula.registry_name("object", 0)
+let place = nebula.registry_find("area", "SwitchArea")
+let code = nebula.registry_value("floor", "Slip")
+let by = nebula.registry_mod("form", nebula.registry_find("form", "Gold Flower"))   // the mod that added it
+```
+
+<a id="p-reference-lumascript--the-games-functions-toolkit"></a>
+
+### The game's functions (toolkit)
+
+Any row of the toolkit is called by name: `MR::startBck(self, "Run", "")`, `MR::getPlayerPos()`. LumaLink's SDK holds
+the list (`crates/lumalink-core/sdk/toolkit.tsv`); Nebula's `docs/modding/TOOLKIT.md` explains every row. A name with
+overloads picks by argument count, or by its letters: `MR::isBindedGround:hh(self, other)`.
+
+Letters: `a` none, `b` bool, `c` int, `d` float, `e` vec3, `g` text, `h` object. An upper-case letter is a value the
+function also gives back: `let ok, out = f(self, none)`.
+
+<a id="p-reference-lumascript--the-plugin-api-nebula"></a>
+
+### The plugin API (nebula.*)
+
+The calls plugins make are rows of the toolkit too, named `nebula.<call>`: `nebula.player()`,
+`nebula.get_position(actor)`, `nebula.show_message("Hello", 1)`, `nebula.play_music("MyTrack")`. A call that takes a
+mod (`log`, `option`, `store_get`, `unlock_achievement`) gets the script's own. A call that writes into a vector or
+a number gives it back: `let position = nebula.get_position(self)`; `let found, value = nebula.get_tunable("key")`.
+Calls that only work while plugins start (adding music, galaxies, story rows) are luma.json rows instead. The plugin
+reference (plugin-api.md) explains every call.
+
+<a id="p-reference-lumascript--fields"></a>
+
+### Fields
+
+`self.mPosition`, `self.mVelocity`, `obj.mScale`: an object's own fields by the game's names, read and set. Nested
+members one level down: `self.mFlag.mIsDead`. Arrays: `self.mArray[i]` (read). A vector's components are read only:
+to change one, set the whole vector (`self.mPosition = vec(p.x, 0.0, p.z)`). Nebula's `docs/modding/FIELDS.md` lists
+every class's fields.
+
+<a id="p-reference-lumascript--limits"></a>
+
+### Limits
+
+255 values live at once per function. A script that runs too many steps in one frame stops there for that frame (the
+log names it once). A script the game would refuse never leaves `lumalink pack`: the compiler checks its own output
+the way the game's loader does.
 
 
 # The game's lists
@@ -19145,7 +19650,7 @@ for each one's own table of that name.
 
 ## Tunables
 
-Generated by tools/modding/tunables_list.py from the game's source: 12351 numbers and lists, by the game's folders.
+Generated by tools/modding/tunables_list.py from the game's source: 12355 numbers and lists, by the game's folders.
 
 A mod sets one by its key in a luma.json layer's `"tunables"` (with `"requires": ["tunables"]`), or from a
 plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. Values are the game's, as written.
@@ -30846,6 +31351,7 @@ damping and turn) is a list of its numbers in order.
 | `NebulaAchievementToast.cRiseFrames` | s32 | `24` |
 | `NebulaAchievementToast.cScale` | f32 | `0.5f` |
 | `NebulaAchievementToast.cTextMax` | f32 | `440.0f` |
+| `NebulaFileSelectButton.cShowDelayFrames` | s32 | `8` |
 | `NebulaIcons.cDarkBottom` | u32 | `0x2E3036FF` |
 | `NebulaIcons.cDarkTop` | u32 | `0x52555EFF` |
 | `NebulaIcons.cGameCubeA` | u32 | `0x2EA65CFF` |
@@ -30895,7 +31401,6 @@ damping and turn) is a list of its numbers in order.
 | `NebulaPrepare.cText` | u32 | `0x4A5274FF` |
 | `NebulaPrepare.cTitleSize` | f32 | `21.0f` |
 | `NebulaPrepare.cWidth` | f32 | `360.0f` |
-| `NebulaQuitButton.cShowDelayFrames` | s32 | `8` |
 | `NebulaSettingsMenu.cAccent` | u32 | `0x2F6FD0FF` |
 | `NebulaSettingsMenu.cArrowSize` | f32 | `20.0f` |
 | `NebulaSettingsMenu.cArrowWidth` | f32 | `58.0f` |
@@ -31326,6 +31831,10 @@ damping and turn) is a list of its numbers in order.
 | `InputPointer.getPointingPosBasedOnScreen.f4` | f32 | `0.5f` |
 | `InputStick.cIsOnValue` | f32 | `0.2f` |
 | `InputSwing.cSwingFrames` | s32 | `6` |
+| `LumaHost.cEmitDepth` | u32 | `8` |
+| `LumaScript.cKeptBytes` | u32 | `262144` |
+| `LumaScript.cMaxWait` | u32 | `36000` |
+| `LumaScript.cStepBudget` | u32 | `200000` |
 | `NebulaAchievements.cBatchMin` | s32 | `3` |
 | `NebulaAchievements.cStatFlushFrames` | s32 | `60` |
 | `NebulaCutsceneSkip.cEndQuietFrames` | s32 | `2` |
@@ -31678,3 +32187,1648 @@ damping and turn) is a list of its numbers in order.
 | `Tunable.store.f7` | f64 | `128.0` |
 | `Tunable.store.f8` | f64 | `127.0` |
 | `Tunable.store.f9` | f64 | `255.0` |
+
+
+<a id="p-nebula-registries"></a>
+
+<a id="p-nebula-registries--registries"></a>
+
+## Registries
+
+Every kind of thing the game has is a registry: its own rows and the ones mods add, by name. Scripts read a row's number with `registry("kind/name")` (`registry("form/fire")`); plugins and scripts list and find rows with `registry_count`, `registry_name`, `registry_find`, `registry_value` and `registry_mod`. A later row of the same name replaces an earlier one: the later mod wins, and the log says so.
+
+The kinds `player_state`, `attack`, `star`, `ride`, `item` and `projectile` take mod rows as their parts of the game become moddable; they hold none of the game's yet.
+
+<a id="p-nebula-registries--object"></a>
+
+### object
+
+Objects levels place, by the name a level uses. Number: its place in the factory table. 1182 rows.
+
+| Name | Number |
+|---|---|
+| `SwitchCube` | 0 |
+| `SwitchSphere` | 1 |
+| `SwitchCylinder` | 2 |
+| `CubeCameraBox` | 3 |
+| `CubeCameraCylinder` | 4 |
+| `CubeCameraSphere` | 5 |
+| `CubeCameraBowl` | 6 |
+| `EffectCylinder` | 7 |
+| `BindEndCube` | 8 |
+| `DeathCube` | 9 |
+| `DeathSphere` | 10 |
+| `DeathCylinder` | 11 |
+| `PullBackCube` | 12 |
+| `PullBackCylinder` | 13 |
+| `RestartCube` | 14 |
+| `WarpCube` | 15 |
+| `TripodBossStepStartArea` | 16 |
+| `ChangeBgmCube` | 17 |
+| `BgmProhibitArea` | 18 |
+| `SoundEmitterCube` | 19 |
+| `SoundEmitterSphere` | 20 |
+| `WaterCube` | 21 |
+| `WaterSphere` | 22 |
+| `WaterCylinder` | 23 |
+| `FallsCube` | 24 |
+| `PlaneModeCube` | 25 |
+| `PlaneCircularModeCube` | 26 |
+| `PipeModeCube` | 27 |
+| `TowerModeCylinder` | 28 |
+| `BloomCube` | 29 |
+| `BloomSphere` | 30 |
+| `BloomCylinder` | 31 |
+| `SimpleBloomCube` | 32 |
+| `SimpleBloomSphere` | 33 |
+| `SimpleBloomCylinder` | 34 |
+| `ScreenBlurCube` | 35 |
+| `ScreenBlurSphere` | 36 |
+| `ScreenBlurCylinder` | 37 |
+| `DepthOfFieldCube` | 38 |
+| `DepthOfFieldSphere` | 39 |
+| `DepthOfFieldCylinder` | 40 |
+| `ClipAreaCenterBox` | 41 |
+| `ClipAreaBottomBox` | 42 |
+| `ClipAreaTopCone` | 43 |
+| `ClipAreaBottomCone` | 44 |
+| `ClipAreaSphere` | 45 |
+| `LightCtrlCube` | 46 |
+| `LightCtrlCylinder` | 47 |
+| `PlaneCollisionCube` | 48 |
+| `ForbidTriangleJumpCube` | 49 |
+| `ForbidWaterSearchCube` | 50 |
+| `QuakeEffectAreaCube` | 51 |
+| `HazeCube` | 52 |
+| `LensFlareArea` | 53 |
+| `CameraRepulsiveSphere` | 54 |
+| `CameraRepulsiveCylinder` | 55 |
+| `SunLightAreaBox` | 56 |
+| `GlaringLightAreaCylinder` | 57 |
+| `BigBubbleGoalAreaBox` | 58 |
+| `BigBubbleGoalAreaCylinder` | 59 |
+| `BigBubbleGoalAreaSphere` | 60 |
+| `BigBubbleCameraBox` | 61 |
+| `BigBubbleCameraCylinder` | 62 |
+| `BigBubbleCameraSphere` | 63 |
+| `BigBubbleSwitchBox` | 64 |
+| `BigBubbleSwitchCylinder` | 65 |
+| `BigBubbleSwitchSphere` | 66 |
+| `ViewGroupCtrlCube` | 67 |
+| `AudioEffectCube` | 68 |
+| `AudioEffectSphere` | 69 |
+| `AudioEffectCylinder` | 70 |
+| `PlayerSeCube` | 71 |
+| `PlayerSeSphere` | 72 |
+| `PlayerSeCylinder` | 73 |
+| `MercatorCube` | 74 |
+| `AstroChangeStageCube` | 75 |
+| `BlueStarGuidanceCube` | 76 |
+| `TicoSeedGuidanceCube` | 77 |
+| `MessageAreaCube` | 78 |
+| `MessageAreaCylinder` | 79 |
+| `SmokeEffectColorAreaCube` | 80 |
+| `BeeWallShortDistAreaCube` | 81 |
+| `ExtraWallCheckArea` | 82 |
+| `ExtraWallCheckCylinder` | 83 |
+| `MirrorAreaCube` | 84 |
+| `SpinGuidanceCube` | 85 |
+| `TamakoroMoveGuidanceCube` | 86 |
+| `TamakoroJumpGuidanceCube` | 87 |
+| `HeavySteeringCube` | 88 |
+| `NonSleepCube` | 89 |
+| `AreaMoveSphere` | 90 |
+| `DodoryuClosedCylinder` | 91 |
+| `DashChargeCylinder` | 92 |
+| `RasterScrollCube` | 93 |
+| `OnimasuCube` | 94 |
+| `ForbidJumpCube` | 95 |
+| `CollisionArea` | 96 |
+| `AstroOverlookAreaCylinder` | 97 |
+| `CelestrialSphere` | 98 |
+| `DarkMatterCube` | 99 |
+| `DarkMatterCylinder` | 100 |
+| `Mario` | 101 |
+| `MarioActor` | 102 |
+| `Caretaker` | 103 |
+| `Rabbit` | 104 |
+| `TalkSyati` | 105 |
+| `CollectTico` | 106 |
+| `TrickRabbit` | 107 |
+| `TrickRabbitFreeRun` | 108 |
+| `TrickRabbitFreeRunCollect` | 109 |
+| `RunawayRabbitCollect` | 110 |
+| `TrickRabbitGhost` | 111 |
+| `Kinopio` | 112 |
+| `KinopioAstro` | 113 |
+| `HoneyBee` | 114 |
+| `HoneyQueen` | 115 |
+| `Peach` | 116 |
+| `Penguin` | 117 |
+| `PenguinCoach` | 118 |
+| `PenguinMaster` | 119 |
+| `PenguinRacer` | 120 |
+| `PenguinRacerLeader` | 121 |
+| `PenguinSkater` | 122 |
+| `PenguinStudent` | 123 |
+| `SignBoard` | 124 |
+| `Syati` | 125 |
+| `Tico` | 126 |
+| `TicoComet` | 127 |
+| `TicoShop` | 128 |
+| `TicoStarRing` | 129 |
+| `TicoAstro` | 130 |
+| `TicoBaby` | 131 |
+| `DemoRabbit` | 132 |
+| `TicoFat` | 133 |
+| `TicoGalaxy` | 134 |
+| `TicoRail` | 135 |
+| `TicoReading` | 136 |
+| `TicoDomeLecture` | 137 |
+| `Rosetta` | 138 |
+| `RosettaReading` | 139 |
+| `RosettaPictureBook` | 140 |
+| `LuigiNPC` | 141 |
+| `LuigiEvent` | 142 |
+| `TeresaRacer` | 143 |
+| `NPCSupportRail` | 144 |
+| `GhostPlayer` | 145 |
+| `Butler` | 146 |
+| `ButlerMap` | 147 |
+| `ButlerExplain` | 148 |
+| `DemoKoopaJrShip` | 149 |
+| `Creeper` | 150 |
+| `JetTurtle` | 151 |
+| `Fluff` | 152 |
+| `FluffWind` | 153 |
+| `Tamakoro` | 154 |
+| `TamakoroWithTutorial` | 155 |
+| `GoldenTurtle` | 156 |
+| `JumpBranch` | 157 |
+| `Plant` | 158 |
+| `Pole` | 159 |
+| `PoleNoModel` | 160 |
+| `PoleSquare` | 161 |
+| `PoleSquareNoModel` | 162 |
+| `SurfRay` | 163 |
+| `SwingRope` | 164 |
+| `SpaceCocoon` | 165 |
+| `Trapeze` | 166 |
+| `TreeCube` | 167 |
+| `WaterRoad` | 168 |
+| `WarpPod` | 169 |
+| `CoinBox` | 170 |
+| `PunchBox` | 171 |
+| `SwitchBox` | 172 |
+| `NormalMapTestObj` | 173 |
+| `Takobo` | 174 |
+| `Karikari` | 175 |
+| `KoteBug` | 176 |
+| `Balloonfish` | 177 |
+| `BombHei` | 178 |
+| `Bomb` | 179 |
+| `Jiraira` | 180 |
+| `BombHeiLauncher` | 181 |
+| `BombLauncher` | 182 |
+| `SpinDriver` | 183 |
+| `SuperSpinDriver` | 184 |
+| `SuperSpinDriverGreen` | 185 |
+| `SuperSpinDriverPink` | 186 |
+| `Kuribo` | 187 |
+| `KuriboChief` | 188 |
+| `KuriboMini` | 189 |
+| `Kabokuri` | 190 |
+| `TakoHei` | 191 |
+| `OtaRock` | 192 |
+| `Meramera` | 193 |
+| `IceMeramera` | 194 |
+| `EyeBeamer` | 195 |
+| `BigBirikyu` | 196 |
+| `Birikyu` | 197 |
+| `HomingKiller` | 198 |
+| `CocoSambo` | 199 |
+| `SamboHead` | 200 |
+| `BegomanBaby` | 201 |
+| `BegomanSpring` | 202 |
+| `BegomanSpringHide` | 203 |
+| `BegomanSpike` | 204 |
+| `BegomanLauncher` | 205 |
+| `TogeBegomanLauncher` | 206 |
+| `BegomanBabyLauncher` | 207 |
+| `FireBubble` | 208 |
+| `BallBeamer` | 209 |
+| `JumpBeamer` | 210 |
+| `JumpGuarder` | 211 |
+| `RingBeamer` | 212 |
+| `Pukupuku` | 213 |
+| `BombTeresa` | 214 |
+| `Teresa` | 215 |
+| `TeresaChief` | 216 |
+| `TeresaWater` | 217 |
+| `Torpedo` | 218 |
+| `Dossun` | 219 |
+| `Onimasu` | 220 |
+| `OnimasuPivot` | 221 |
+| `Unizo` | 222 |
+| `UnizoLand` | 223 |
+| `UnizoShoal` | 224 |
+| `UnizoLauncher` | 225 |
+| `Kiraira` | 226 |
+| `KirairaRail` | 227 |
+| `NokonokoLand` | 228 |
+| `Gesso` | 229 |
+| `Poihana` | 230 |
+| `Snakehead` | 231 |
+| `SnakeheadSmall` | 232 |
+| `Jellyfish` | 233 |
+| `JellyfishElectric` | 234 |
+| `Kanina` | 235 |
+| `KaninaRed` | 236 |
+| `Mogu` | 237 |
+| `Mogucchi` | 238 |
+| `MogucchiRefuseTerritory` | 239 |
+| `KoopaJrShip` | 240 |
+| `Hanachan` | 241 |
+| `JumpSpider` | 242 |
+| `StringSpider` | 243 |
+| `PackunPetit` | 244 |
+| `StinkBugSmall` | 245 |
+| `StinkBugParent` | 246 |
+| `BasaBasa` | 247 |
+| `BasaBasaIce` | 248 |
+| `Metbo` | 249 |
+| `BombBird` | 250 |
+| `MechanicKoopaMini` | 251 |
+| `Karon` | 252 |
+| `HammerHeadPackun` | 253 |
+| `DharmaSambo` | 254 |
+| `SearchBeamer` | 255 |
+| `Petari` | 256 |
+| `MagnumKiller` | 257 |
+| `BossBegoman` | 258 |
+| `BossStinkBug` | 259 |
+| `DinoPackun` | 260 |
+| `DinoPackunVs2` | 261 |
+| `Dodoryu` | 262 |
+| `KoopaVs1` | 263 |
+| `KoopaVs2` | 264 |
+| `KoopaVs3` | 265 |
+| `OtaKing` | 266 |
+| `Polta` | 267 |
+| `SkeletalFishBoss` | 268 |
+| `SkeletalFishBaby` | 269 |
+| `SkeletalFishBossRail` | 270 |
+| `TombSpider` | 271 |
+| `BossKameck` | 272 |
+| `BossKameck2` | 273 |
+| `FireBallBeamKameck` | 274 |
+| `TurtleBeamKameck` | 275 |
+| `TripodBoss` | 276 |
+| `Tripod2Boss` | 277 |
+| `TripodBossBaseJointPosition` | 278 |
+| `TripodBossKillerGenerater` | 279 |
+| `TripodBossStepPoint` | 280 |
+| `TripodBossCore` | 281 |
+| `TripodBossCoin` | 282 |
+| `TripodBossKinokoOneUp` | 283 |
+| `TripodBossShell` | 284 |
+| `TripodBossGuardWall` | 285 |
+| `TriPodBossBodyA` | 286 |
+| `TripodBossBodyABloom` | 287 |
+| `TriPodBossLeg1A` | 288 |
+| `TriPodBossLeg1B` | 289 |
+| `TriPodBossLeg1C` | 290 |
+| `TriPodBossLeg2A` | 291 |
+| `TriPodBossLeg2ABloom` | 292 |
+| `TriPodBossLeg3A` | 293 |
+| `TriPodBossLeg3B` | 294 |
+| `TriPodBossLeg3C` | 295 |
+| `TripodBossFoot` | 296 |
+| `TripodBossFootBloom` | 297 |
+| `TriPodBossLegBottom` | 298 |
+| `TripodBossEyeLight` | 299 |
+| `TripodBossEyeLightBloom` | 300 |
+| `TriPodBossGearA` | 301 |
+| `TriPodBossGearB` | 302 |
+| `TriPodBossGearC` | 303 |
+| `TriPodBossGearSmallA` | 304 |
+| `TriPodBossGearSmallB` | 305 |
+| `TriPodBossGearSmallC` | 306 |
+| `TriPodBossGearBody` | 307 |
+| `TripodBossUpperKillerCannon` | 308 |
+| `TripodBossUnderKillerCannon` | 309 |
+| `TripodBossBottomKillerCannon` | 310 |
+| `SpiderAttachPoint` | 311 |
+| `SpiderCoin` | 312 |
+| `SpiderMapBlock` | 313 |
+| `ArrowSwitch` | 314 |
+| `ArrowSwitchMulti` | 315 |
+| `ArrowSwitchTarget` | 316 |
+| `AstroOverlookObj` | 317 |
+| `BlueStarCupsulePlanet` | 318 |
+| `BigFan` | 319 |
+| `BigFanNoLeg` | 320 |
+| `ClipAreaDropLaser` | 321 |
+| `RevolvingWay` | 322 |
+| `SoundEmitter` | 323 |
+| `JumpHole` | 324 |
+| `BallOpener` | 325 |
+| `DragonHeadFlower` | 326 |
+| `ConcreteBlock` | 327 |
+| `SphereRailDash` | 328 |
+| `SnowplowSwitch` | 329 |
+| `BallRail` | 330 |
+| `FallDownBridge` | 331 |
+| `RockCreator` | 332 |
+| `MeteoContainer` | 333 |
+| `MagicBell` | 334 |
+| `FlowerGroup` | 335 |
+| `FlowerBlueGroup` | 336 |
+| `CutBushGroup` | 337 |
+| `SmallStone` | 338 |
+| `CircleShell` | 339 |
+| `CircleStrawberry` | 340 |
+| `Tsukidashikun` | 341 |
+| `TsukidashikunBig` | 342 |
+| `TimerCoinBlock` | 343 |
+| `SplashCoinBlock` | 344 |
+| `TimerPieceBlock` | 345 |
+| `SplashPieceBlock` | 346 |
+| `ItemBlockSwitch` | 347 |
+| `ExterminationCheckerKuribo` | 348 |
+| `ExterminationKuriboKeySwitch` | 349 |
+| `ExterminationSkeletalFishBaby` | 350 |
+| `ExterminationMeramera` | 351 |
+| `ShootingStar` | 352 |
+| `FlameGun` | 353 |
+| `BenefitItemOneUp` | 354 |
+| `BenefitItemLifeUp` | 355 |
+| `BenefitItemInvincible` | 356 |
+| `CoinSpot` | 357 |
+| `CollisionBlocker` | 358 |
+| `LotusLeaf` | 359 |
+| `PunchingKinoko` | 360 |
+| `DesertMovingLand` | 361 |
+| `DesertMovingLandSmall` | 362 |
+| `NoteFairy` | 363 |
+| `EarthenPipe` | 364 |
+| `EarthenPipeInWater` | 365 |
+| `ElectricRail` | 366 |
+| `ElectricRailMoving` | 367 |
+| `WanwanRolling` | 368 |
+| `WanwanRollingMini` | 369 |
+| `WanwanRollingGold` | 370 |
+| `BreakableCage` | 371 |
+| `BreakableCageRotate` | 372 |
+| `BreakableCageL` | 373 |
+| `BreakableFixation` | 374 |
+| `BreakableTrash` | 375 |
+| `BigBubble` | 376 |
+| `BigBubbleMoveLimitterCylinder` | 377 |
+| `BigBubbleMoveLimitterPlane` | 378 |
+| `BigBubbleGenerator` | 379 |
+| `BigObstructBubbleGenerator` | 380 |
+| `GCaptureTarget` | 381 |
+| `AsteroidA` | 382 |
+| `AsteroidB` | 383 |
+| `AsteroidC` | 384 |
+| `AsteroidD` | 385 |
+| `SpaceStickA` | 386 |
+| `SpaceStickB` | 387 |
+| `BlackHole` | 388 |
+| `BlackHoleCube` | 389 |
+| `KillerGunnerSingle` | 390 |
+| `KillerGunnerDouble` | 391 |
+| `KillerGunnerTriple` | 392 |
+| `PowerStar` | 393 |
+| `GrandStar` | 394 |
+| `PowerStarAppearPoint` | 395 |
+| `CocoNut` | 396 |
+| `CoconutTree` | 397 |
+| `CoconutTreeLeaf` | 398 |
+| `CollapsePlane` | 399 |
+| `WoodBox` | 400 |
+| `ItemBubble` | 401 |
+| `SpinningBox` | 402 |
+| `ElectricBall` | 403 |
+| `SpaceMine` | 404 |
+| `MorphItemNeoHopper` | 405 |
+| `MorphItemNeoBee` | 406 |
+| `MorphItemNeoTeresa` | 407 |
+| `MorphItemNeoIce` | 408 |
+| `MorphItemNeoFire` | 409 |
+| `MorphItemNeoFoo` | 410 |
+| `AirBubble` | 411 |
+| `AirBubbleGenerator` | 412 |
+| `Butterfly` | 413 |
+| `Pompon2Plant` | 414 |
+| `Pompon4Plant` | 415 |
+| `LavaGeyser` | 416 |
+| `LavaProminence` | 417 |
+| `LavaProminenceTriple` | 418 |
+| `LavaProminenceEnvironment` | 419 |
+| `LavaProminenceWithoutShadow` | 420 |
+| `LavaObstacleRockShell` | 421 |
+| `LavaObstacleRockHomeA` | 422 |
+| `LavaObstacleRockHomeB` | 423 |
+| `LavaHomeFloaterB` | 424 |
+| `LavaFloatingStepA` | 425 |
+| `LavaFloatingStepB` | 426 |
+| `LavaFloatingStepC` | 427 |
+| `LavaFloatingStepD` | 428 |
+| `LavaHomeSeesaw` | 429 |
+| `LavaHomeVolcanoFlow` | 430 |
+| `LavaHomeVolcanoInnerFlow` | 431 |
+| `LavaRotatePlanetStartStep` | 432 |
+| `LavaBreakBridge` | 433 |
+| `LavaBreakRockA` | 434 |
+| `LavaBreakRockB` | 435 |
+| `LavaBreakRockC` | 436 |
+| `LavaBreakRockD` | 437 |
+| `LavaBreakColumn` | 438 |
+| `LavaShellTower` | 439 |
+| `LavaFallDownColumnA` | 440 |
+| `LavaFallDownColumnB` | 441 |
+| `LavaShellTowerStep` | 442 |
+| `LavaStepA` | 443 |
+| `LavaStepB` | 444 |
+| `LavaStepC` | 445 |
+| `LavaSteam` | 446 |
+| `LavaStrangeRock` | 447 |
+| `LavaStrangeRockL` | 448 |
+| `LavaStrangeRockTable` | 449 |
+| `LavaSpaceStickA` | 450 |
+| `LavaSpaceStickB` | 451 |
+| `LavaBlackUFO` | 452 |
+| `CrystalCageS` | 453 |
+| `CrystalCageM` | 454 |
+| `CrystalCageL` | 455 |
+| `CrystalCageMoving` | 456 |
+| `ShellfishCoin` | 457 |
+| `ShellfishYellowChip` | 458 |
+| `SeaBottomBigDoorA` | 459 |
+| `SeaBottomBigDoorB` | 460 |
+| `SeaBottomBigDoorC` | 461 |
+| `FloaterLandPartsFrame` | 462 |
+| `OceanFloaterTypeU` | 463 |
+| `DashRing` | 464 |
+| `MeteorStrike` | 465 |
+| `MeteorStrikeEnvironment` | 466 |
+| `MeteorCannon` | 467 |
+| `BrightObj` | 468 |
+| `BrightSun` | 469 |
+| `PhantomTorch` | 470 |
+| `PhantomBonfire` | 471 |
+| `PhantomCandlestand` | 472 |
+| `CandlestandIceVolcano` | 473 |
+| `MarioLauncher` | 474 |
+| `MarioLauncherAttractor` | 475 |
+| `WaterBazooka` | 476 |
+| `ElectricBazooka` | 477 |
+| `WaterPressure` | 478 |
+| `FirePressure` | 479 |
+| `IronCannonLauncher` | 480 |
+| `IronCannonLauncherPoint` | 481 |
+| `FirePressureRadiate` | 482 |
+| `TemplateStageGeometry` | 483 |
+| `SunkenShip` | 484 |
+| `BeeFlowerHover` | 485 |
+| `WaterfallCaveCover` | 486 |
+| `WaterfallCaveNoBreakCover` | 487 |
+| `PalmIsland` | 488 |
+| `IceMerameraKing` | 489 |
+| `OceanPierFloaterA` | 490 |
+| `HeavenlyBeachTopRock` | 491 |
+| `HeavenlyBeachUnderRock` | 492 |
+| `OceanSmallTurtle` | 493 |
+| `OceanHexagonFloater` | 494 |
+| `SpringWaterFloaterA` | 495 |
+| `SpringWaterFloaterB` | 496 |
+| `ShutterDoorB` | 497 |
+| `ShutterDoorC` | 498 |
+| `ShutterDoorD` | 499 |
+| `ShutterDoorE` | 500 |
+| `SeaBottomTriplePropellerStand` | 501 |
+| `SeaBottomTriplePropeller` | 502 |
+| `OceanFloaterTowerRotateStepA` | 503 |
+| `OceanFloaterTowerRotateStepB` | 504 |
+| `OceanFloaterTowerRotateStepC` | 505 |
+| `OceanFloaterTowerRotateStepD` | 506 |
+| `LargeChain` | 507 |
+| `IcicleRock` | 508 |
+| `ItemAppearStoneSpinDriver` | 509 |
+| `SnowFloor` | 510 |
+| `SnowFloorTile` | 511 |
+| `FlipPanel` | 512 |
+| `FlipPanelObserver` | 513 |
+| `FlipPanelReverse` | 514 |
+| `FlipPanelFrame` | 515 |
+| `PhantomTowerMoveStepA` | 516 |
+| `SideSpikeMoveStepA` | 517 |
+| `SpaceMineRailA` | 518 |
+| `SpaceMineRail5m` | 519 |
+| `SandUpDownTowerTop` | 520 |
+| `SandUpDownTowerBottom` | 521 |
+| `SandUpDownKillerGunnerBase` | 522 |
+| `SandUpDownTriRock` | 523 |
+| `JumpStand` | 524 |
+| `CaretakerGarbage` | 525 |
+| `GlassBottleTall` | 526 |
+| `HopperBeltConveyerRotatePartsA` | 527 |
+| `HopperBeltConveyerMovePartsA` | 528 |
+| `ChooChooTrain` | 529 |
+| `SandRiverLightA` | 530 |
+| `SnowMan` | 531 |
+| `SnowBlockA` | 532 |
+| `ShockWaveGenerator` | 533 |
+| `DangerSignBoard` | 534 |
+| `Banekiti` | 535 |
+| `MirrorReflectionTest` | 536 |
+| `MirrorReflectionPeachCastle` | 537 |
+| `MirrorReflectionTwinFallLake` | 538 |
+| `MirrorModelTest` | 539 |
+| `MirrorModelPeachCastle` | 540 |
+| `MirrorModelTwinFallLake` | 541 |
+| `PhantomFirewood` | 542 |
+| `ArrowBoard` | 543 |
+| `TeresaRoomGlaringLight` | 544 |
+| `SpaceDustWoodA` | 545 |
+| `SpaceDustWoodB` | 546 |
+| `TeresaRoomDoor` | 547 |
+| `TrampleStar` | 548 |
+| `ReverseGravityTowerInside` | 549 |
+| `HipDropRock` | 550 |
+| `DropOfWaterCore` | 551 |
+| `WatchTowerRotateStep` | 552 |
+| `ForestAppearStepA` | 553 |
+| `ForestObstacleWoodA` | 554 |
+| `AstroDomeAsteroid` | 555 |
+| `AstroDomeBlueStar` | 556 |
+| `AstroDomeComet` | 557 |
+| `AstroDomeDemoAstroGalaxy` | 558 |
+| `SphereSelectorHandle` | 559 |
+| `ForestWoodCover` | 560 |
+| `KoopaShipManholeCover` | 561 |
+| `StarDustStepA` | 562 |
+| `StarDustStepB` | 563 |
+| `TreasureSpot` | 564 |
+| `CoinFlower` | 565 |
+| `StarDustRollingStepA` | 566 |
+| `AsteroidMoveA` | 567 |
+| `StarPieceCluster` | 568 |
+| `SpaceSeparatorA` | 569 |
+| `SpaceSeparatorB` | 570 |
+| `ForestNarrowStepA` | 571 |
+| `ForestHomeGate` | 572 |
+| `RGTowerPressGroundA` | 573 |
+| `WeatherVane` | 574 |
+| `RainCloud` | 575 |
+| `PowerStarKeeperA` | 576 |
+| `PowerStarKeeperB` | 577 |
+| `PowerStarKeeperC` | 578 |
+| `ForestPoihanaFenceA` | 579 |
+| `ForestPoihanaFenceB` | 580 |
+| `TeresaMansionBridgeA` | 581 |
+| `TeresaMansionBridgeB` | 582 |
+| `DarknessRoomDoorA` | 583 |
+| `TeresaMansionDoorA` | 584 |
+| `TeresaMansionDoorB` | 585 |
+| `TeresaMansionEntranceDoor` | 586 |
+| `WaterBazookaTowerMoveStepA` | 587 |
+| `WaterBazookaTowerMoveStepB` | 588 |
+| `WaterBazookaTowerMoveStepC` | 589 |
+| `QuestionBoxMoveStepA` | 590 |
+| `QuestionBoxMoveStepB` | 591 |
+| `QuestionBoxMoveStepC` | 592 |
+| `ForestHomeBridge` | 593 |
+| `ForestBarricadeRockA` | 594 |
+| `ReverseGravityRoomPressGroundA` | 595 |
+| `ReverseGravityRoomPressGroundB` | 596 |
+| `ReverseGravityRoomPressGroundC` | 597 |
+| `ReverseGravityRoomPressGroundD` | 598 |
+| `ReverseGravityRoomPressGroundE` | 599 |
+| `RollingOvalPlanetParts` | 600 |
+| `TeresaMansionLightA` | 601 |
+| `TeresaMansionLightB` | 602 |
+| `TeresaMansionCandlestand` | 603 |
+| `TeresaMansionHoleCover` | 604 |
+| `KoopaStatue` | 605 |
+| `TeresaPicture` | 606 |
+| `KinokoOneUpPicture` | 607 |
+| `FireBar` | 608 |
+| `BattleShipMovePartsA` | 609 |
+| `BattleShipMovePartsB` | 610 |
+| `BattleShipElevator` | 611 |
+| `BattleShipElevatorCover` | 612 |
+| `TeresaRaceSpaceStickA` | 613 |
+| `TeresaRaceSpaceStickB` | 614 |
+| `TeresaRaceSpaceStickC` | 615 |
+| `TeresaRacePartsA` | 616 |
+| `TeresaRacePartsB` | 617 |
+| `NeedlePlant` | 618 |
+| `NeedlePlantFly` | 619 |
+| `BeeWallClimbPartsA` | 620 |
+| `PeachCastleTownAfterAttack` | 621 |
+| `PeachCastleTownBeforeAttack` | 622 |
+| `PeachCastleTownGate` | 623 |
+| `PhantomDecoratePartsA` | 624 |
+| `PhantomDecoratePartsB` | 625 |
+| `PhantomDecoratePartsHole` | 626 |
+| `CocoonStepA` | 627 |
+| `CocoonStepB` | 628 |
+| `SpaceCannonLauncher` | 629 |
+| `TrapBaseA` | 630 |
+| `SweetsDecoratePartsSpoon` | 631 |
+| `SweetsDecoratePartsFork` | 632 |
+| `SeesawMoveNutA` | 633 |
+| `SeesawMoveNutB` | 634 |
+| `SeesawMoveNutC` | 635 |
+| `TwisterSan` | 636 |
+| `TwisterSanSlim` | 637 |
+| `SunakazeKun` | 638 |
+| `SandStreamMoveStepsA` | 639 |
+| `SandStreamMoveStepsB` | 640 |
+| `WaterLeakPipe` | 641 |
+| `BroadBeanMoveStepA` | 642 |
+| `BroadBeanMoveStepB` | 643 |
+| `ColorPencil` | 644 |
+| `TeresaRacePartsBallA` | 645 |
+| `SandCapsulePressGround` | 646 |
+| `RayGunPlanetPartsScrew` | 647 |
+| `RayGunPlanetPartsGear` | 648 |
+| `BreakDownFixStepA` | 649 |
+| `SandStreamHighTowerMoveStepA` | 650 |
+| `DriftWood` | 651 |
+| `ToyFactoryDecoratePartsGearA` | 652 |
+| `MiniMechaKoopaPartsMoveStepA` | 653 |
+| `MiniMechaKoopaPartsGear` | 654 |
+| `MiniMechaKoopaPartsCage` | 655 |
+| `AsteroidBlockRotateStepA` | 656 |
+| `SandUpDownTowerBreakableWallA` | 657 |
+| `SandUpDownTowerBreakableWallB` | 658 |
+| `HoleDeathSandMoveStepA` | 659 |
+| `SandUpDownTowerMoveStepA` | 660 |
+| `DeathSandLandPartsA` | 661 |
+| `DeathSandLandPartsB` | 662 |
+| `DeathSandLandPlatformStepA` | 663 |
+| `DeathSandEnvironmentSapotenA` | 664 |
+| `DeathSandEnvironmentSapotenB` | 665 |
+| `DeathSandEnvironmentRock` | 666 |
+| `DeathSandEnvironmentPyramid` | 667 |
+| `UFOSandObstacleA` | 668 |
+| `UFOSandObstacleB` | 669 |
+| `UFOSandObstacleC` | 670 |
+| `SweetDecoratePartsOrange` | 671 |
+| `CapsuleCage` | 672 |
+| `KameckShipLv1` | 673 |
+| `LavaBallRisingPlanetLava` | 674 |
+| `StrongBlock` | 675 |
+| `ChoConveyorChocoA` | 676 |
+| `ChoConveyorMoveChocoA` | 677 |
+| `HoneyQueenLeafA` | 678 |
+| `ForestHomePartsTree` | 679 |
+| `ForestHomePartsTreeTower` | 680 |
+| `RosettaChair` | 681 |
+| `GravityLightA` | 682 |
+| `GravityLightRoad` | 683 |
+| `PoltaBattlePlanetPartsA` | 684 |
+| `HeavenlyBeachTimerStepA` | 685 |
+| `HeavenlyBeachTimerStepB` | 686 |
+| `ReverseKingdomTreeA` | 687 |
+| `FloaterOtakingFloaterA` | 688 |
+| `WindMillPropeller` | 689 |
+| `WindMillPropellerMini` | 690 |
+| `LavaRotateStepsRotatePartsA` | 691 |
+| `LavaRotateStepsRotatePartsB` | 692 |
+| `LavaRotateStepsRotatePartsC` | 693 |
+| `LavaRotateStepsRotatePartsD` | 694 |
+| `QuickSand2DMovePartsA` | 695 |
+| `BiriBiriBegomanSpikePistonA` | 696 |
+| `HugeBattleShipPlanetEntrance` | 697 |
+| `MysteryGravityRoomBridgeA` | 698 |
+| `DeadLeaves` | 699 |
+| `PrologueDirector` | 700 |
+| `DeathPromenadeMovePartsSpuareA` | 701 |
+| `DeathPromenadeRotateCircleL` | 702 |
+| `DeathPromenadeRotateCircleS` | 703 |
+| `FlexibleSandPlanetPartsA` | 704 |
+| `DarkHopperRotateStepA` | 705 |
+| `DarkHopperPlanetPartsA` | 706 |
+| `DarkHopperPlanetPartsC` | 707 |
+| `DarkHopperPlanetPartsD` | 708 |
+| `ClockworkHandle` | 709 |
+| `MiniMechaKoopaPartsFan` | 710 |
+| `RockRoadCircleA` | 711 |
+| `AssemblyBlockPartsA` | 712 |
+| `AssemblyBlockPartsB` | 713 |
+| `AssemblyBlockPartsC` | 714 |
+| `AssemblyBlockPartsD` | 715 |
+| `AssemblyBlockPartsE` | 716 |
+| `AssemblyBlockPartsIceB` | 717 |
+| `AssemblyBlockPartsIceC` | 718 |
+| `AssemblyBlockPartsIceD` | 719 |
+| `AssemblyBlockPartsIceE` | 720 |
+| `AssemblyBlockPartsTimerA` | 721 |
+| `HellBallGuidePartsA` | 722 |
+| `HellBallRotatePartsA` | 723 |
+| `HellBallRotatePartsB` | 724 |
+| `HellBallRotatePartsC` | 725 |
+| `HellBallRotatePartsD` | 726 |
+| `HellBallRotatePartsE` | 727 |
+| `HellBallRotatePartsF` | 728 |
+| `HellBallRotatePartsG` | 729 |
+| `IceSlipRoad` | 730 |
+| `CandyLiftA` | 731 |
+| `CandyLiftB` | 732 |
+| `SurfingRaceTutorialParts` | 733 |
+| `SurfingRaceMainGate` | 734 |
+| `SurfingRaceSubGate` | 735 |
+| `SurfingRaceStep` | 736 |
+| `SurfingRaceSignBoard` | 737 |
+| `SurfingRaceVictoryStand` | 738 |
+| `HeavensDoorFlowerA` | 739 |
+| `HeavensDoorHouseDoor` | 740 |
+| `HeavensDoorAppearStepAAfter` | 741 |
+| `HeavensDoorAppearStepA` | 742 |
+| `HeavensDoorMiddleRotatePartsA` | 743 |
+| `HeavensDoorMiddleRotatePartsB` | 744 |
+| `HeavensDoorInsideCage` | 745 |
+| `HeavensDoorInsidePlanetPartsA` | 746 |
+| `HeavensDoorInsideRotatePartsA` | 747 |
+| `HeavensDoorInsideRotatePartsB` | 748 |
+| `HeavensDoorInsideRotatePartsC` | 749 |
+| `MechaKoopaPartsHead` | 750 |
+| `MechaKoopaPartsCollar` | 751 |
+| `MechaKoopaPartsBreast` | 752 |
+| `MechaKoopaPartsArmRight` | 753 |
+| `MechaKoopaPartsArmLeft` | 754 |
+| `MechaKoopaPartsBody` | 755 |
+| `MechaKoopaPartsCaterpillar` | 756 |
+| `MechaKoopaPartsRollerA` | 757 |
+| `MechaKoopaPartsMoveStepA` | 758 |
+| `MechaKoopaPartsWreckA` | 759 |
+| `CannonFortressBreakStepA` | 760 |
+| `CannonFortressRotateBreakStepA` | 761 |
+| `CannonFortressRotateBreakStepB` | 762 |
+| `CannonFortressRotateBreakStepC` | 763 |
+| `CannonFortressMoveWall` | 764 |
+| `SpaceShipStep` | 765 |
+| `QuarterRollGravityRoomArrow` | 766 |
+| `NutShipFleetBridge` | 767 |
+| `IceVolcanoMoveStepA` | 768 |
+| `IceVolcanoBalanceStepA` | 769 |
+| `IceVolcanoBalanceStepB` | 770 |
+| `IceVolcanoFloaterA` | 771 |
+| `IceVolcanoFloaterB` | 772 |
+| `IceVolcanoAppearStepA` | 773 |
+| `IceVolcanoAppearStepB` | 774 |
+| `IceVolcanoClimbingWall` | 775 |
+| `IceMountainFloaterA` | 776 |
+| `IceMountainSeesawNoSlipA` | 777 |
+| `IceMountainSeesawSlipA` | 778 |
+| `IceMountainSeesawSlipB` | 779 |
+| `IceMountainSeesawSlipC` | 780 |
+| `IceMountainSeesawSlipD` | 781 |
+| `IceRingBumpyPartsA` | 782 |
+| `IceWaterUpDownParts` | 783 |
+| `LavaUpDownParts` | 784 |
+| `IceUpDownShutterDoorA` | 785 |
+| `IceLavaIslandSnowStepA` | 786 |
+| `IceLavaIslandIceMovableStepA` | 787 |
+| `IceLavaIslandLavaMovableStepA` | 788 |
+| `HoleBeltConveyerPartsA` | 789 |
+| `HoleBeltConveyerPartsB` | 790 |
+| `HoleBeltConveyerPartsC` | 791 |
+| `HoleBeltConveyerPartsD` | 792 |
+| `HoleBeltConveyerPartsE` | 793 |
+| `HoleBeltConveyerPartsF` | 794 |
+| `HoleBeltConveyerPartsG` | 795 |
+| `HoleBeltConveyerPartsH` | 796 |
+| `ChallengeBallAccelCylinderA` | 797 |
+| `ChallengeBallGearA` | 798 |
+| `ChallengeBallMoveGroundA` | 799 |
+| `ChallengeBallMoveGroundB` | 800 |
+| `ChallengeBallRotateBridgeA` | 801 |
+| `ChallengeBallVanishingRoadA` | 802 |
+| `TrialBubbleTimerMoveWallA` | 803 |
+| `TrialBubbleRotateWallA` | 804 |
+| `TrialBubbleRevolvingPartsA` | 805 |
+| `TrialBubbleMoveWallA` | 806 |
+| `CubeBubbleExHomeStep` | 807 |
+| `CubeBubbleExStartStep` | 808 |
+| `CubeBubbleExRotateWallS` | 809 |
+| `CubeBubbleExRotateWallL` | 810 |
+| `CubeBubbleExPartsA` | 811 |
+| `UFONormalB` | 812 |
+| `UFONormalD` | 813 |
+| `UFOStrongA` | 814 |
+| `UFOBattleStageC` | 815 |
+| `UFOBattleStageD` | 816 |
+| `UFOBattleStageE` | 817 |
+| `UFOKinoko` | 818 |
+| `UFOKinokoLanding` | 819 |
+| `UFOBlueStarCupsule` | 820 |
+| `KoopaShipA` | 821 |
+| `KoopaShipB` | 822 |
+| `KoopaShipC` | 823 |
+| `KoopaShipD` | 824 |
+| `KoopaShipE` | 825 |
+| `KoopaShipSeesawStep` | 826 |
+| `KoopaJrSmallShipA` | 827 |
+| `KoopaJrSmallShipAGuidePoint` | 828 |
+| `KoopaJrKillerShipA` | 829 |
+| `KoopaJrNormalShipA` | 830 |
+| `WaterRoadCaveStepA` | 831 |
+| `WaterRoadCaveStepB` | 832 |
+| `WaterRoadCaveRotateGround` | 833 |
+| `SubmarineVolcanoInside` | 834 |
+| `SubmarineVolcanoBigColumn` | 835 |
+| `SubmarineVolcanoSmallColumn` | 836 |
+| `OnimasuPlanetPartsGoal` | 837 |
+| `OnimasuPlanetObstaclePartsA` | 838 |
+| `OnimasuPlanetRailMovePartsA` | 839 |
+| `OnimasuPlanetRotatePartsA` | 840 |
+| `OnimasuPlanetRotatePartsB` | 841 |
+| `PhantomShipPropellerSmall` | 842 |
+| `PhantomShipPropellerBig` | 843 |
+| `PhantomShipHandle` | 844 |
+| `PhantomShipBridge` | 845 |
+| `TakoBarrelA` | 846 |
+| `TakoBarrelB` | 847 |
+| `KoopaRestarterVs3` | 848 |
+| `KoopaPowerUpSwitch` | 849 |
+| `KoopaSwitchKeeper` | 850 |
+| `KoopaViewSwitchKeeper` | 851 |
+| `KoopaBattleMapStair` | 852 |
+| `KoopaBattleMapPlate` | 853 |
+| `KoopaBattleMapCoinPlate` | 854 |
+| `KoopaBattleMapStairBig` | 855 |
+| `KoopaBattleMapStairTurn` | 856 |
+| `KoopaBattleMapStairturnAppear` | 857 |
+| `KoopaVS1PartsSpiralRoad` | 858 |
+| `KoopaVS1PartsMoveStepA` | 859 |
+| `KoopaVS1PartsMoveStepB` | 860 |
+| `KoopaVS1PartsRotateMoveStepA` | 861 |
+| `KoopaVS1PartsRotateMoveStepB` | 862 |
+| `KoopaVS1PartsReverseGRoad` | 863 |
+| `KoopaVS1PartsStairRoad` | 864 |
+| `KoopaVS1PartsBattleStage` | 865 |
+| `KoopaVS2PartsReverseGRoadA` | 866 |
+| `KoopaVS2PartsReverseGRoadB` | 867 |
+| `KoopaVS2PartsStartRestStep` | 868 |
+| `KoopaVS2PartsRestStepA` | 869 |
+| `KoopaVS2PartsRestStepB` | 870 |
+| `KoopaVS2PartsRestStepC` | 871 |
+| `KoopaVS2PartsRestClipC` | 872 |
+| `KoopaVS2PartsRestStepD` | 873 |
+| `KoopaVS2PartsRestStepE` | 874 |
+| `KoopaVS2PartsRestStepF` | 875 |
+| `KoopaVS2PartsRestStepG` | 876 |
+| `KoopaVS2PartsDarkMatterA` | 877 |
+| `KoopaVS2PartsDarkMatterB` | 878 |
+| `KoopaVS2PartsDarkMatterC` | 879 |
+| `KoopaVS2PartsDarkMatterD` | 880 |
+| `KoopaVS2PartsDarkMatterE` | 881 |
+| `KoopaVS2PartsStartMoveStepA` | 882 |
+| `KoopaVS2PartsStartMoveStepB` | 883 |
+| `KoopaVS2PartsStartMoveStepC` | 884 |
+| `KoopaVS2PartsRollingStep` | 885 |
+| `KoopaVS2Parts2DMoveStepBarA` | 886 |
+| `KoopaVS2Parts2DMoveStepBarB` | 887 |
+| `KoopaVS2Parts2DMoveStepSBarB` | 888 |
+| `KoopaVS2Parts2DMoveStepConvex` | 889 |
+| `KoopaVS2Parts2DMoveStepLShape` | 890 |
+| `KoopaVS2Parts2DMoveStepCross` | 891 |
+| `KoopaVS2PartsJoinedMoveStep` | 892 |
+| `KoopaVS2PartsJoinedMoveClip` | 893 |
+| `KoopaVS2PartsSquareMoveStepA` | 894 |
+| `KoopaVS2PartsSquareMoveClipA` | 895 |
+| `KoopaVS2PartsSquareMoveStepB` | 896 |
+| `KoopaVS2PartsSquareMoveClipB` | 897 |
+| `KoopaVS2PartsClipAreaDisplayA` | 898 |
+| `KoopaVS2PartsStairBig` | 899 |
+| `KoopaVS2Parts2DRailGuideA` | 900 |
+| `KoopaVS3RotateStepA` | 901 |
+| `KoopaVS3RotateStepB` | 902 |
+| `KoopaVS3RotateStepD` | 903 |
+| `KoopaVS3RotateStepsA` | 904 |
+| `KoopaVS3Parts2DWallA` | 905 |
+| `TreasureBoxCrackedEmpty` | 906 |
+| `TreasureBoxCrackedCoin` | 907 |
+| `TreasureBoxCrackedYellowChip` | 908 |
+| `TreasureBoxCrackedBlueChip` | 909 |
+| `TreasureBoxCrackedKinokoOneUp` | 910 |
+| `TreasureBoxCrackedKinokoLifeUp` | 911 |
+| `TreasureBoxCrackedAirBubble` | 912 |
+| `TreasureBoxCrackedPowerStar` | 913 |
+| `TreasureBoxEmpty` | 914 |
+| `TreasureBoxCoin` | 915 |
+| `TreasureBoxYellowChip` | 916 |
+| `TreasureBoxBlueChip` | 917 |
+| `TreasureBoxKinokoOneUp` | 918 |
+| `TreasureBoxKinokoLifeUp` | 919 |
+| `TreasureBoxGoldEmpty` | 920 |
+| `OceanRingRuinsMove` | 921 |
+| `OceanRingRuinsGearSmall` | 922 |
+| `OceanRingRuinsGearBig` | 923 |
+| `OceanRingRuinsColumn` | 924 |
+| `OceanRingRuinsBase` | 925 |
+| `KameckShip` | 926 |
+| `BeachParasol` | 927 |
+| `BeachChair` | 928 |
+| `GhostShipCaveMoveGroundA` | 929 |
+| `GhostShipCaveMoveGroundB` | 930 |
+| `PhantomShipBoxFloaterA` | 931 |
+| `PhantomShipBoxFloaterB` | 932 |
+| `PhantomShipBoxFloaterC` | 933 |
+| `PhantomCaveStepA` | 934 |
+| `GhostShipCaveClosedRockA` | 935 |
+| `GhostShipBrokenHead` | 936 |
+| `CannonUnderConstructionA` | 937 |
+| `CannonUnderConstructionB` | 938 |
+| `GhostShipCavePipeCollision` | 939 |
+| `AstroMapBoard` | 940 |
+| `AstroCore` | 941 |
+| `AstroCountDownPlate` | 942 |
+| `AstroDome` | 943 |
+| `AstroDomeEntrance` | 944 |
+| `AstroStarPlate` | 945 |
+| `AstroBaseA` | 946 |
+| `AstroBaseB` | 947 |
+| `AstroBaseC` | 948 |
+| `AstroBaseKitchen` | 949 |
+| `AstroBaseCenterA` | 950 |
+| `AstroBaseCenterB` | 951 |
+| `AstroBaseCenterTop` | 952 |
+| `AstroRotateStepA` | 953 |
+| `AstroRotateStepB` | 954 |
+| `AstroDecoratePartsA` | 955 |
+| `AstroDecoratePartsGearA` | 956 |
+| `AstroChildRoom` | 957 |
+| `AstroParking` | 958 |
+| `AstroLibrary` | 959 |
+| `AstroRoomLibrary` | 960 |
+| `AstroTorchLightRed` | 961 |
+| `AstroTorchLightBlue` | 962 |
+| `EffectTicoS` | 963 |
+| `EffectTicoL` | 964 |
+| `UFOKinokoUnderConstruction` | 965 |
+| `UFOKinokoLandingAstro` | 966 |
+| `AstroDomeSky` | 967 |
+| `WhiteRoom` | 968 |
+| `VROrbit` | 969 |
+| `VRDarkSpace` | 970 |
+| `VRSandwichSun` | 971 |
+| `SummerSky` | 972 |
+| `GalaxySky` | 973 |
+| `MilkyWaySky` | 974 |
+| `HalfGalaxySky` | 975 |
+| `GreenPlanetOrbitSky` | 976 |
+| `PhantomSky` | 977 |
+| `KoopaVS1Sky` | 978 |
+| `KoopaVS2Sky` | 979 |
+| `FamicomMarioSky` | 980 |
+| `DesertSky` | 981 |
+| `ChildRoomSky` | 982 |
+| `AuroraSky` | 983 |
+| `CloudSky` | 984 |
+| `RockPlanetOrbitSky` | 985 |
+| `StarrySky` | 986 |
+| `AstroDomeSkyA` | 987 |
+| `HomeAir` | 988 |
+| `SphereAir` | 989 |
+| `SunsetAir` | 990 |
+| `FineAir` | 991 |
+| `DimensionAir` | 992 |
+| `DarknessRoomAir` | 993 |
+| `TwilightAir` | 994 |
+| `ZoneHalo` | 995 |
+| `PowerStarHalo` | 996 |
+| `Coin` | 997 |
+| `PurpleCoin` | 998 |
+| `RailCoin` | 999 |
+| `CircleCoinGroup` | 1000 |
+| `PurpleRailCoin` | 1001 |
+| `CirclePurpleCoinGroup` | 1002 |
+| `PurpleCoinStarter` | 1003 |
+| `CoinReplica` | 1004 |
+| `QuestionCoin` | 1005 |
+| `BlueChip` | 1006 |
+| `YellowChip` | 1007 |
+| `BlueChipGroup` | 1008 |
+| `YellowChipGroup` | 1009 |
+| `StarPiece` | 1010 |
+| `StarPieceFlow` | 1011 |
+| `StarPieceGroup` | 1012 |
+| `StarPieceFollowGroup` | 1013 |
+| `StarPieceMother` | 1014 |
+| `StarPieceSpot` | 1015 |
+| `OceanBowl` | 1016 |
+| `OceanRing` | 1017 |
+| `OceanRingAndFlag` | 1018 |
+| `OceanSphere` | 1019 |
+| `WhirlPool` | 1020 |
+| `WhirlPoolAccelerator` | 1021 |
+| `FishGroupA` | 1022 |
+| `FishGroupB` | 1023 |
+| `FishGroupC` | 1024 |
+| `FishGroupD` | 1025 |
+| `FishGroupE` | 1026 |
+| `FishGroupF` | 1027 |
+| `Flag` | 1028 |
+| `FlagKoopaA` | 1029 |
+| `FlagKoopaB` | 1030 |
+| `FlagRaceA` | 1031 |
+| `FlagKoopaCastle` | 1032 |
+| `FlagPeachCastleA` | 1033 |
+| `FlagPeachCastleB` | 1034 |
+| `FlagPeachCastleC` | 1035 |
+| `FlagSurfing` | 1036 |
+| `FlagTamakoro` | 1037 |
+| `SeaGullGroup` | 1038 |
+| `WaterPlant` | 1039 |
+| `HitWallTimerSwitch` | 1040 |
+| `PTimerSwitch` | 1041 |
+| `CrystalSwitch` | 1042 |
+| `HipDropSwitch` | 1043 |
+| `HipDropTimerSwitch` | 1044 |
+| `DesertLandUpSwitch` | 1045 |
+| `DesertLandDownSwitch` | 1046 |
+| `ScrewSwitch` | 1047 |
+| `ScrewSwitchReverse` | 1048 |
+| `PicketSwitch` | 1049 |
+| `PicketSwitchBig` | 1050 |
+| `ValveSwitch` | 1051 |
+| `KeySwitch` | 1052 |
+| `SpinLeverSwitch` | 1053 |
+| `EffectObjSample` | 1054 |
+| `ShootingStarArea` | 1055 |
+| `IcePlanetLight` | 1056 |
+| `IceLayerBreak` | 1057 |
+| `LavaSparksS` | 1058 |
+| `LavaSparksL` | 1059 |
+| `SpaceDustS` | 1060 |
+| `SpaceDustL` | 1061 |
+| `BirdLouseS` | 1062 |
+| `BirdLouseL` | 1063 |
+| `SnowS` | 1064 |
+| `FallingSmallRock` | 1065 |
+| `LavaHomeVolcanoFallingRock` | 1066 |
+| `Fountain` | 1067 |
+| `FountainBig` | 1068 |
+| `WaterfallS` | 1069 |
+| `WaterfallL` | 1070 |
+| `DrainPipeBubbleA` | 1071 |
+| `DrainPipeBubbleB` | 1072 |
+| `WaterDropTop` | 1073 |
+| `WaterDropBottom` | 1074 |
+| `WaterDropMiddle` | 1075 |
+| `SubmarineSteam` | 1076 |
+| `SubmarineVolcano` | 1077 |
+| `WaterLayerBreak` | 1078 |
+| `StarPieceClusterBreak` | 1079 |
+| `FireworksA` | 1080 |
+| `BattleShipExplosionRock` | 1081 |
+| `BattleShipExplosionMetal` | 1082 |
+| `ForestWaterfallS` | 1083 |
+| `ForestWaterfallL` | 1084 |
+| `SandBreezeS` | 1085 |
+| `SandBreezeL` | 1086 |
+| `SpringJetWater` | 1087 |
+| `SandUpDownKGBaseEffect` | 1088 |
+| `SandUpDownTowerTopEffect` | 1089 |
+| `UFOSandObstacleAEffect` | 1090 |
+| `UFOSandObstacleBEffect` | 1091 |
+| `UFOSandObstacleCEffect` | 1092 |
+| `GravityDust` | 1093 |
+| `Steam` | 1094 |
+| `FallRedLeaf` | 1095 |
+| `FallGreenLeaf` | 1096 |
+| `IcicleRockLight` | 1097 |
+| `TwinFallLakeWaterFall` | 1098 |
+| `EffectTeresa` | 1099 |
+| `UFOKinokoLandingBlackSmoke` | 1100 |
+| `InvisibleWall10x10` | 1101 |
+| `InvisibleWall10x20` | 1102 |
+| `InvisibleWallJump10x10` | 1103 |
+| `InvisibleWallJump10x20` | 1104 |
+| `InvisibleWallGCapture10x10` | 1105 |
+| `InvisibleWallGCapture10x20` | 1106 |
+| `PolygonCodeRecoveryPlate` | 1107 |
+| `PolygonCodeRecoveryBowl` | 1108 |
+| `InvisibleWallBattleShipA` | 1109 |
+| `InvisibleWaterfall` | 1110 |
+| `InvisibleWaterfallTwinFallLake` | 1111 |
+| `StatusFloor` | 1112 |
+| `GlobalCubeGravity` | 1113 |
+| `GlobalConeGravity` | 1114 |
+| `GlobalDiskGravity` | 1115 |
+| `GlobalDiskTorusGravity` | 1116 |
+| `GlobalPlaneGravity` | 1117 |
+| `GlobalPlaneGravityInBox` | 1118 |
+| `GlobalPlaneGravityInCylinder` | 1119 |
+| `GlobalPointGravity` | 1120 |
+| `GlobalSegmentGravity` | 1121 |
+| `GlobalWireGravity` | 1122 |
+| `MiniEggStarGalaxy` | 1123 |
+| `MiniHoneyBeeKingdomGalaxy` | 1124 |
+| `MiniFlipPanelExGalaxy` | 1125 |
+| `MiniSurfingLv1Galaxy` | 1126 |
+| `MiniTriLegLv1Galaxy` | 1127 |
+| `MiniStarDustGalaxy` | 1128 |
+| `MiniTamakoroExLv1Galaxy` | 1129 |
+| `MiniBattleShipGalaxy` | 1130 |
+| `MiniBreakDownPlanetGalaxy` | 1131 |
+| `MiniKoopaBattleVs1Galaxy` | 1132 |
+| `MiniHeavenlyBeachGalaxy` | 1133 |
+| `MiniCubeBubbleExLv1Galaxy` | 1134 |
+| `MiniPhantomGalaxy` | 1135 |
+| `MiniOceanFloaterLandGalaxy` | 1136 |
+| `MiniKoopaJrShipLv1Galaxy` | 1137 |
+| `MiniCosmosGardenGalaxy` | 1138 |
+| `MiniIceVolcanoGalaxy` | 1139 |
+| `MiniHoneyBeeExGalaxy` | 1140 |
+| `MiniSandClockGalaxy` | 1141 |
+| `MiniKoopaBattleVs2Galaxy` | 1142 |
+| `MiniReverseKingdomGalaxy` | 1143 |
+| `MiniOceanRingGalaxy` | 1144 |
+| `MiniFactoryGalaxy` | 1145 |
+| `MiniSkullSharkGalaxy` | 1146 |
+| `MiniFloaterOtaKingGalaxy` | 1147 |
+| `MiniOceanPhantomCaveGalaxy` | 1148 |
+| `MiniCannonFleetGalaxy` | 1149 |
+| `MiniDarkRoomGalaxy` | 1150 |
+| `MiniHellProminenceGalaxy` | 1151 |
+| `MiniKoopaBattleVs3Galaxy` | 1152 |
+| `SurprisedGalaxy` | 1153 |
+| `SurpBeltConveyerExGalaxy` | 1154 |
+| `SurpCocoonExGalaxy` | 1155 |
+| `SurpTearDropGalaxy` | 1156 |
+| `SurpTeresaMario2DGalaxy` | 1157 |
+| `SurpSnowCapsuleGalaxy` | 1158 |
+| `SurpTransformationExGalaxy` | 1159 |
+| `SurpFishTunnelGalaxy` | 1160 |
+| `SurpTamakoroExLv2Galaxy` | 1161 |
+| `SurpSurfingLv2Galaxy` | 1162 |
+| `SurpCubeBubbleExLv2Galaxy` | 1163 |
+| `SurpPeachCastleFinalGalaxy` | 1164 |
+| `ClipFieldSwitch` | 1165 |
+| `FallOutFieldDraw` | 1166 |
+| `ClipFieldFillDraw` | 1167 |
+| `SpotLightVolumeDraw` | 1168 |
+| `GroupSwitchWatcher` | 1169 |
+| `RaceRail` | 1170 |
+| `TimerSwitch` | 1171 |
+| `SwitchSynchronizerReverse` | 1172 |
+| `MovieStarter` | 1173 |
+| `DemoGroup` | 1174 |
+| `DemoSubGroup` | 1175 |
+| `AstroDomeDemoStarter` | 1176 |
+| `AstroDomeGalaxySelector` | 1177 |
+| `StarReturnDemoStarter` | 1178 |
+| `GrandStarReturnDemoStarter` | 1179 |
+| `ScenarioStarter` | 1180 |
+| `FileSelector` | 1181 |
+
+<a id="p-nebula-registries--form"></a>
+
+### form
+
+The player's forms. Number: the form id (`power_up` events, `set_value`). A mod's `add_power_up` adds one. 9 rows.
+
+| Name | Number |
+|---|---|
+| `normal` | 0 |
+| `invincible` | 1 |
+| `fire` | 2 |
+| `ice` | 3 |
+| `bee` | 4 |
+| `spring` | 5 |
+| `boo` | 6 |
+| `flying` | 7 |
+| `tornado` | 9 |
+
+<a id="p-nebula-registries--area"></a>
+
+### area
+
+Kinds of area a level places. Number: its place in the table. 67 rows.
+
+| Name | Number |
+|---|---|
+| `SwitchArea` | 0 |
+| `RaceJudgeCube` | 1 |
+| `NinForceWindCube` | 2 |
+| `NinAbyssCube` | 3 |
+| `CubeCamera` | 4 |
+| `BindEndCube` | 5 |
+| `EffectCylinder` | 6 |
+| `DeathArea` | 7 |
+| `WarpCube` | 8 |
+| `TripodBossStepStart` | 9 |
+| `Water` | 10 |
+| `PlaneModeCube` | 11 |
+| `PlaneCircularModeCube` | 12 |
+| `PipeModeCube` | 13 |
+| `TowerModeCylinder` | 14 |
+| `ShadeCube` | 15 |
+| `PullBackCube` | 16 |
+| `PullBackCylinder` | 17 |
+| `RestartCube` | 18 |
+| `ChangeBgmCube` | 19 |
+| `BgmProhibitArea` | 20 |
+| `SoundEmitterCube` | 21 |
+| `SoundEmitterSphere` | 22 |
+| `PlaneCollisionCube` | 23 |
+| `ForbidTriangleJumpCube` | 24 |
+| `ForbidWaterSearchCube` | 25 |
+| `QuakeEffectArea` | 26 |
+| `HazeCube` | 27 |
+| `AudioEffectArea` | 28 |
+| `BigBubbleGoalArea` | 29 |
+| `SunLightArea` | 30 |
+| `GlaringLightArea` | 31 |
+| `ViewGroupCtrlCube` | 32 |
+| `LensFlareArea` | 33 |
+| `CameraRepulsiveArea` | 34 |
+| `LightArea` | 35 |
+| `FallsCube` | 36 |
+| `MercatorCube` | 37 |
+| `AstroChangeStageCube` | 38 |
+| `ImageEffectArea` | 39 |
+| `BlueStarGuidanceCube` | 40 |
+| `TicoSeedGuidanceCube` | 41 |
+| `MessageArea` | 42 |
+| `SmokeEffectColorArea` | 43 |
+| `BeeWallShortDistArea` | 44 |
+| `ExtraWallCheckArea` | 45 |
+| `ExtraWallCheckCylinder` | 46 |
+| `SpinGuidanceCube` | 47 |
+| `HipDropGuidanceCube` | 48 |
+| `TamakoroMoveGuidanceCube` | 49 |
+| `TamakoroJumpGuidanceCube` | 50 |
+| `BigBubbleGuidanceCube` | 51 |
+| `HeavySteeringCube` | 52 |
+| `NonSleepCube` | 53 |
+| `AreaMoveSphere` | 54 |
+| `DodoryuClosedCylinder` | 55 |
+| `DashChargeCylinder` | 56 |
+| `PlayerSeArea` | 57 |
+| `RasterScrollCube` | 58 |
+| `OnimasuCube` | 59 |
+| `ForbidJumpCube` | 60 |
+| `CollisionArea` | 61 |
+| `AstroOverlookArea` | 62 |
+| `CelestrialSphere` | 63 |
+| `MirrorArea` | 64 |
+| `DarkMatterCube` | 65 |
+| `DarkMatterCylinder` | 66 |
+
+<a id="p-nebula-registries--camera"></a>
+
+### camera
+
+Camera types a level or cutscene names. Number: its place in the table. 45 rows.
+
+| Name | Number |
+|---|---|
+| `CAM_TYPE_XZ_PARA` | 0 |
+| `CAM_TYPE_TOWER` | 1 |
+| `CAM_TYPE_FOLLOW` | 2 |
+| `CAM_TYPE_WONDER_PLANET` | 3 |
+| `CAM_TYPE_POINT_FIX` | 4 |
+| `CAM_TYPE_EYEPOS_FIX` | 5 |
+| `CAM_TYPE_SLIDER` | 6 |
+| `CAM_TYPE_INWARD_TOWER` | 7 |
+| `CAM_TYPE_EYEPOS_FIX_THERE` | 8 |
+| `CAM_TYPE_TRIPOD_BOSS` | 9 |
+| `CAM_TYPE_TOWER_POS` | 10 |
+| `CAM_TYPE_TRIPOD_PLANET` | 11 |
+| `CAM_TYPE_DEAD` | 12 |
+| `CAM_TYPE_INWARD_SPHERE` | 13 |
+| `CAM_TYPE_RAIL_DEMO` | 14 |
+| `CAM_TYPE_RAIL_FOLLOW` | 15 |
+| `CAM_TYPE_TRIPOD_BOSS_JOINT` | 16 |
+| `CAM_TYPE_CHARMED_TRIPOD_BOSS` | 17 |
+| `CAM_TYPE_OBJ_PARALLEL` | 18 |
+| `CAM_TYPE_CHARMED_FIX` | 19 |
+| `CAM_TYPE_GROUND` | 20 |
+| `CAM_TYPE_TRUNDLE` | 21 |
+| `CAM_TYPE_CUBE_PLANET` | 22 |
+| `CAM_TYPE_INNER_CYLINDER` | 23 |
+| `CAM_TYPE_SPIRAL_DEMO` | 24 |
+| `CAM_TYPE_TALK` | 25 |
+| `CAM_TYPE_MTXREG_PARALLEL` | 26 |
+| `CAM_TYPE_CHARMED_VECREG` | 27 |
+| `CAM_TYPE_MEDIAN_PLANET` | 28 |
+| `CAM_TYPE_TWISTED_PASSAGE` | 29 |
+| `CAM_TYPE_MEDIAN_TOWER` | 30 |
+| `CAM_TYPE_CHARMED_VECREG_TOWER` | 31 |
+| `CAM_TYPE_FRONT_AND_BACK` | 32 |
+| `CAM_TYPE_RACE_FOLLOW` | 33 |
+| `CAM_TYPE_2D_SLIDE` | 34 |
+| `CAM_TYPE_FOO_FIGHTER` | 35 |
+| `CAM_TYPE_FOO_FIGHTER_PLANET` | 36 |
+| `CAM_TYPE_BLACK_HOLE` | 37 |
+| `CAM_TYPE_ANIM` | 38 |
+| `CAM_TYPE_DPD` | 39 |
+| `CAM_TYPE_WATER_FOLLOW` | 40 |
+| `CAM_TYPE_WATER_PLANET` | 41 |
+| `CAM_TYPE_WATER_PLANET_BOSS` | 42 |
+| `CAM_TYPE_RAIL_WATCH` | 43 |
+| `CAM_TYPE_SUBJECTIVE` | 44 |
+
+<a id="p-nebula-registries--gravity"></a>
+
+### gravity
+
+Gravity shapes a level places. Number: its place in the factory table, as an object. 8 rows.
+
+| Name | Number |
+|---|---|
+| `GlobalCubeGravity` | 1113 |
+| `GlobalConeGravity` | 1114 |
+| `GlobalDiskGravity` | 1115 |
+| `GlobalDiskTorusGravity` | 1116 |
+| `GlobalPlaneGravity` | 1117 |
+| `GlobalPointGravity` | 1120 |
+| `GlobalSegmentGravity` | 1121 |
+| `GlobalWireGravity` | 1122 |
+
+<a id="p-nebula-registries--message"></a>
+
+### message
+
+Messages objects send each other (`on message`). Number: the message. 183 rows.
+
+| Name | Number |
+|---|---|
+| `ACTMES_PLAYER_ATTACK_START` | 0 |
+| `ACTMES_PLAYER_PUNCH` | 1 |
+| `ACTMES_PLAYER_TRAMPLE` | 2 |
+| `ACTMES_PLAYER_HIP_DROP` | 3 |
+| `ACTMES_PLAYER_HIP_DROP_FLOOR` | 4 |
+| `ACTMES_PLAYER_UPPER_PUNCH` | 5 |
+| `ACTMES_JET_TURTLE_ATTACK` | 6 |
+| `ACTMES_FOO_ATTACK` | 7 |
+| `ACTMES_FIREBALL_ATTACK` | 8 |
+| `ACTMES_SEARCHLIGHT_ATTACK` | 9 |
+| `ACTMES_FREEZE_ATTACK` | 10 |
+| `ACTMES_INVINCIBLE_ATTACK` | 11 |
+| `ACTMES_STAR_PIECE_ATTACK` | 12 |
+| `ACTMES_IS_STAR_PIECE_REFLECT` | 13 |
+| `ACTMES_IS_LOCKON_STAR_PIECE_SHOOT` | 14 |
+| `ACTMES_STAR_PIECE_GIFT` | 15 |
+| `ACTMES_STAR_PIECE_GIFT_1` | 16 |
+| `ACTMES_STAR_PIECE_GIFT_MAX` | 25 |
+| `ACTMES_PLAYER_ATTACK_END` | 26 |
+| `ACTMES_IS_PUNCH_ENABLE` | 27 |
+| `ACTMES_HITMARK_EMIT` | 28 |
+| `ACTMES_INVALID_HIT` | 29 |
+| `ACTMES_TAKE` | 30 |
+| `ACTMES_TAKEN` | 31 |
+| `ACTMES_APART` | 33 |
+| `ACTMES_THROW` | 34 |
+| `ACTMES_DAMAGEDROP` | 35 |
+| `ACTMES_RUSHDROP` | 36 |
+| `ACTMES_ATTACKDROP` | 37 |
+| `ACTMES_HANG_CANCEL` | 38 |
+| `ACTMES_SHAKE_OFF_BEE` | 39 |
+| `ACTMES_TAKE_TOUCH` | 40 |
+| `ACTMES_PUSH` | 41 |
+| `ACTMES_PUSH_FORCE` | 42 |
+| `ACTMES_KICK` | 43 |
+| `ACTMES_JUMP` | 44 |
+| `ACTMES_TOUCHJUMP` | 45 |
+| `ACTMES_BILLIARDJUMP` | 46 |
+| `ACTMES_AWAYJUMP` | 47 |
+| `ACTMES_TORNADO_ATTACK` | 49 |
+| `ACTMES_TORNADO_STORM_RANGE` | 50 |
+| `ACTMES_SPIN_STORM_RANGE` | 51 |
+| `ACTMES_BALL_TOUCH_WALL` | 54 |
+| `ACTMES_BALL_DASH_WALL` | 57 |
+| `ACTMES_BALL_DASH_GROUND` | 58 |
+| `ACTMES_BIG_BUBBLE_MERGE` | 60 |
+| `ACTMES_BIG_BUBBLE_ASSIMILATE` | 62 |
+| `ACTMES_REFLECT` | 63 |
+| `ACTMES_REFLECT_V` | 64 |
+| `ACTMES_IS_BROKEN` | 65 |
+| `ACTMES_PASS_RING` | 66 |
+| `ACTMES_FOUNTAINJUMP` | 67 |
+| `ACTMES_TERESA_PLAYER_TOUCH` | 68 |
+| `ACTMES_RUSH_PLAYER_TOUCH` | 69 |
+| `ACTMES_BOMB_TERESA_TONGUE_TOUCH` | 70 |
+| `ACTMES_PUDDLE_TOUCH_GROUND` | 71 |
+| `ACTMES_WARP` | 72 |
+| `ACTMES_ASK_HIDDEN_BY_SNOW` | 73 |
+| `ACTMES_NOTIFY_DISCOVER_SNOW` | 74 |
+| `ACTMES_ENEMY_ATTACK_START` | 75 |
+| `ACTMES_ENEMY_ATTACK_FLIP_VERYWEAK` | 76 |
+| `ACTMES_ENEMY_ATTACK_FLIP_WEAK` | 77 |
+| `ACTMES_ENEMY_ATTACK_FLIP_WEAK_JUMP` | 78 |
+| `ACTMES_ENEMY_ATTACK_FLIP_JUMP` | 79 |
+| `ACTMES_ENEMY_ATTACK_FLIP` | 80 |
+| `ACTMES_ENEMY_ATTACK_FLIP_ROT` | 81 |
+| `ACTMES_ENEMY_ATTACK_FLIP_MAXIMUM` | 82 |
+| `ACTMES_ENEMY_ATTACK` | 83 |
+| `ACTMES_ENEMY_ATTACK_STRONG` | 84 |
+| `ACTMES_ENEMY_ATTACK_MAXIMUM` | 85 |
+| `ACTMES_ENEMY_ATTACK_EXPLOSION` | 86 |
+| `ACTMES_ENEMY_ATTACK_FIREBACK` | 87 |
+| `ACTMES_ENEMY_ATTACK_FIRERUN` | 88 |
+| `ACTMES_ENEMY_ATTACK_FIRERUN_STRONG` | 89 |
+| `ACTMES_ENEMY_ATTACK_ELECTRIC` | 90 |
+| `ACTMES_ENEMY_ATTACK_HEATBEAM` | 91 |
+| `ACTMES_ENEMY_ATTACK_ACID` | 92 |
+| `ACTMES_ENEMY_ATTACK_FREEZE` | 93 |
+| `ACTMES_ENEMY_ATTACK_CRUSH` | 94 |
+| `ACTMES_ENEMY_ATTACK_EXTRA_DAMAGE` | 95 |
+| `ACTMES_ENEMY_ATTACK_COUNTER_SPIN` | 96 |
+| `ACTMES_ENEMY_ATTACK_COUNTER_HIPDROP` | 97 |
+| `ACTMES_TO_ENEMY_ATTACK_BLOW` | 98 |
+| `ACTMES_TO_ENEMY_ATTACK_TRAMPLE` | 99 |
+| `ACTMES_TO_ENEMY_ATTACK_SHOCK_WAVE` | 100 |
+| `ACTMES_ENEMY_ATTACK_END` | 101 |
+| `ACTMES_SUCCESS` | 102 |
+| `ACTMES_FAILURE` | 103 |
+| `ACTMES_GROUP_MOVE_START` | 104 |
+| `ACTMES_GROUP_MOVE_STOP` | 105 |
+| `ACTMES_GROUP_ATTACK` | 106 |
+| `ACTMES_GROUP_SHOW` | 107 |
+| `ACTMES_GROUP_HIDE` | 108 |
+| `ACTMES_GROUP_LOD_LOW` | 109 |
+| `ACTMES_START_DEMO` | 111 |
+| `ACTMES_END_DEMO` | 112 |
+| `ACTMES_FORCE_KILL` | 113 |
+| `ACTMES_INHALE_BLACK_HOLE` | 115 |
+| `ACTMES_START_POWER_STAR_GET` | 116 |
+| `ACTMES_ITEM_GET` | 135 |
+| `ACTMES_IS_PULL_ENABLE` | 136 |
+| `ACTMES_ITEM_PULL` | 137 |
+| `ACTMES_ITEM_SHOW` | 138 |
+| `ACTMES_ITEM_HIDE` | 139 |
+| `ACTMES_ITEM_START_MOVE` | 140 |
+| `ACTMES_ITEM_END_MOVE` | 141 |
+| `ACTMES_OPD_SHOOT` | 142 |
+| `ACTMES_IS_OPD_SITE_IN` | 143 |
+| `ACTMES_RUSH_BEGIN` | 145 |
+| `ACTMES_AUTORUSH_BEGIN` | 146 |
+| `ACTMES_RUSH_CANCEL` | 147 |
+| `ACTMES_RUSH_FORCE_CANCEL` | 148 |
+| `ACTMES_RUSH_DAMAGE_CANCEL` | 149 |
+| `ACTMES_RUSH_END` | 150 |
+| `ACTMES_IS_RUSH_ENABLE` | 151 |
+| `ACTMES_IS_RUSH_TAKEOVER` | 152 |
+| `ACTMES_IS_RUSH_REQUEST` | 153 |
+| `ACTMES_SLING_SHOOT_ACTOR_HANG_START` | 155 |
+| `ACTMES_SLING_SHOOT_ACTOR_HANG_END` | 156 |
+| `ACTMES_SLING_SHOOT_ACTOR_APART` | 157 |
+| `ACTMES_SLING_SHOOT_ATTACK` | 158 |
+| `ACTMES_SLING_SHOOT_PASS_THROUGH_ENABLE` | 159 |
+| `ACTMES_SLING_SHOOT_IS_LAST_DAMAGE` | 160 |
+| `ACTMES_UPDATE_BASEMTX` | 161 |
+| `ACTMES_TRIPODBOSS_LEG_IS_DAMAGE` | 169 |
+| `ACTMES_TRIPODBOSS_STARTED` | 170 |
+| `ACTMES_DISPERSE_BOMB_TERESA` | 171 |
+| `ACTMES_BREAK_POLTA_GROUND_ROCK` | 172 |
+| `ACTMES_SPHERE_PLAYER_BINDED` | 173 |
+| `ACTMES_SET_UP_JUMP_HOLE` | 174 |
+| `ACTMES_SHOOT_JUMP_HOLE` | 175 |
+| `ACTMES_END_JUMP_HOLE` | 176 |
+| `ACTMES_END_RAIL_DASH` | 177 |
+| `ACTMES_END_BALL_RAIL` | 178 |
+| `ACTMES_END_BALL_BIND` | 179 |
+| `ACTMES_FLOOR_TOUCH` | 180 |
+| `ACTMES_WALL_TOUCH` | 181 |
+| `ACTMES_CEIL_TOUCH` | 182 |
+| `ACTMES_REQUEST_CLAP` | 183 |
+| `ACTMES_DINO_PACKUN_PUNCHED_BALL` | 184 |
+| `ACTMES_DINO_PACKUN_PULLED_TAIL` | 185 |
+| `ACTMES_DINO_PACKUN_BALL_ATTACK` | 186 |
+| `ACTMES_TOMB_SPIDER_BATTLE_START` | 187 |
+| `ACTMES_TOMB_SPIDER_DEMO_START` | 188 |
+| `ACTMES_SKELETAL_FISH_BOSS_BATTLE_START` | 190 |
+| `ACTMES_SKELETAL_FISH_BOSS_BATTLE_END` | 191 |
+| `ACTMES_KOOPA_HIP_DROP_ATTACK` | 192 |
+| `ACTMES_KOOPA_PLAYER_DAMAGE` | 193 |
+| `ACTMES_KOOPA_PLATE_DAMAGE` | 194 |
+| `ACTMES_TICO_RAIL_TOUCH` | 195 |
+| `ACTMES_IS_REFLECTION_G_CAPTURE` | 196 |
+| `ACTMES_IS_NO_BREAK_G_CAPTURE` | 197 |
+| `ACTMES_TURNIP_ATTACK` | 198 |
+| `ACTMES_PAKKUN_BALL_ATTACK` | 199 |
+| `ACTMES_MAPPARTS_ON_PLAYER` | 202 |
+| `ACTMES_MAPPARTS_START_ROTATE_AT_POINT` | 203 |
+| `ACTMES_MAPPARTS_END_ROTATE_AT_POINT` | 204 |
+| `ACTMES_MAPPARTS_START_ROTATE_BETWEEN_POINTS` | 205 |
+| `ACTMES_MAPPARTS_DISAPPEAR_WITH_BLINK` | 207 |
+| `ACTMES_NPC_EVENT_START` | 208 |
+| `ACTMES_NPC_EVENT_END` | 209 |
+| `ACTMES_NPC_EVENT_TALK_ENABLE` | 210 |
+| `ACTMES_NPC_EVENT_TALK_DISABLE` | 211 |
+| `ACTMES_NPC_TALK_NEXT` | 212 |
+| `ACTMES_SPHERE_SELECTOR_SELECT_START` | 224 |
+| `ACTMES_SPHERE_SELECTOR_SELECT_END` | 225 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRM_START` | 226 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRM_CANCEL` | 227 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRMED` | 228 |
+| `ACTMES_SPHERE_SELECTOR_TARGET_SELECTED` | 229 |
+| `ACTMES_TUTORIAL_START` | 230 |
+| `ACTMES_TUTORIAL_NEXT` | 231 |
+| `ACTMES_TUTORIAL_PREV` | 232 |
+| `ACTMES_TUTORIAL_PASS` | 233 |
+| `ACTMES_TUTORIAL_OMIT` | 235 |
+| `ACTMES_RACE_READY` | 236 |
+| `ACTMES_RACE_START` | 237 |
+| `ACTMES_RACE_GOAL` | 238 |
+| `ACTMES_RACE_RESET` | 239 |
+| `ACTMES_HEAVENSDOOR_RUNAWAY_RABBIT_WAIT` | 240 |
+| `ACTMES_HEAVENSDOOR_RUNAWAY_RABBIT_START` | 241 |
+| `ACTMES_LAUNCHER_BREAKABLE` | 242 |
+| `ACTMES_PLANT_GROUP_EMIT_ITEM` | 243 |
+
+<a id="p-nebula-registries--floor"></a>
+
+### floor
+
+Floor codes of collision. Number: the code. 36 rows.
+
+| Name | Number |
+|---|---|
+| `Normal` | 0 |
+| `Death` | 1 |
+| `Slip` | 2 |
+| `NoSlip` | 3 |
+| `DamageNormal` | 4 |
+| `Ice` | 5 |
+| `JumpLow` | 6 |
+| `JumpMiddle` | 7 |
+| `JumpHigh` | 8 |
+| `Slider` | 9 |
+| `DamageFire` | 10 |
+| `JumpNormal` | 11 |
+| `FireDance` | 12 |
+| `Sand` | 13 |
+| `Glass` | 14 |
+| `DamageElectric` | 15 |
+| `PullBack` | 16 |
+| `Sink` | 17 |
+| `SinkPoison` | 18 |
+| `Slide` | 19 |
+| `WaterBottomH` | 20 |
+| `WaterBottomM` | 21 |
+| `WaterBottomL` | 22 |
+| `Wet` | 23 |
+| `Needle` | 24 |
+| `SinkDeath` | 25 |
+| `Snow` | 26 |
+| `RailMove` | 27 |
+| `AreaMove` | 28 |
+| `Press` | 29 |
+| `NoStampSand` | 30 |
+| `SinkDeathMud` | 31 |
+| `Brake` | 32 |
+| `GlassIce` | 33 |
+| `JumpParasol` | 34 |
+| `End` | 35 |
+
+<a id="p-nebula-registries--comet"></a>
+
+### comet
+
+Comet kinds a galaxy's scenario names. Number: its id. 5 rows.
+
+| Name | Number |
+|---|---|
+| `Red` | 0 |
+| `Ghost` | 1 |
+| `Dark` | 2 |
+| `Quick` | 3 |
+| `Purple` | 4 |
+
+<a id="p-nebula-registries--hud"></a>
+
+### hud
+
+HUD parts (`show_hud`). Number: its bit. 7 rows.
+
+| Name | Number |
+|---|---|
+| `coins` | 1 |
+| `star_bits` | 2 |
+| `lives` | 4 |
+| `stars` | 8 |
+| `life_meter` | 16 |
+| `pointer` | 32 |
+| `timer` | 64 |
+
+<a id="p-nebula-registries--character"></a>
+
+### character
+
+Who the player plays. Number: 1 for Luigi. 2 rows.
+
+| Name | Number |
+|---|---|
+| `mario` | 0 |
+| `luigi` | 1 |

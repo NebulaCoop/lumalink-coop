@@ -10,7 +10,6 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `option` | `const char* option(const NebulaPlugin* self, const char* id)` |
 | `subscribe` | `int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)` |
 | `register_object` | `int32_t register_object(const NebulaObjectClass* object)` |
-| `register_creator` | `int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)` |
 | `hook` | `int32_t hook(void* target, void* replacement, void* * original)` |
 | `find_function` | `void* find_function(const char* symbol)` |
 | `player` | `NebulaActor* player(void)` |
@@ -198,6 +197,11 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `luma_start` | `void luma_start(const struct NebulaModApi* api)` |
 | `add_script_object` | `int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)` |
 | `add_mod_script` | `int32_t add_mod_script(const NebulaPlugin* mod, const char* script)` |
+| `registry_count` | `int32_t registry_count(const char* kind)` |
+| `registry_name` | `const char* registry_name(const char* kind, int32_t index)` |
+| `registry_find` | `int32_t registry_find(const char* kind, const char* name)` |
+| `registry_value` | `int32_t registry_value(const char* kind, const char* name)` |
+| `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
 
 ## What each does
 
@@ -233,21 +237,13 @@ int32_t register_object(const NebulaObjectClass* object)
 
 Adds an object class that levels can place by name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name already taken, or a class too old to read.
 
-### `register_creator`
-
-```c
-int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)
-```
-
-`create` builds the game's own object type (a NameObj) for a placed name; `archive` is loaded for it, or null.
-
 ### `hook`
 
 ```c
 int32_t hook(void* target, void* replacement, void* * original)
 ```
 
-Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved.
+Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved. A native plugin's route only: a device that loads no plugin code (iOS) has none, so a mod that must run everywhere changes the game through events, rows and scripts instead.
 
 ### `find_function`
 
@@ -1736,6 +1732,46 @@ int32_t add_mod_script(const NebulaPlugin* mod, const char* script)
 ```
 
 The host's: a mod-wide script (luma.json "scripts"), the mod's /LumaScripts/<mod id>/<script>.lumascript, one instance for the whole run. 0: started; -1: refused (logged with the reason).
+
+### `registry_count`
+
+```c
+int32_t registry_count(const char* kind)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+### `registry_name`
+
+```c
+const char* registry_name(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+### `registry_find`
+
+```c
+int32_t registry_find(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+### `registry_value`
+
+```c
+int32_t registry_value(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+### `registry_mod`
+
+```c
+const char* registry_mod(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
 
 ## Numbers and names
 
