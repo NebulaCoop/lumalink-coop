@@ -83,7 +83,7 @@ device with `lumalink build examples/<name>` and becomes a file with `lumalink p
 - **Versions.** An option that only asks which version you have becomes layers by version, chosen by the game.
 - **Options.** Choices that come to the same thing are one choice: "With SD save" and "With Wii save" become Off and On, since Nebula keeps saves itself. A mod whose one option is itself is always on.
 - **Saves.** A mod that adds a galaxy keeps its own.
-- **Empty files.** Left out with a note, so the game's stays: an empty file on a console means a crash or silence, never something a modder meant.
+- **Empty files.** One where the game's own is empty too changes nothing: left out with a note. Any other the game leaves out as it starts, saying so in its log, and its own stays: an empty file on a console means a crash or silence, never something a modder meant.
 - **Files the game has no use for.** Readmes, thumbnails, tools: not copied.
 
 ## Super Mario Galaxy 2 mods

@@ -818,6 +818,7 @@ A mod that can't be used stays in the list, off, with one line:
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5` |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game` |
 | THIS MOD IS FOR ANOTHER VERSION OF THE GAME | A Riivolution mod whose `<id game>` names another release |
+| THESE TEXTURES ARE FOR ANOTHER GAME | A texture pack none of whose textures this game has |
 | THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
 | MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
@@ -847,11 +848,40 @@ Importing and removing say what happened on the Mods page's line:
 | THE ARCHIVE HOLDS NO FILES / THE FOLDER HOLDS NO FILES | |
 | THE ARCHIVE HOLDS TOO MANY FILES / THE ARCHIVE UNPACKS TO TOO MUCH DATA | Past a million files or 256 GB |
 | CANNOT WRITE: {FILE}. IS THE DISK FULL? | |
+| CANNOT OPEN THE ARCHIVE: {WHY} / CANNOT READ: {FILE} ({WHY}) | The archive's reader stopped; the reason is its own |
+| CANNOT READ THE FOLDER: {WHY} / CANNOT COPY: {FILE} ({WHY}) | The folder chosen, or a file in it, could not be read |
+| NOT FOUND: {FILE} | What was chosen is gone |
+| CANNOT WRITE TO THE MODS FOLDER: {WHY} / CANNOT MOVE THE MOD INTO PLACE | The mods folder refuses writing (permissions, a full disk) |
+| CANCELLED | The import was stopped; nothing was added |
 | IN USE: {NAME}. CLOSE WHAT HAS ITS FILES OPEN AND TRY AGAIN | Another program has its files open |
 | IN USE UNTIL NEBULA RESTARTS: TURN IT OFF AND RESTART FIRST | Remove on a mod the game started with |
 | MOVED TO THE RECYCLE BIN: {NAME} / REMOVED: {NAME} | |
 
 A mod with its own code asks first, by name, as the Mods page shows: Allow keeps it on, Not now turns it off. On Windows, an update of a mod with a file open in another program waits and takes its place at the next start.
+
+### In the log
+
+`nebula.log` in the settings folder. Every line about mods starts `mods:`; a line about one mod names its `id` next.
+
+| Line | Meaning |
+|---|---|
+| `left out: FILE: WHY` | One file of a mod couldn't be used; the rest of the mod runs |
+| `left out: FILE: the mod's file is empty` | An empty file in place of one of the game's: the game's is used (on a console it would crash or be silent) |
+| `left out: NAME: it has no archive ARCHIVE` / `left out: player animation NAME: …` | An object or animation names something no mod or the game brings |
+| `ID: the player has no number NAME` / `ID: the game has no tuning number KEY` | A `player_constants` or `tunables` key the game doesn't have (see [Player numbers](reference/player-numbers.md), [Settings](reference/settings.md)) |
+| `ID: KEY is set to a number too large to hold` | A number past what the game holds (`1e999`): nothing is set |
+| `the story has no KEY` | A `story` key the game doesn't have |
+| `ID: the galaxy NAME is left out: it has no StageData/…` | A `galaxies` row without its stage |
+| `ID: the galaxy NAME can't be added: its name clashes with one the game has` | |
+| `ID: the achievement KEY waits for an event the game has not: EVENT` | See [Events](reference/events.md) |
+| `ID: the music NAME can't be added: its name is the game's` | |
+| `ID: the object / sound / player animation / row … can't be added` or `can't be set` | Past what the game holds, or a name it already uses |
+| `NAME started` | A plugin is running |
+| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or another version of the game |
+| `the last run crashed with mods' code on: it stays off for this run` | Windows; restart to try again |
+| `its shaders are for another build of Nebula: the ones it needs are built here` | A `.luma`'s shader cache is from another build; nothing is lost |
+| `the mods' files could not be cooked: the game runs without them: WHY` | The game's converter failed as a whole; the game runs as it is. Report WHY with the mods you have on |
+| `ID: TEXT` | Anything a plugin writes with `log` |
 
 ### In LumaLink
 
@@ -860,7 +890,7 @@ A mod with its own code asks first, by name, as the Mods page shows: Allow keeps
 | CAN'T CONVERT: This mod is for Super Mario Galaxy 2 | Its patch files name `SB4` |
 | CAN'T CONVERT: These textures are for Super Mario Galaxy 2 | A pack whose files name `SB4` |
 | CAN'T CONVERT: This doesn't look like a mod | Nothing in it could be used |
-| left out: FILE: the mod's file is empty | The game's stays |
+| good to know: FILE: empty, as the game's own is; nothing to change | Left out of the `.luma` |
 | N code changes need a Nebula update or a plugin | Writes with no setting yet. Everything else works |
 | named without a folder; choose your game store | A loose file: give `--game` |
 | note: it doesn't name its authors | From `check`, for your information |

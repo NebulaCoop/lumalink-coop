@@ -58,6 +58,6 @@ It stays on the list, off, with one line saying why. See [Messages](REFERENCE.md
 
 ## When something's wrong
 
-- **A new line in the log says `mods: left out:`.** Part of the mod couldn't be used, and the rest is running. The line says which part and why. The log is `nebula.log` in the settings folder.
+- **A new line in the log says `mods: left out:`.** Part of the mod couldn't be used, and the rest is running. The line says which part and why. The log is `nebula.log` in the settings folder; every mod line it can hold is in [Messages](REFERENCE.md#in-the-log).
 - **It crashes.** Turn off the mods one at a time, starting from the top of the list, to find which one. If it's a plugin, the crash report names it.
 - **Sounds or shaders take a moment the first time.** A mod's shaders are built on your device on first use, with a progress screen. After that, it's instant.
