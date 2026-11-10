@@ -151,6 +151,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 |---|---|
 | [`one-health`](../../examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](../../examples/coin-kills) | Events |
+| [`half-damage`](../../examples/half-damage) | Replacing a game function |
 | [`achievements`](../../examples/achievements) | The mod's own achievements |
 | [`boss-music`](../../examples/boss-music) | Starting and stopping music |
 | [`double-jump`](../../examples/double-jump) | A new move: the buttons, gravity, an animation |

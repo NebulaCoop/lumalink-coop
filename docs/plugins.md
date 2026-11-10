@@ -166,6 +166,8 @@ api->hook(target, (void*)myDecLife, (void**)&original);
 - A function the compiler put inside its callers can't be reached this way. If your hook doesn't fire, use an event, or ask for one.
 - Identical functions can be merged by the linker, so a hook on one can catch another.
 
+[`examples/half-damage`](../examples/half-damage) is a whole mod made this way.
+
 ## When something goes wrong
 
 A plugin that can't start is left out, and the game's log says why:

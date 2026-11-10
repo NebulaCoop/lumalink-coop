@@ -131,6 +131,7 @@ Each one starts from nothing and ends with something running in the game.
 | `stage-music` | New music in a stage, per mission and per area |
 | `new-cutscene` | A whole cutscene from tables |
 | `one-health`, `coin-kills`, `boss-music`, `double-jump` | Small plugins |
+| `half-damage` | A hook on one of the game's functions |
 | `achievements` | The mod's own achievements, on the game's board: by events, and by its code |
 | `gecko-*` (20 of them) | Popular Gecko codes done natively: moon jump, infinite health, Mario's size, no spin cooldown and the rest ([the list](#p-tutorials-15-converting--popular-gecko-codes)) |
 | `little-boss` | A three-phase boss: model, music, placement, attacks |
@@ -736,6 +737,7 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 |---|---|
 | [`one-health`](https://github.com/keepvaibin/lumalink/blob/main/examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-kills) | Events |
+| [`half-damage`](https://github.com/keepvaibin/lumalink/blob/main/examples/half-damage) | Replacing a game function (`find_function`, `hook`) |
 | [`achievements`](https://github.com/keepvaibin/lumalink/blob/main/examples/achievements) | The mod's own achievements: three unlocked by events, one by its code |
 | [`boss-music`](https://github.com/keepvaibin/lumalink/blob/main/examples/boss-music) | Starting and stopping music |
 | [`double-jump`](https://github.com/keepvaibin/lumalink/blob/main/examples/double-jump) | A new move for the player: the buttons, gravity, an animation |
@@ -2014,6 +2016,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 |---|---|
 | [`one-health`](https://github.com/keepvaibin/lumalink/blob/main/examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-kills) | Events |
+| [`half-damage`](https://github.com/keepvaibin/lumalink/blob/main/examples/half-damage) | Replacing a game function |
 | [`achievements`](https://github.com/keepvaibin/lumalink/blob/main/examples/achievements) | The mod's own achievements |
 | [`boss-music`](https://github.com/keepvaibin/lumalink/blob/main/examples/boss-music) | Starting and stopping music |
 | [`double-jump`](https://github.com/keepvaibin/lumalink/blob/main/examples/double-jump) | A new move: the buttons, gravity, an animation |
@@ -4512,6 +4515,8 @@ api->hook(target, (void*)myDecLife, (void**)&original);
 - Several plugins can hook one function. The last one started runs first, and each one's `original` calls the one before.
 - A function the compiler put inside its callers can't be reached this way. If your hook doesn't fire, use an event, or ask for one.
 - Identical functions can be merged by the linker, so a hook on one can catch another.
+
+[`examples/half-damage`](https://github.com/keepvaibin/lumalink/blob/main/examples/half-damage) is a whole mod made this way.
 
 <a id="p-plugins--when-something-goes-wrong"></a>
 
