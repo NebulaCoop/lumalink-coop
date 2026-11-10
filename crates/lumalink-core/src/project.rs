@@ -101,6 +101,23 @@ pub fn find_clang(named: Option<&Path>) -> Option<PathBuf> {
     on_path.chain(usual).find(|p| p.is_file())
 }
 
+/// lld's linker for a library ending (lld-link, ld.lld or ld64.lld): beside clang, on the PATH, or in LLVM's and
+/// Homebrew's usual places. clang is given its path, so an lld Homebrew didn't put on the PATH is used too.
+fn find_lld(clang: &Path, ending: &str) -> Option<PathBuf> {
+    let name = match ending {
+        "dll" => "lld-link",
+        "so" => "ld.lld",
+        _ => "ld64.lld",
+    };
+    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let beside = clang.parent().map(Path::to_path_buf);
+    let on_path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
+    let usual = ["C:/Program Files/LLVM/bin", "/opt/homebrew/opt/lld/bin", "/opt/homebrew/opt/llvm/bin", "/usr/local/opt/lld/bin", "/usr/local/opt/llvm/bin", "/usr/bin"]
+        .into_iter()
+        .map(PathBuf::from);
+    beside.into_iter().chain(on_path).chain(usual).map(|d| d.join(&exe)).find(|p| p.is_file())
+}
+
 /// Builds the project's plugin from source/*.c for every device in BUILD_TARGETS, with clang and lld alone: a plugin
 /// calls the game through the table it is given and links no library, not even the C runtime. An undefined symbol
 /// (a C library call, a compiler helper) stops the build, not the game. luma.json's first plugin then names each
@@ -118,14 +135,21 @@ pub fn build_plugin(folder: &Path, clang: Option<&Path>) -> Result<Vec<BuiltLibr
         bail!("source/ has no .c file");
     }
     let clang = find_clang(clang).context("clang wasn't found: install LLVM (clang and lld) from https://llvm.org, or name it with --clang")?;
+    let mut linkers = Vec::new();
+    for &(_, _, ending) in BUILD_TARGETS {
+        let lld = find_lld(&clang, ending)
+            .with_context(|| format!("lld wasn't found beside {}: install it (https://llvm.org; a Mac: brew install lld)", clang.display()))?;
+        linkers.push(lld);
+    }
     fs::create_dir_all(folder.join("plugins"))?;
     let mut built = Vec::new();
-    for &(target, triple, ending) in BUILD_TARGETS {
+    for (&(target, triple, ending), lld) in BUILD_TARGETS.iter().zip(&linkers) {
         let file = library_path(&id, target, ending);
         let mut command = std::process::Command::new(&clang);
         command
             .arg(format!("--target={triple}"))
             .args(["-O2", "-shared", "-nostdlib", "-ffreestanding", "-fno-stack-protector", "-fvisibility=hidden", "-fuse-ld=lld"])
+            .arg(format!("--ld-path={}", lld.display()))
             .arg("-I")
             .arg(folder.join("source"));
         match ending {
@@ -2423,8 +2447,9 @@ mod tests {
 
     #[test]
     fn build_makes_every_devices_library() {
-        // Only where clang is installed: the build is clang's.
-        if find_clang(None).is_none() {
+        // Only where clang and lld are installed: the build is theirs.
+        let Some(clang) = find_clang(None) else { return };
+        if ["dll", "so", "dylib"].iter().any(|ending| find_lld(&clang, ending).is_none()) {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
