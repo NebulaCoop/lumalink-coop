@@ -32,7 +32,7 @@ About shows its description, then its icon and pictures, a page at a time. Remov
 
 ## Updating
 
-Importing a `.luma` whose `id` is already in the mods folder replaces that mod, whatever its folder is called, and keeps its place, its options and its saves. The message says which: Updated: {name} ({old} to {new}), Older version, or Replaced (the same version). A different mod that happens to have the same folder name is left alone; the new one gets a folder of its own. On Windows, if another program has a file of the mod open, the update waits and takes its place at the next start.
+Importing a `.luma` whose `id` is already in the mods folder replaces that mod, whatever its folder is called, and keeps its place, its options and its saves. The message says which: Updated: {name} ({old} to {new}), Older version, or Replaced (the same version). A different mod that happens to have the same folder name is left alone; the new one gets a folder of its own. On Windows, if another program has a file of the mod open, the update waits and takes its place at the next start. If Nebula closes during an import, the next start puts the mod back as it was and clears what was half copied.
 
 Two folders holding the same mod (a copy made by hand) can't both be on: the lower one says ANOTHER COPY OF THIS MOD IS ON.
 
