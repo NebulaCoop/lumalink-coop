@@ -47,7 +47,7 @@ static int32_t stage_frame(const NebulaModEventData* data, void* user) {
     out = put_text(out, "  Z ");
     out = put_number(out, at[2]);
     *out = 0;
-    game->draw_text(0, 0.02f, 0.02f, 0.03f, 0xFFFFFFFFu, line);
+    game->draw_text(0, 0.40f, 0.02f, 0.03f, 0xFFFFFFFFu, line);
     out = put_text(line, "Speed ");
     out = put_number(out, velocity[0]);
     out = put_text(out, " ");
@@ -55,7 +55,7 @@ static int32_t stage_frame(const NebulaModEventData* data, void* user) {
     out = put_text(out, " ");
     out = put_number(out, velocity[2]);
     *out = 0;
-    game->draw_text(1, 0.02f, 0.06f, 0.03f, 0xFFFFFFFFu, line);
+    game->draw_text(1, 0.40f, 0.06f, 0.03f, 0xFFFFFFFFu, line);
     return data->value;
 }
 

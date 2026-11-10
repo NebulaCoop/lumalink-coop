@@ -2,7 +2,7 @@
   "authors": [
     "Nebula examples"
   ],
-  "description": "The player's place and speed in the screen's top-left corner.",
+  "description": "The player's place and speed at the top of the screen, clear of the HUD.",
   "format": 1,
   "game": "RMG",
   "id": "gecko-position-display",
