@@ -1,0 +1,45 @@
+// Gumbo: a Goomba that follows Mario and pays coins when touched.
+var home: vec3      // where it was placed
+var paid: int       // coins handed out, in threes
+var resting: bool
+
+on start {
+    home = self.mPosition
+    goto walk
+}
+
+state walk {
+    on enter {
+        resting = false
+        MR::startBckIfExist(self, "Walk")
+    }
+    on frame {
+        let away = MR::getPlayerPos() - self.mPosition
+        let distance = length(away)
+        if distance < 1200.0 and distance > 250.0 {
+            // Toward Mario, 4 units a frame.
+            self.mPosition = self.mPosition + normalize(away) * 4.0
+        } else if distance >= 1200.0 and length(home - self.mPosition) > 10.0 {
+            // Too far: back home.
+            self.mPosition = self.mPosition + normalize(home - self.mPosition) * 3.0
+        }
+    }
+}
+
+on touch_player {
+    if !resting and paid < 3 {
+        paid = paid + 1
+        MR::incCoin(3)
+        emit "gumbo_paid" paid
+        goto rest
+    }
+}
+
+state rest {
+    on enter {
+        resting = true
+        MR::startBckIfExist(self, "Wait")
+        wait 120
+        goto walk
+    }
+}

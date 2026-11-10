@@ -51,6 +51,7 @@ Each one starts from nothing and ends with something running in the game.
 | [Objects](reference/objects.md) | Every object of the game |
 | [Stage rules](reference/stage-rules.md) | The rules the game keeps by a stage's name |
 | [Plugin interface](reference/plugin-api.md) | Every call, event and number |
+| [LumaScript](reference/lumascript.md) | Objects with their own logic, no code: the language |
 | [Hooks and the game's headers](REFERENCE.md#13-plugins-the-games-headers-and-hooks) | Reaching any function of the game |
 | [Shaders](REFERENCE.md#15-shaders) | Hand-written materials |
 | [LumaLink commands](REFERENCE.md#3-lumalink) | The command line and the window |

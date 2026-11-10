@@ -341,7 +341,24 @@ fn belongs_in_file(relative: &Path) -> bool {
     let packed = relative.components().count() == 1 && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma") || e.eq_ignore_ascii_case("writing"));
     let build_leftover = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("plugins"))
         && relative.extension().is_some_and(|e| ["lib", "exp", "pdb", "ilk", "obj", "o"].iter().any(|x| e.eq_ignore_ascii_case(x)));
-    !hidden && !packed && !build_leftover
+    let script_source = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("scripts"))
+        && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("lscript"));
+    !hidden && !packed && !build_leftover && !script_source
+}
+
+/// A script of the project (scripts/<name>.lscript) compiled for the game, or why it can't be.
+pub fn compile_script(folder: &Path, script: &str, toolkit: &crate::lumascript::Toolkit) -> std::result::Result<Vec<u8>, String> {
+    let ok_name = !script.is_empty()
+        && !script.starts_with('/')
+        && !script.ends_with('/')
+        && !script.contains("//")
+        && script.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'/');
+    if !ok_name {
+        return Err(format!("{script} is not a script's name (letters, digits, _ and -, in folders split by /)"));
+    }
+    let file = format!("scripts/{script}.lscript");
+    let text = fs::read_to_string(folder.join(&file)).map_err(|_| format!("{file} can't be read"))?;
+    crate::lumascript::compile(&text, toolkit).map_err(|p| format!("{file}, line {}: {}", p.line, p.text))
 }
 
 /// Packs a project folder into a `.luma`. A problem `check` calls serious stops it.
@@ -369,6 +386,21 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
         let (programs, failed, converted) = package::check_layers(&jobs, &game_id, store, &building)?;
         if let Some((path, why)) = failed.first() {
             bail!("{path}: {why}");
+        }
+        let id = manifest.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let toolkit = crate::lumascript::Toolkit::bundled();
+        for layer in &layers {
+            let (Some(path), Some(rows)) = (layer.get("path").and_then(Value::as_str), layer.get("objects").and_then(Value::as_array)) else {
+                continue;
+            };
+            for script in rows.iter().filter_map(|r| r.get("script").and_then(Value::as_str)) {
+                let bytes = compile_script(folder, script, &toolkit).map_err(|why| anyhow::anyhow!(why))?;
+                let target = building.join(path).join("files").join("LumaScripts").join(&id).join(format!("{script}.lumascript"));
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&target, bytes)?;
+            }
         }
         for entry in walkdir::WalkDir::new(folder) {
             let entry = entry.with_context(|| format!("{} can't be read through", folder.display()))?;
@@ -889,6 +921,27 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                 if !good {
                     found.problem(format!("{name}: {number} is a number, or a list of up to {} numbers (null keeps the game's)", field.count));
                 }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("objects").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        let toolkit = crate::lumascript::Toolkit::bundled();
+        for row in rows {
+            let object = row.get("name").and_then(Value::as_str).unwrap_or_default();
+            let script = row.get("script").and_then(Value::as_str).unwrap_or_default();
+            if object.is_empty() || script.is_empty() {
+                found.problem(format!("{name}: a row of objects needs name and script"));
+                continue;
+            }
+            if let Some(kind) = row.get("kind").and_then(Value::as_str) {
+                if !["enemy", "map", "npc", "ride", "decoration"].contains(&kind) {
+                    found.problem(format!("{name}: {object}'s kind is enemy, map, npc, ride or decoration, not {kind}"));
+                }
+            }
+            match compile_script(folder, script, &toolkit) {
+                Ok(_) => {}
+                Err(why) => found.problem(format!("{name}: {object}: {why}")),
             }
         }
     }

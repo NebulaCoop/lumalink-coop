@@ -186,6 +186,17 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `water_point` | `int32_t water_point(int32_t index, float* xyz)` |
 | `circle_wipe` | `int32_t circle_wipe(int32_t open, int32_t frames)` |
 | `grant_spin_and_pointer` | `int32_t grant_spin_and_pointer(void)` |
+| `toolkit_find` | `int32_t toolkit_find(const char* name)` |
+| `toolkit_call` | `int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)` |
+| `actor_value` | `NebulaValue actor_value(NebulaActor* actor)` |
+| `value_actor` | `NebulaActor* value_actor(const NebulaValue* value)` |
+| `field_find` | `int32_t field_find(const NebulaValue* object, const char* name)` |
+| `field_get` | `int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)` |
+| `field_set` | `int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)` |
+| `class_name` | `const char* class_name(uint32_t id, uint32_t* parent)` |
+| `is_a` | `int32_t is_a(const NebulaValue* object, const char* class_name)` |
+| `luma_start` | `void luma_start(const struct NebulaModApi* api)` |
+| `add_script_object` | `int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)` |
 
 ## What each does
 
@@ -1629,6 +1640,94 @@ int32_t grant_spin_and_pointer(void)
 
 The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a new file has not reached. 0: refused (no stage); 1: done.
 
+### `toolkit_find`
+
+```c
+int32_t toolkit_find(const char* name)
+```
+
+The toolkit: every game function scripts and plugins call (docs/modding/TOOLKIT.md). Its index by name ("MR::startBck"; an overloaded name with its value letters after ':'), or -1.
+
+### `toolkit_call`
+
+```c
+int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)
+```
+
+Calls it. `out` gets the result, then each value an in-out parameter gives back; returns how many values were written, or -1 when the call was refused (a missing or stale handle, a wrong class, too few arguments: logged once per reason).
+
+### `actor_value`
+
+```c
+NebulaValue actor_value(NebulaActor* actor)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+### `value_actor`
+
+```c
+NebulaActor* value_actor(const NebulaValue* value)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+### `field_find`
+
+```c
+int32_t field_find(const NebulaValue* object, const char* name)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+### `field_get`
+
+```c
+int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+### `field_set`
+
+```c
+int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+### `class_name`
+
+```c
+const char* class_name(uint32_t id, uint32_t* parent)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+### `is_a`
+
+```c
+int32_t is_a(const NebulaValue* object, const char* class_name)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+### `luma_start`
+
+```c
+void luma_start(const struct NebulaModApi* api)
+```
+
+The host's: the table it completed (log, store, format), once, before any mod row. Plugins never call it.
+
+### `add_script_object`
+
+```c
+int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)
+```
+
+An object a script runs (luma.json "objects"): the mod's /LumaScripts/<mod id>/<script>.lumascript on `shape`, whose callbacks the script's handlers take. 0: added; -1: refused (logged with the reason).
+
 ## Numbers and names
 
 ### `NebulaPlugin`
@@ -1742,6 +1841,52 @@ The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a
     NEBULA_VALUE_FLYING,
     NEBULA_VALUE_SWIMMING,
     NEBULA_VALUE_LUIGI
+```
+
+### `NebulaKind`
+
+```c
+    NEBULA_KIND_NONE = 0,
+    NEBULA_KIND_BOOL,
+    NEBULA_KIND_INT,
+    NEBULA_KIND_FLOAT,
+    NEBULA_KIND_VEC3,
+    NEBULA_KIND_MATRIX, /* a handle to 12 floats (3 rows of 4) */
+    NEBULA_KIND_TEXT,   /* UTF-8, owned by whoever made the value; valid for the call */
+    NEBULA_KIND_HANDLE, /* one of the game's things: an object, a sensor, a triangle... (NebulaValue.type) */
+    NEBULA_KIND_VEC4,
+    NEBULA_KIND_VEC2
+```
+
+### `NebulaValue`
+
+```c
+    uint32_t kind; /* NebulaKind */
+    uint32_t type; /* handles: NEBULA_HANDLE_* in the low 16 bits; for objects, the class id in the upper 16 */
+    union {
+        int64_t i;  /* bool and int */
+        double f;   /* float */
+        float v[4]; /* vec2, vec3, vec4 */
+        const char* s;
+        struct {
+            void* p;
+            uint32_t generation; /* the scene it was made in; a later scene reads it as none */
+        } h;
+    } u;
+```
+
+### `NebulaHandleType`
+
+```c
+    NEBULA_HANDLE_OBJECT = 1, /* an actor, area, layout or other scene object */
+    NEBULA_HANDLE_SENSOR,
+    NEBULA_HANDLE_TRIANGLE,
+    NEBULA_HANDLE_COLLISION,
+    NEBULA_HANDLE_JOINT,
+    NEBULA_HANDLE_PLACEMENT,
+    NEBULA_HANDLE_MATRIX,
+    NEBULA_HANDLE_TALK,
+    NEBULA_HANDLE_CAMERA_INFO
 ```
 
 ### `NebulaModSet`
