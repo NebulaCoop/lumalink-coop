@@ -2393,7 +2393,7 @@ dependencies = [
 [[package]]
 name = "nebula-import"
 version = "0.1.0"
-source = "git+https://github.com/keepvaibin/nebula.git?branch=main#c5b7176f18fbb9e6e85aca62b9f42a0a4952942c"
+source = "git+https://github.com/keepvaibin/nebula.git?branch=main#6c482760b9105a4ac4bd6aca894b2670484ac838"
 dependencies = [
  "anyhow",
  "encoding_rs",

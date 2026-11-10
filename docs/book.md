@@ -2021,7 +2021,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 173 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](#p-reference-plugin-api) lists all 180 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -4832,6 +4832,13 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `show_joint` | `void show_joint(NebulaActor* actor, const char* joint, int32_t on)` |
 | `joint_name` | `const char* joint_name(NebulaActor* actor, int32_t index)` |
 | `get_joint_matrix` | `void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)` |
+| `give_star` | `int32_t give_star(const char* galaxy, int32_t star, int32_t grand)` |
+| `give_grand_stars` | `int32_t give_grand_stars(int32_t count)` |
+| `set_player_character` | `int32_t set_player_character(int32_t luigi)` |
+| `list_materials` | `int32_t list_materials(const char* model, NebulaMaterialCallback callback, void* user)` |
+| `water_point` | `int32_t water_point(int32_t index, float* xyz)` |
+| `circle_wipe` | `int32_t circle_wipe(int32_t open, int32_t frames)` |
+| `grant_spin_and_pointer` | `int32_t grant_spin_and_pointer(void)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -4915,7 +4922,7 @@ A game function by its symbol (on Windows, as dumpbin /exports names it). Null: 
 NebulaActor* player(void)
 ```
 
-The player. Null when no stage is running, or outside a stage frame.
+The player. Null when no stage is running, or outside its update, animation and drawing (a hook on GameScene::draw is inside; "In a stage" calls below work there too).
 
 <a id="p-reference-plugin-api--getposition"></a>
 
@@ -6567,6 +6574,76 @@ void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)
 
 A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Columns 0, 1 and 2 are the joint's own x, y and z axes in the world (scaled with the model), column 3 its position. Without the joint or a model: no turn, at the actor's position.
 
+<a id="p-reference-plugin-api--givestar"></a>
+
+#### `give_star`
+
+```c
+int32_t give_star(const char* galaxy, int32_t star, int32_t grand)
+```
+
+A star of the stage played won, as the player wins it: its result counted and its get demo (the Grand Star's with `grand` 1) once the stage is in play (after its opening camera and starter). `galaxy`: null or the stage played. 0: refused (no galaxy is played, or another one is named); 1: done.
+
+<a id="p-reference-plugin-api--givegrandstars"></a>
+
+#### `give_grand_stars`
+
+```c
+int32_t give_grand_stars(int32_t count)
+```
+
+The save holds Grand Stars 1 to `count` (1-7), and the stage played starts again, so the Observatory's domes are built with them. 0: refused; 1: done.
+
+<a id="p-reference-plugin-api--setplayercharacter"></a>
+
+#### `set_player_character`
+
+```c
+int32_t set_player_character(int32_t luigi)
+```
+
+The file is played as Luigi (1) or Mario (0) from the next stage. 0: refused; 1: done.
+
+<a id="p-reference-plugin-api--listmaterials"></a>
+
+#### `list_materials`
+
+```c
+int32_t list_materials(const char* model, NebulaMaterialCallback callback, void* user)
+```
+
+The materials of the first living actor whose model is `model` (any case), each given to `callback`: how many.
+
+<a id="p-reference-plugin-api--waterpoint"></a>
+
+#### `water_point`
+
+```c
+int32_t water_point(int32_t index, float* xyz)
+```
+
+A point inside the stage's `index`-th body of water (its oceans first, then its water areas; the index wraps): how many bodies of water the stage has (0: none, `xyz` untouched).
+
+<a id="p-reference-plugin-api--circlewipe"></a>
+
+#### `circle_wipe`
+
+```c
+int32_t circle_wipe(int32_t open, int32_t frames)
+```
+
+The circle wipe closes (`open` 0) or opens (1) over `frames` frames. 0: refused (no stage); 1: done.
+
+<a id="p-reference-plugin-api--grantspinandpointer"></a>
+
+#### `grant_spin_and_pointer`
+
+```c
+int32_t grant_spin_and_pointer(void)
+```
+
+The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a new file has not reached. 0: refused (no stage); 1: done.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -6881,6 +6958,34 @@ A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Column
     NEBULA_NERVE_ENTER = 0, /* frames is 0 */
     NEBULA_NERVE_FRAME,     /* before the game's code for this frame; return 0 to skip the game's code */
     NEBULA_NERVE_LEAVE      /* another nerve was set; the game's exit code for this one has run */
+```
+
+<a id="p-reference-plugin-api--nebulamaterialcoord"></a>
+
+#### `NebulaMaterialCoord`
+
+```c
+    /* How the coordinate is made: the game's TexGen type, its source and its matrix slot. */
+    uint32_t type, source, matrix;
+    /* Its matrix's kind and projection; 255 for both when it has no matrix. */
+    uint32_t matrix_kind, projection;
+    /* 1 when a stage of the material reads it, 0 when none does. */
+    uint32_t used;
+```
+
+<a id="p-reference-plugin-api--nebulamaterialinfo"></a>
+
+#### `NebulaMaterialInfo`
+
+```c
+    /* sizeof(NebulaMaterialInfo): fields are only added at the end. */
+    uint32_t size;
+    /* Its place in the model and its name. */
+    int32_t index;
+    const char* name;
+    /* Its texture coordinates: coord_count of them at coords. */
+    int32_t coord_count;
+    const NebulaMaterialCoord* coords;
 ```
 
 <a id="p-reference-plugin-api--nebulahudpart"></a>
