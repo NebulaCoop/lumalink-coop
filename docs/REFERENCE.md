@@ -38,17 +38,17 @@ A mod is made once. Nothing about it depends on one build of Nebula: the game pr
 
 ## 2. Using a mod
 
-**On a computer.** Double-click a `.luma`, or Settings, Mods, Import. Nebula's settings open on the Mods page with the mod in the list. Turn it on and press Apply.
+**On a computer.** Double-click a `.luma`, or Settings, Mods, Import. Nebula's settings open on the Mods page with the mod on, at the top of the list. It applies when Nebula restarts; the page offers the restart. A mod with its own code asks first.
 
 **A mod as you downloaded it** (zip, 7z, rar or folder): open LumaLink, drop it on the window, tick it, press Convert. Then open the `.luma`.
 
-**On a phone.** Move the `.luma` to the phone and import it from the app. A raw mod folder can't be used on a phone: convert it on a computer first. The app says so.
+**On a phone.** Move the `.luma` to the phone and import it from the app. It's on from the next start. A raw mod folder can't be used on a phone: convert it on a computer first. The app says so.
 
 **The list.** The mod higher on the list wins where two change the same file. Files that many mods add to (see [Adding to shared files](#adding-to-shared-files)) keep everyone's additions.
 
 **Options.** A mod's options are on its row. A change takes effect at the next reset. Reset with mods changed restarts the game by itself.
 
-**Code.** The game asks before a mod's code first runs, and again if that code changes. If the game crashes in a plugin, the report names the mod, and the next start offers to turn its code off.
+**Code.** The game asks before a mod's code first runs, and again if that code changes. If the game crashes with mods' code on, the crash report names the mods, and on Windows the next run starts with every mod's code off.
 
 **Saves.** A mod says which saves it plays on. A mod that adds a galaxy always gets its own, since a save's shape follows the list of galaxies. Your normal saves are never touched by a mod with saves of its own.
 
@@ -763,7 +763,7 @@ When a plugin can't start it's left out and the log says why:
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start` |
 | it needs a newer Nebula | Built against a later interface |
 
-A plugin runs inside the game, so a crash in one takes the game down. The report names the mod, and the next start offers to turn its code off.
+A plugin runs inside the game, so a crash in one takes the game down. The crash report names the mods that were on, and on Windows the next run starts with every mod's code off.
 
 ## 14. Limits that are gone
 
@@ -823,6 +823,31 @@ A mod that can't be used stays in the list, off, with one line:
 | THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on |
 | THIS MOD HAS NO VERSION FOR THIS DEVICE | A plugin has no library for it |
 | THIS FILE IS DAMAGED | Not a zip, `luma.json` unreadable, or a listed path missing |
+| THIS MOD'S CODE IS FOR AN OLDER NEBULA: REBUILD IT WITH THIS NEBULA'S NEBULA_MOD_API.H | A plugin's `api` is below the game's |
+| THIS MOD'S CODE IS OFF AFTER A CRASH. RESTART TO TRY IT AGAIN | The last run crashed with mods' code on (Windows): every mod's code stays off for one run |
+| A FOLDER OF THIS MOD COULD NOT BE READ IN FULL | A folder of it could not be listed (permissions) |
+| CONVERT THIS MOD WITH LUMALINK ON A COMPUTER, THEN OPEN THE FILE HERE | A phone: a mod that is not a `.luma` |
+
+Importing and removing say what happened on the Mods page's line:
+
+| Line | When |
+|---|---|
+| IMPORTED: {NAME} ({KINDS}) | Added, on, at the top of the list. MODS APPLY WHEN NEBULA RESTARTS follows |
+| UPDATED: {NAME} ({OLD} TO {NEW}) | The same `id` with a newer `version`; its place, options and saves stay |
+| OLDER VERSION: {NAME} ({OLD} TO {NEW}) / REPLACED: {NAME} ({VERSION}) | The same `id`, an older or the same `version` |
+| ALREADY IN YOUR MODS: {NAME} | Exactly these files are there (under any name): nothing was added |
+| THIS FOLDER IS ALREADY IN THE MODS FOLDER | The folder chosen is in the mods folder |
+| NOT AN ARCHIVE NEBULA READS (ZIP, 7Z, RAR OR TAR): {FILE} | |
+| THIS ARCHIVE HAS A PASSWORD. UNPACK IT FIRST, THEN ADD THE FOLDER | |
+| THIS DOWNLOAD IS DAMAGED. DOWNLOAD IT AGAIN | The archive breaks off |
+| THE ARCHIVE HOLDS NO FILES / THE FOLDER HOLDS NO FILES | |
+| THE ARCHIVE HOLDS TOO MANY FILES / THE ARCHIVE UNPACKS TO TOO MUCH DATA | Past a million files or 256 GB |
+| CANNOT WRITE: {FILE}. IS THE DISK FULL? | |
+| IN USE: {NAME}. CLOSE WHAT HAS ITS FILES OPEN AND TRY AGAIN | Another program has its files open |
+| IN USE UNTIL NEBULA RESTARTS: TURN IT OFF AND RESTART FIRST | Remove on a mod the game started with |
+| MOVED TO THE RECYCLE BIN: {NAME} / REMOVED: {NAME} | |
+
+A mod with its own code asks first, by name, as the Mods page shows: Allow keeps it on, Not now turns it off. On Windows, an update of a mod with a file open in another program waits and takes its place at the next start.
 
 ### In LumaLink
 
