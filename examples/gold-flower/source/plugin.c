@@ -11,8 +11,6 @@
    Only the stable interface: it builds for every device Nebula runs on (build.cmd or build.sh: lumalink build). */
 #include "nebula_mod_api.h"
 
-NEBULA_PLUGIN_FLOATS
-
 static const NebulaModApi* game;
 static const NebulaPlugin* me;
 static int32_t gold = -1; /* add_power_up's number */

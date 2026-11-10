@@ -9,7 +9,7 @@ music program could have written them. Python 3 alone, no packages.
   animations the Goomba's code plays, by their names. Where it plays one once (squashed, hit), the game plays this
   one once too. The Goomba's tables and sounds come from the game.
 - The galaxy: StageData/LanternGardenGalaxy.arc (where Mario starts, the planet, its gravity, the game's sky, Goombas, Bramblets,
-  coins, a star for each of two missions, a cutscene when Mario arrives) and its missions,
+  coins, a star for each of two missions, a cutscene when Mario walks toward the lantern) and its missions,
   StageData/LanternGardenGalaxy/LanternGardenGalaxyScenario.arc. Tables as JSON, as `lumalink extract` writes them.
 - The cutscene: ObjectData/DemoSheet.arc/demolanterngardenarrival (Mario looks up, then waves, to the galaxy's theme).
   Its camera is ArrivalCamera.canm.glb, a glTF camera animation, kept in the archive of ArrivalLantern, the lantern
@@ -665,9 +665,11 @@ def galaxy_tables():
         placed("Bramblet", 102, *on_surface_x(80.0, 10.0)),
         placed("Bramblet", 103, *on_surface_x(110.0, 10.0)),
     ])
-    # The cutscene: Mario starts inside a switch cube, which turns on switch 120; the cutscene appears on it.
-    cube = placed("SwitchCube", 200, (0.0, top + 50.0, 0.0), SW_A=120)
-    cube.update({"scale_x": 3.0, "scale_y": 3.0, "scale_z": 3.0, "Obj_ID": -1})
+    # The cutscene: a switch cube 2 m ahead of Mario's start, between him and the lantern, turns on switch 120 when he
+    # walks in; the cutscene appears on it. Not around the start itself: the game's arrival (the flight in and the
+    # landing) runs first, and a cutscene at the stage's first frame would cut it short.
+    cube = placed("SwitchCube", 200, (0.0, top + 50.0, 2.0 * UNITS), SW_A=120)
+    cube.update({"scale_x": 2.0, "scale_y": 2.0, "scale_z": 2.0, "Obj_ID": -1})
     for k in ("ViewGroupId", "CameraSetId", "CastId", "MessageId", "ShapeModelNo", "SW_DEAD"):
         del cube[k]
     out[stage + "placement/common/areaobjinfo.json"] = table([cube])
