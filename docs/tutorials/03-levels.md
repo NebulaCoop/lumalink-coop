@@ -98,6 +98,33 @@ StageData/MyGalaxy/MyGalaxyScenario.arc/scenariodata.bcsv.json
 
 More than eight stars in a galaxy is fine. The star-choosing screen shows pages of six, the save keeps them all, and left and right turn the page. See [A new galaxy](09-new-galaxy.md).
 
+## A stage's light and cameras
+
+Light and cameras are tables too, so a merge changes them without replacing the files.
+
+A galaxy's lights are `ObjectData/LightData.arc/Light<Galaxy>.bcsv`, one row per light by its `AreaLightName`, and `LightData.bcsv` says which light each area of the game uses. Colours are 0 to 255 per channel, for the player, the planets, and strong and weak objects, each with a light and an ambient (`PlayerLight0ColorR`, `PlanetAmbientG`...). A table read out may show 255 as `-1`: the same value.
+
+```text
+layers/base/merge/ObjectData/LightData.arc/LightEggStarGalaxy.bcsv.json
+```
+
+```json
+{ "change": [ { "where": { "AreaLightName": "[デフォルト]エッグプラネット" },
+                "set": { "PlayerLight0ColorR": 255, "PlayerLight0ColorG": 140, "PlayerLight0ColorB": 60 } } ] }
+```
+
+A galaxy's cameras are `StageData/<Galaxy>.arc/camera/CameraParam.bcam`, one row per camera: its kind (`camtype`), distance (`dist`), field of view (`fovy`) and the rest.
+
+```text
+layers/base/merge/StageData/EggStarGalaxy.arc/camera/CameraParam.bcam.json
+```
+
+```json
+{ "change": [ { "where": { "camtype": "CAM_TYPE_XZ_PARA" }, "set": { "dist": 2600.0, "fovy": 55.0 } } ] }
+```
+
+Examples: `examples/evening-light` (Good Egg in an evening's light), `examples/far-camera` (its cameras further back and wider). `lumalink check`, given your game, tries each merge on it: it names a column the table doesn't have, and a row that matches nothing.
+
 ## Stage rules
 
 Some rules go by a stage's name. To make your stage a hub, a Bowser arena or an ocean level, see [Stage rules](../reference/stage-rules.md).

@@ -227,7 +227,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 
 | Field | Meaning |
 |---|---|
-| `path` | Its folder. May be left out for a layer of settings alone |
+| `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](reference/settings.md)) |
 | `object_changes` | Objects changed or gone |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)) |
@@ -235,10 +235,11 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](tutorials/04-music-and-sound.md)) |
 | `stages` | Rules for stages ([stage rules](reference/stage-rules.md)) |
-| `text` | Messages for this layer alone, as the top-level `text` |
+| `text`, `story`, `galaxies`, `music`, `event_flags`, `comet_schedule` | As the top-level keys, for this layer alone |
 | `comet_time_limits` | Comet missions' time limits |
-| `materials` | Hand-written shaders by material name |
+| `materials` | Hand-written shaders by material name (`"requires": ["custom-shaders"]`) |
 | `when` | When it's used. Left out: always |
+| `switches` | From earlier versions: refused, naming the tunable for each ([settings](reference/settings.md#from-switches)) |
 
 `when` may hold any of these, and all given must hold. A key this Nebula doesn't know makes it false.
 
@@ -286,6 +287,7 @@ A mission here is timed on Cosmic and Daredevil comets, and this comes before th
 | `name`, `description` | Text |
 | `default` | A choice's `id` |
 | `choices` | Each `{ "id", "name" }`. `off` is shown in the player's language and means this adds nothing |
+| `range` | A choice per number: `{ "from": 1, "to": 20, "step": 1 }`, at most 10001; `default` a number |
 
 ### Saves
 

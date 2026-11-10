@@ -17,7 +17,8 @@ PARTS = [
     ("Tutorials", [f"tutorials/{p}" for p in [
         "01-textures.md", "02-models.md", "03-levels.md", "04-music-and-sound.md", "05-text.md", "06-rules-and-physics.md",
         "07-options.md", "08-new-objects.md", "09-new-galaxy.md", "10-first-plugin.md", "11-a-boss.md", "12-power-ups.md",
-        "13-screens.md", "14-cutscenes-movies-lumas.md", "15-converting.md", "16-total-conversion.md", "17-publishing.md"]]),
+        "13-screens.md", "14-cutscenes-movies-lumas.md", "15-converting.md", "16-total-conversion.md", "17-publishing.md",
+        "18-first-person.md"]]),
     ("Reference", ["REFERENCE.md", "format.md", "plugins.md", "reference/plugin-api.md", "reference/events.md",
                    "reference/objects.md", "reference/settings.md", "reference/player-numbers.md",
                    "reference/stage-rules.md"]),

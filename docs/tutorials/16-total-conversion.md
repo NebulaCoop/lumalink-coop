@@ -42,7 +42,7 @@ So the hub's counters stay up and its star bits count as a hub's, and the final 
 | Comets | `comet_schedule`, `comet_time_limits` |
 | The map | `map_position`, and `LayoutData/MapGrandGalaxy.arc` |
 | Your hero | `ObjectData/Mario.arc`, `MarioAnime.arc`, and `player_constants` |
-| The numbers | `max_lives`, `starting_lives`, `player_health`... |
+| The numbers | `tunables`: `GameDataPlayerStatus.cMaxPlayerLeft`, `GameRules.cPlayerHealth`... ([settings](../reference/settings.md)) |
 | The title | `LayoutData` for its layouts, and the stage `FileSelect` |
 | The intro and ending movies | `MovieData`, and `movies/` |
 | The credits | `text`, and `StaffRoll` in the message files |

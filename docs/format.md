@@ -84,6 +84,7 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `text` | no | Messages of the game by id: see "Messages". |
 | `plugins` | no | The mod's code: see "Plugins". |
 | `achievements` | no | The mod's own achievements: see "Achievements". |
+| `story` | no | Where a new file starts and where the player comes back to: see "The journey". |
 | `tool` | no | What made the file. Not used by the game. |
 
 ### Text
@@ -102,9 +103,20 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 
 | Field | Meaning |
 |---|---|
-| `path` | The layer's folder. It may hold `files/`, `textures/` and `movies/`. May be left out for a layer that only sets tunables. |
+| `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](reference/settings.md). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
+| `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](REFERENCE.md#object-changes). |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](tutorials/08-new-objects.md). |
+| `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](reference/player-numbers.md). |
+| `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
+| `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
+| `stages` | Rules for stages: `{ "stage": "MyHub", "scenario": 1, "acts_as": ["AstroGalaxy"], "own_rules": true }`. See [stage rules](reference/stage-rules.md). |
+| `comet_time_limits` | Comet missions' time limits: `{ "galaxy": "BattleShipGalaxy", "mission": 4, "seconds": 150 }`. |
+| `materials` | Hand-written shaders by material name: see "Hand-written shaders". |
+| `text`, `story`, `galaxies`, `music`, `event_flags`, `comet_schedule` | As the same keys at the top, for this layer alone: so a galaxy, a track or a message can depend on an option or a version. |
 | `when` | Conditions. All of those given must hold. Left out: always. |
+
+A layer's folder holds `files/` (whole files, see "Files"), `merge/` (additions to shared files, see "Adding to shared files"), `textures/` and `movies/`.
 
 `when` may hold:
 
@@ -127,7 +139,10 @@ Players choose in the game, on the Mods page, and can change their minds without
 | `name` | Text. |
 | `description` | Text, optional. |
 | `default` | A choice's `id`. |
-| `choices` | At least one, each `{ "id": ..., "name": ... }`. A choice with the id `off` is shown in the player's language and means this option adds nothing. Without one, the option has no Off. |
+| `choices` | Each `{ "id": ..., "name": ... }`. A choice with the id `off` is shown in the player's language and means this option adds nothing. Without one, the option has no Off. |
+| `range` | A choice for each number: `{ "from": 1, "to": 20, "step": 1 }`, each choice's id being its number (counting down when `from` is the larger), at most 10001. `default` is then a number. For tunables and player numbers taken from `{ "option": "id" }`. |
+
+An option needs `choices` or a `range`, or both.
 
 ### Files
 
@@ -187,6 +202,22 @@ A folder named `.arc` in `files/` changes the game's archive of that name file b
 
 A new galaxy with no `GalaxyName_` message shows an empty name.
 
+Words may hold the game's message tags in brackets: `[wait 30]`, `[page]`, `[center]`, `[sound SE_NAME]`, `[icon 7]`, `[small]`, `[normal]`, `[large]`, `[player]`, `[color 1]`, `[tag G T u...]`; `[[` is one `[`. A new message takes the talk settings of a game message named in `like`: `"MyNpc_Hello": { "default": "Hi, [player]!", "like": "AstroGalaxy_Kinopio012" }`. See [tutorial 5](tutorials/05-text.md).
+
+### The journey
+
+```json
+"story": { "first_stage": "MyFirstGalaxy", "first_mission": 1, "hub": "MyHub", "story_scenes": false }
+```
+
+| Key | Meaning |
+|---|---|
+| `first_stage`, `first_mission` | Where a new file begins, in place of the prologue |
+| `hub` | Where the player goes after a galaxy, in place of the Comet Observatory. A file with a star opens there |
+| `story_scenes` | `false`: none of the game's own story scenes |
+
+See [tutorial 16](tutorials/16-total-conversion.md).
+
 ### Hand-written shaders
 
 Most mods never need this: a model's materials get their shaders by themselves. To write one yourself, name the material in a layer and list `custom-shaders` in `requires`:
@@ -213,11 +244,25 @@ layers/base/merge/ParticleData/Effect.arc/ParticleNames.bcsv.json      the names
 layers/base/merge/ParticleData/Effect.arc/Particles.jpc                those particles
 ```
 
-A table's rows are JSON. A column is named, or written as `0x` and its hash. A column left out is zero or empty.
+A table's rows are JSON. A column is named, or written as `0x` and its hash. A column left out is zero or empty. A table merge can also take rows away and change them:
 
 ```json
-{ "rows": [ { "GroupName": "MyEnemy", "UniqueName": "Smoke", "EffectName": "MyFire", "JointName": "Center" } ] }
+{
+  "remove": [ { "name": "EarthenPipe" } ],
+  "change": [ { "where": { "name": "SuperSpinDriver" }, "set": { "scale_x": 2.0 } } ],
+  "rows": [ { "GroupName": "MyEnemy", "UniqueName": "Smoke", "EffectName": "MyFire", "JointName": "Center" } ]
+}
 ```
+
+| Key | Does |
+|---|---|
+| `remove` | Takes away every row whose columns hold all the values given |
+| `change` | Sets columns (`set`) of every row matching `where` |
+| `rows` | Adds rows |
+
+They run in that order, mod by mod down the player's list. A row that matches nothing is not an error: another mod may have taken it. Two mods setting one cell: the higher on the list wins, and the Mods page shows the two overlap.
+
+Messages merge too: `merge/MessageData/messages.json` (every language) or `merge/<Language>/MessageData/Message.arc/message.bmg.json` (one) adds talk lines and changes what follows each. See [tutorial 5](tutorials/05-text.md#talk-new-lines-and-what-follows-them).
 
 `Particles.jpc` holds only the new particles. Each one's number in the file is its place in `ParticleNames.bcsv.json`, starting at 0. Nebula renumbers them, and their textures, when it adds them to the game's.
 

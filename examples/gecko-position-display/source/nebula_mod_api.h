@@ -89,8 +89,8 @@ typedef enum NebulaModEvent {
     /* A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the
        cutscene's time sheet names it. */
     NEBULA_MOD_EVENT_CUTSCENE_PART,
-    /* The camera changes. value: 0 an area's camera, 1 an event camera (a cutscene's, start_camera's). name: its
-       id, as the stage's camera table names it. */
+    /* The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view
+       back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. */
     NEBULA_MOD_EVENT_CAMERA_CHANGE,
     /* A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another
        sound's, or -1 for none. Subscribing costs a call per sound. */
@@ -357,7 +357,8 @@ typedef struct NebulaModApi {
     void (*kill)(NebulaActor* actor);
     /* 1 while it's out of the level (killed, or not yet appeared). */
     int32_t (*is_dead)(NebulaActor* actor);
-    /* Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model. */
+    /* Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model. The player: his
+       hands, face and power-up suit with it; his shadow stays. */
     void (*show_model)(NebulaActor* actor, int32_t show);
     /* 1: it started. 0: the object has no such thing, or nothing to play it with. */
     int32_t (*play)(NebulaActor* actor, NebulaModPlay what, const char* name);

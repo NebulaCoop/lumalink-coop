@@ -76,8 +76,9 @@ out = ["# The plugin interface, call by call", "",
        "Written from `nebula_mod_api.h` (by `tools/plugin_api_doc.py`), in its order: fields are only ever added at the end, so a "
        "plugin keeps working on later versions of Nebula. Check `game->size` before using a call newer than the oldest Nebula you "
        "support.", "",
-       "A call on an actor with a null pointer is your bug: nothing checks. Calls about the player or the stage do nothing, and "
-       "answer 0 or null, between stages and on the file select screen.", "",
+       "A null object, layout, point or name where a call needs one makes the call do nothing: it answers 0, null, or -1 where "
+       "-1 means \"no such\". Where null means something (`find_actor`'s `name`), the call says so. Calls about the player or "
+       "the stage do nothing, and answer 0 or null, between stages and on the file select screen.", "",
        "| Call | Signature |", "|---|---|"]
 for name, signature, _ in calls:
     out.append(f"| `{name}` | `{tidy(signature)}` |")

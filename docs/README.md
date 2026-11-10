@@ -37,6 +37,7 @@ Each one starts from nothing and ends with something running in the game.
 | 15 | [Converting a mod made for the Wii](tutorials/15-converting.md) | ✓ |
 | 16 | [A total conversion: your own game](tutorials/16-total-conversion.md) | ✓ |
 | 17 | [Publishing](tutorials/17-publishing.md) | ✓ |
+| 18 | [The game in first person: a camera of your own](tutorials/18-first-person.md) | ✓ |
 
 ## Reference
 
@@ -83,3 +84,4 @@ Each one starts from nothing and ends with something running in the game.
 | `glowing-lantern` | A hand-written shader for a model's material (`custom-shaders`) |
 | `coin-bank` | A plugin that keeps numbers and words across plays (its own store) |
 | `goomba-tempo` | A plugin that changes the game's objects' animations, with an option |
+| `first-person` | The whole game through Mario's eyes: a camera of the plugin's own, handed back for cutscenes and talks ([tutorial 18](tutorials/18-first-person.md)) |

@@ -309,11 +309,14 @@ fn layer_changes(folder: &Path, layer: &Value) -> Vec<Change> {
         .collect()
 }
 
-/// What of a project goes in its file: not version control or a system's hidden files, not a file packed from it before.
+/// What of a project goes in its file: not version control or a system's hidden files, not a file packed from it before,
+/// not what building a plugin leaves beside its libraries in plugins/ (import libraries, objects, debug data).
 fn belongs_in_file(relative: &Path) -> bool {
     let hidden = relative.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
     let packed = relative.components().count() == 1 && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma") || e.eq_ignore_ascii_case("writing"));
-    !hidden && !packed
+    let build_leftover = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("plugins"))
+        && relative.extension().is_some_and(|e| ["lib", "exp", "pdb", "ilk", "obj", "o"].iter().any(|x| e.eq_ignore_ascii_case(x)));
+    !hidden && !packed && !build_leftover
 }
 
 /// Packs a project folder into a `.luma`. A problem `check` calls serious stops it.
@@ -1797,10 +1800,12 @@ mod tests {
 
     #[test]
     fn only_what_belongs_goes_in_the_file() {
-        for good in ["luma.json", "layers/base/files/a.arc", "source/plugin.c", "plugins/a.dll", "layers/base/files/old.luma"] {
+        for good in ["luma.json", "layers/base/files/a.arc", "source/plugin.c", "plugins/a.dll", "layers/base/files/old.luma",
+                     "layers/base/files/a.lib"] {
             assert!(belongs_in_file(Path::new(good)), "{good}");
         }
-        for bad in [".git/config", ".DS_Store", "layers/.hidden/a", "My Mod.luma", "My Mod.luma.writing"] {
+        for bad in [".git/config", ".DS_Store", "layers/.hidden/a", "My Mod.luma", "My Mod.luma.writing", "plugins/a-windows-x64.lib",
+                    "plugins/a.pdb", "plugins/a.exp", "plugins/obj/a.o"] {
             assert!(!belongs_in_file(Path::new(bad)), "{bad}");
         }
     }

@@ -1,0 +1,63 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Play through Mario's eyes: the camera at his eyes, looking where he faces, the pointer tilting the view up and down. The camera button switches to the game's camera and back. Cutscenes and talks keep the game's own cameras.",
+  "format": 1,
+  "game": "RMG",
+  "id": "first-person",
+  "layers": [],
+  "name": "First Person",
+  "options": [
+    {
+      "choices": [
+        {
+          "id": "narrow",
+          "name": "Narrow (60°)"
+        },
+        {
+          "id": "normal",
+          "name": "Normal (75°)"
+        },
+        {
+          "id": "wide",
+          "name": "Wide (90°)"
+        }
+      ],
+      "default": "normal",
+      "id": "fov",
+      "name": "Field of view"
+    },
+    {
+      "choices": [
+        {
+          "id": "eyes",
+          "name": "Mario's eyes"
+        },
+        {
+          "id": "game",
+          "name": "The game's camera"
+        }
+      ],
+      "default": "eyes",
+      "id": "start",
+      "name": "Each stage starts in"
+    }
+  ],
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/first-person-android-arm64.so",
+        "android-x64": "plugins/first-person-android-x64.so",
+        "linux-arm64": "plugins/first-person-linux-arm64.so",
+        "linux-x64": "plugins/first-person-linux-x64.so",
+        "macos-arm64": "plugins/first-person-macos-arm64.dylib",
+        "macos-x64": "plugins/first-person-macos-x64.dylib",
+        "windows-arm64": "plugins/first-person-windows-arm64.dll",
+        "windows-x64": "plugins/first-person-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
