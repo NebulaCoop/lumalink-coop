@@ -2,7 +2,7 @@
 
 ## Installing one
 
-**A `.luma` file.** Double-click it, or in Nebula's settings choose Mods, then Import. It appears on, at the top of the list, and applies when Nebula restarts (the page offers the restart). A mod with its own code asks first.
+**A `.luma` file.** Double-click it, or in Nebula's settings choose Mods, then Import file. It appears on, at the top of the list, and applies when Nebula restarts (the page offers the restart). A mod with its own code asks first.
 
 **A mod as you downloaded it** (a zip, 7z, rar or a folder, made for the Wii). Open LumaLink, drop it on the window, tick it, and press Convert. Open the `.luma` it makes.
 
