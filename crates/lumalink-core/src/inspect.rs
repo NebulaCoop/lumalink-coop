@@ -148,6 +148,7 @@ pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListin
     let names = column_names();
     let wanted = filter.map(str::to_ascii_lowercase);
     let mut pak = fs::File::open(store).with_context(|| format!("{} cannot be read", store.display()))?;
+    let store_length = pak.metadata()?.len();
     let mut found = Vec::new();
     for (path, position, size) in crate::game_store::GameStore::files(store)? {
         if size < 32 {
@@ -158,6 +159,9 @@ pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListin
         pak.read_exact(&mut magic)?;
         if &magic != MAGIC {
             continue;
+        }
+        if position.checked_add(size).is_none_or(|end| end > store_length) {
+            bail!("{path}: past the end of the store");
         }
         let mut bytes = vec![0u8; size as usize];
         pak.seek(SeekFrom::Start(position))?;

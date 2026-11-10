@@ -31,6 +31,15 @@ fn is_archive_name(name: &str) -> bool {
     lower.len() > 4 && (lower.ends_with(".arc") || lower.ends_with(".szs"))
 }
 
+/// The sizes of a store's index and names, when the file can hold them: a damaged header may say any size, and the
+/// room is only made for what is there.
+fn parts_fit(pak: &File, count: usize, names_size: u64) -> Result<(usize, usize)> {
+    let length = pak.metadata()?.len();
+    let nodes_size = count.checked_mul(NODE).filter(|&size| size as u64 <= length).context("the store's index is larger than the store")?;
+    let names_size = usize::try_from(names_size).ok().filter(|&size| size as u64 <= length).context("the store's names are larger than the store")?;
+    Ok((nodes_size, names_size))
+}
+
 impl GameStore {
     /// Every file of a store with where its bytes are: (path as the store names it, position, size), in index order.
     pub fn files(path: &Path) -> Result<Vec<(String, u64, u64)>> {
@@ -53,10 +62,11 @@ impl GameStore {
         let word = |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap());
         let count = u32::from_le_bytes(header[12..16].try_into().unwrap()) as usize;
         let (nodes_at, names_at, names_size) = (word(16), word(32), word(40));
-        let mut nodes = vec![0u8; count.checked_mul(NODE).context("the store's index is too large")?];
+        let (nodes_size, names_size) = parts_fit(&pak, count, names_size)?;
+        let mut nodes = vec![0u8; nodes_size];
         pak.seek(SeekFrom::Start(nodes_at))?;
         pak.read_exact(&mut nodes).context("the store's index is cut short")?;
-        let mut names = vec![0u8; names_size as usize];
+        let mut names = vec![0u8; names_size];
         pak.seek(SeekFrom::Start(names_at))?;
         pak.read_exact(&mut names).context("the store's names are cut short")?;
         let mut full: Vec<String> = Vec::with_capacity(count);
@@ -100,10 +110,11 @@ impl GameStore {
         let (nodes_at, names_at, names_size) = (word(16), word(32), word(40));
         let game_id = String::from_utf8_lossy(&header[48..54]).to_string();
 
-        let mut nodes = vec![0u8; count.checked_mul(NODE).context("the store's index is too large")?];
+        let (nodes_size, names_size) = parts_fit(&pak, count, names_size)?;
+        let mut nodes = vec![0u8; nodes_size];
         pak.seek(SeekFrom::Start(nodes_at))?;
         pak.read_exact(&mut nodes).context("the store's index is cut short")?;
-        let mut names = vec![0u8; names_size as usize];
+        let mut names = vec![0u8; names_size];
         pak.seek(SeekFrom::Start(names_at))?;
         pak.read_exact(&mut names).context("the store's names are cut short")?;
 
@@ -187,6 +198,24 @@ impl GameStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A store whose header says more than the file holds is refused, never made room for.
+    #[test]
+    fn a_damaged_store_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (count, names) in [(u32::MAX, 0u64), (1, u64::MAX), (1, 1 << 40)] {
+            let mut header = [0u8; 64];
+            header[..8].copy_from_slice(b"NBSTORE\0");
+            header[12..16].copy_from_slice(&count.to_le_bytes());
+            header[16..24].copy_from_slice(&64u64.to_le_bytes());
+            header[32..40].copy_from_slice(&64u64.to_le_bytes());
+            header[40..48].copy_from_slice(&names.to_le_bytes());
+            let path = dir.path().join("store.pak");
+            std::fs::write(&path, header).unwrap();
+            assert!(GameStore::open(&path).is_err());
+            assert!(GameStore::files(&path).is_err());
+        }
+    }
 
     #[test]
     fn a_store_answers_by_path_and_name_in_any_case() {
