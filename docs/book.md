@@ -806,11 +806,13 @@ Names are the files in the archive, in any case, without the ending.
 
 ### A picture in the interface
 
-The interface keeps its pictures in another form, in a folder named `timg`. A PNG there becomes that form. See [`examples/interface-picture`](https://github.com/keepvaibin/lumalink/blob/main/examples/interface-picture).
+The interface keeps its pictures in another form, in a folder named `timg`. A PNG there becomes that form, under the name of the picture it replaces. See [`examples/interface-picture`](https://github.com/keepvaibin/lumalink/blob/main/examples/interface-picture), which turns the coin counter's coin and × blue.
 
 ```text
-layers/base/files/LayoutData/CoinCounter.arc/timg/mycoinicon.png
+layers/base/files/LayoutData/CoinCounter.arc/timg/myiconcoin.png
 ```
+
+`lumalink files LayoutData/CoinCounter.arc --game game.pak` lists an archive's pictures by name.
 
 <a id="p-tutorials-01-textures--sizes"></a>
 
