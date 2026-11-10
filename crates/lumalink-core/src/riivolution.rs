@@ -203,6 +203,10 @@ pub fn parse(text: &str) -> Result<Disc> {
                             .collect(),
                     });
                 }
+                // A default past the last choice chooses none, as Riivolution shows it.
+                if option.selected > option.choices.len() {
+                    option.selected = 0;
+                }
                 section.options.push(option);
             }
             disc.sections.push(section);
@@ -505,6 +509,12 @@ mod tests {
         assert_eq!(decode(&[0xEF, 0xBB, 0xBF, b'a']), "a");
         assert_eq!(decode(&[0xFF, 0xFE, b'a', 0]), "a");
         assert_eq!(decode(&[0xE9]), "\u{e9}");
+    }
+
+    #[test]
+    fn a_default_past_the_choices_is_off() {
+        let text = r#"<wiidisc version="1"><options><section name="S"><option name="A" default="7"><choice name="x"><patch id="p"/></choice></option></section></options><patch id="p"/></wiidisc>"#;
+        assert_eq!(parse(text).unwrap().sections[0].options[0].selected, 0);
     }
 
     #[test]
