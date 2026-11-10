@@ -204,6 +204,7 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
 | `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
 | `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
+| `add_form` | `int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)` |
 
 ## What each does
 
@@ -1791,6 +1792,14 @@ int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaC
 
 Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
 
+### `add_form`
+
+```c
+int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)
+```
+
+Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame every frame, end when he leaves it. The power-up's number, or -1.
+
 ## Numbers and names
 
 ### `NebulaPlugin`
@@ -2129,6 +2138,9 @@ Only in nebula_plugin_start. What runs on every actor placed by `name` (the game
     /* The fields below may be missing from an older plugin's class; `size` tells. */
     const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the normal model */
     int32_t looks_like;   /* without a model: look like this power-up (NEBULA_POWER_UP_*) */
+    int32_t acts_like;    /* what the player can do in it: one of the game's power-ups (NEBULA_POWER_UP_*): Fire's throw,
+                             Ice's skate, Bee's flight... Its music and time too, where the class gives none (frames 0,
+                             music null). 0: the normal player. One the game can't give in this stage refuses the power-up. */
 ```
 
 ### `NebulaNervePhase`

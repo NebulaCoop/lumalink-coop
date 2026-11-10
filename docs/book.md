@@ -2026,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 198 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](#p-reference-plugin-api) lists all 199 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -3096,6 +3096,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](#p-reference-settings)) |
 | `object_changes` | Objects changed or gone |
+| `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](#p-reference-lumascript--forms)) |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)); a `script` runs on every object placed by the name, the game's own too ([class scripts](#p-reference-lumascript--class-scripts)) |
 | `player_constants` | The numbers of how the player moves, by name ([player numbers](#p-reference-player-numbers)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
@@ -3965,6 +3966,7 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](#p-reference-settings). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](#p-reference--object-changes). |
+| `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](#p-reference-lumascript--forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](#p-reference-player-numbers). |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
@@ -4834,6 +4836,7 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
 | `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
 | `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
+| `add_form` | `int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -6819,6 +6822,16 @@ int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaC
 
 Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
 
+<a id="p-reference-plugin-api--addform"></a>
+
+#### `add_form`
+
+```c
+int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)
+```
+
+Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame every frame, end when he leaves it. The power-up's number, or -1.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -7199,6 +7212,9 @@ Only in nebula_plugin_start. What runs on every actor placed by `name` (the game
     /* The fields below may be missing from an older plugin's class; `size` tells. */
     const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the normal model */
     int32_t looks_like;   /* without a model: look like this power-up (NEBULA_POWER_UP_*) */
+    int32_t acts_like;    /* what the player can do in it: one of the game's power-ups (NEBULA_POWER_UP_*): Fire's throw,
+                             Ice's skate, Bee's flight... Its music and time too, where the class gives none (frames 0,
+                             music null). 0: the normal player. One the game can't give in this stage refuses the power-up. */
 ```
 
 <a id="p-reference-plugin-api--nebulanervephase"></a>
@@ -9630,16 +9646,33 @@ A name made `like` a class runs the class's scripts first, then its own.
 
 ```text
 on start { }                   // the object was made and set up by its class
-on control { return false }    // every frame before the class moves it; true: the class doesn't move it this frame
+on control { return false }    // every frame before the class's nerve and control; true: both skipped this frame
 on touch(other, sensor) { }    // one of its sensors touches another object's; true: the class's reaction is skipped
 on message(number, from) { }   // as for scripted objects; true or false answers in place of the class
 on appear { }
 on kill { }
 ```
 
-`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). Several mods may name
+`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). While `control`
+takes the class's place, collision still moves the object by `self.mVelocity`: set it to stop the object. Several mods may name
 one class: each script runs, in the order the mods load; the first `message` answer wins. A plugin does the same from
 C with `set_class_hooks` (see the plugin API).
+
+<a id="p-reference-lumascript--forms"></a>
+
+### Forms
+
+A row of `forms` with a `script` runs it on the player while he is in that power-up: `self` is the player, its `var`s
+start over each time he gets it.
+
+```text
+on start { }   // he got it
+on frame { }   // every frame he plays in it (paused while a cutscene holds him, as the game's form timers are)
+on end { }     // he left it (time up, damage, another power-up)
+```
+
+He can do what the row's `acts_like` form does (Fire's throw, Ice's skate, Bee's flight); `self.mPlayerMode` is that
+form, `self.mModForm` the power-up's number (`registry("form/<name>")`), and `nebula.value(2)` reads it too.
 
 <a id="p-reference-lumascript--statements"></a>
 

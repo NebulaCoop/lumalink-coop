@@ -231,6 +231,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](reference/settings.md)) |
 | `object_changes` | Objects changed or gone |
+| `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](reference/lumascript.md#forms)) |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)); a `script` runs on every object placed by the name, the game's own too ([class scripts](reference/lumascript.md#class-scripts)) |
 | `player_constants` | The numbers of how the player moves, by name ([player numbers](reference/player-numbers.md)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |

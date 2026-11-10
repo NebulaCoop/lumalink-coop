@@ -398,8 +398,8 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
             let Some(path) = layer.get("path").and_then(Value::as_str) else {
                 continue;
             };
-            // The objects' scripts, the class scripts and the mod-wide ones ("scripts"), each compiled once.
-            let mut scripts: Vec<&str> = ["objects", "object_classes"]
+            // The objects', classes' and forms' scripts and the mod-wide ones ("scripts"), each compiled once.
+            let mut scripts: Vec<&str> = ["objects", "object_classes", "forms"]
                 .iter()
                 .filter_map(|key| layer.get(*key).and_then(Value::as_array))
                 .flatten()
@@ -1000,6 +1000,43 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                             if let Err(why) = compile_script(folder, script, &toolkit) {
                                 found.problem(format!("{name}: {why}"));
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("forms") {
+        // Power-ups from data (luma.cpp "forms"): the game's forms by name, whole numbers, a script.
+        const FORMS: [&str; 9] = ["normal", "invincible", "fire", "ice", "bee", "spring", "boo", "flying", "tornado"];
+        match rows.as_array() {
+            None => found.problem(format!("{name}: forms is a list of rows")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                let toolkit = crate::lumascript::Toolkit::bundled();
+                for row in rows {
+                    let form = row.get("name").and_then(Value::as_str).unwrap_or_default();
+                    if form.is_empty() {
+                        found.problem(format!("{name}: a row of forms needs a name"));
+                        continue;
+                    }
+                    for key in ["acts_like", "looks_like"] {
+                        if let Some(value) = row.get(key) {
+                            if !value.as_str().is_some_and(|v| FORMS.contains(&v)) {
+                                found.problem(format!("{name}: {form}'s {key} is one of {}", FORMS.join(", ")));
+                            }
+                        }
+                    }
+                    for (key, most) in [("color_frame", 255u64), ("frames", 65535)] {
+                        if let Some(value) = row.get(key) {
+                            if !value.as_u64().is_some_and(|v| v <= most) {
+                                found.problem(format!("{name}: {form}'s {key} is a whole number from 0 to {most}"));
+                            }
+                        }
+                    }
+                    if let Some(script) = row.get("script").and_then(Value::as_str) {
+                        if let Err(why) = compile_script(folder, script, &toolkit) {
+                            found.problem(format!("{name}: {form}: {why}"));
                         }
                     }
                 }
@@ -2078,6 +2115,24 @@ mod tests {
         assert_eq!(problems(json!({ "name": "Kuribo" })), 1, "neither like nor script");
         assert_eq!(problems(json!({ "name": "Kuribo", "script": "missing" })), 1);
         assert_eq!(problems(json!({ "name": "Kuribo", "script": "broken" })), 1);
+    }
+
+    #[test]
+    fn forms_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("scripts")).unwrap();
+        fs::write(dir.path().join("scripts/gold.lscript"), "on start { }\non frame { }\non end { }\n").unwrap();
+        let problems = |row: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &json!({ "path": "layers/base", "forms": [row] }), "base", None, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!({ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "script": "gold" })), 0);
+        assert_eq!(problems(json!({ "name": "plain" })), 0);
+        assert_eq!(problems(json!({ "acts_like": "fire" })), 1);
+        assert_eq!(problems(json!({ "name": "x", "acts_like": "lava" })), 1);
+        assert_eq!(problems(json!({ "name": "x", "frames": 1.5 })), 1);
+        assert_eq!(problems(json!({ "name": "x", "script": "missing" })), 1);
     }
 
     #[test]

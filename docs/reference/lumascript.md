@@ -187,16 +187,31 @@ A name made `like` a class runs the class's scripts first, then its own.
 
 ```text
 on start { }                   // the object was made and set up by its class
-on control { return false }    // every frame before the class moves it; true: the class doesn't move it this frame
+on control { return false }    // every frame before the class's nerve and control; true: both skipped this frame
 on touch(other, sensor) { }    // one of its sensors touches another object's; true: the class's reaction is skipped
 on message(number, from) { }   // as for scripted objects; true or false answers in place of the class
 on appear { }
 on kill { }
 ```
 
-`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). Several mods may name
+`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). While `control`
+takes the class's place, collision still moves the object by `self.mVelocity`: set it to stop the object. Several mods may name
 one class: each script runs, in the order the mods load; the first `message` answer wins. A plugin does the same from
 C with `set_class_hooks` (see the plugin API).
+
+## Forms
+
+A row of `forms` with a `script` runs it on the player while he is in that power-up: `self` is the player, its `var`s
+start over each time he gets it.
+
+```text
+on start { }   // he got it
+on frame { }   // every frame he plays in it (paused while a cutscene holds him, as the game's form timers are)
+on end { }     // he left it (time up, damage, another power-up)
+```
+
+He can do what the row's `acts_like` form does (Fire's throw, Ice's skate, Bee's flight); `self.mPlayerMode` is that
+form, `self.mModForm` the power-up's number (`registry("form/<name>")`), and `nebula.value(2)` reads it too.
 
 ## Statements
 
