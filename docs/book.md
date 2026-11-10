@@ -28,6 +28,7 @@ Every page of LumaLink's docs and Nebula's generated lists, in reading order. Wr
   - [Converting a mod made for the Wii](#p-tutorials-15-converting)
   - [A total conversion: your own game](#p-tutorials-16-total-conversion)
   - [Publishing](#p-tutorials-17-publishing)
+  - [The game in first person: a camera of your own](#p-tutorials-18-first-person)
 - **Reference**
   - [Nebula mods and LumaLink: the complete reference](#p-reference)
   - [The `.luma` format, version 1](#p-format)
@@ -93,6 +94,7 @@ Each one starts from nothing and ends with something running in the game.
 | 15 | [Converting a mod made for the Wii](#p-tutorials-15-converting) | ✓ |
 | 16 | [A total conversion: your own game](#p-tutorials-16-total-conversion) | ✓ |
 | 17 | [Publishing](#p-tutorials-17-publishing) | ✓ |
+| 18 | [The game in first person: a camera of your own](#p-tutorials-18-first-person) | ✓ |
 
 <a id="p-readme--reference"></a>
 
@@ -129,12 +131,21 @@ Each one starts from nothing and ends with something running in the game.
 | `stage-music` | New music in a stage, per mission and per area |
 | `new-cutscene` | A whole cutscene from tables |
 | `one-health`, `coin-kills`, `boss-music`, `double-jump` | Small plugins |
+| `achievements` | The mod's own achievements, on the game's board: by events, and by its code |
+| `gecko-*` (20 of them) | Popular Gecko codes done natively: moon jump, infinite health, Mario's size, no spin cooldown and the rest ([the list](#p-tutorials-15-converting--popular-gecko-codes)) |
 | `little-boss` | A three-phase boss: model, music, placement, attacks |
 | `gold-flower` | A new power-up: its item, model, particles, sounds, spin animation, fire damage and higher jump |
 | `new-galaxy` | A whole galaxy: planet, ground, gravity, a new enemy, stars, a cutscene with a glTF camera |
 | `new-npc` | A new character made like a Toad, with its own model and talk |
 | `new-talk` | A branching yes/no talk on one of the game's Toads |
 | `new-voice` | The player's voices from the mod's own sounds |
+| `evening-light` | A stage's light changed by a table merge: warm evening colours on Good Egg |
+| `far-camera` | A stage's camera changed by a merge: further back and wider |
+| `quick-star-get` | Timing by tunables: the star's ending sooner |
+| `glowing-lantern` | A hand-written shader for a model's material (`custom-shaders`) |
+| `coin-bank` | A plugin that keeps numbers and words across plays (its own store) |
+| `goomba-tempo` | A plugin that changes the game's objects' animations, with an option |
+| `first-person` | The whole game through Mario's eyes: a camera of the plugin's own, handed back for cutscenes and talks ([tutorial 18](#p-tutorials-18-first-person)) |
 
 
 <a id="p-using-mods"></a>
@@ -147,17 +158,17 @@ Each one starts from nothing and ends with something running in the game.
 
 ### Installing one
 
-**A `.luma` file.** Double-click it, or in Nebula's settings choose Mods, then Import. It appears in the list. Turn it on and press Apply.
+**A `.luma` file.** Double-click it, or in Nebula's settings choose Mods, then Import. It appears on, at the top of the list, and applies when Nebula restarts (the page offers the restart). A mod with its own code asks first.
 
 **A mod as you downloaded it** (a zip, 7z, rar or a folder, made for the Wii). Open LumaLink, drop it on the window, tick it, and press Convert. Open the `.luma` it makes.
 
-**On a phone.** Move the `.luma` to the phone and import it from the app. A raw mod folder can't be used on a phone: convert it on a computer first.
+**On a phone.** Move the `.luma` to the phone and import it from the app. It's on from the next start. A raw mod folder can't be used on a phone: convert it on a computer first.
 
 <a id="p-using-mods--the-list"></a>
 
 ### The list
 
-The Mods page has two lists: Disabled and Enabled (top has priority). Mods apply from the bottom of the enabled list up, so the one on top wins where two change the same file, texture or setting. Drag a mod to move it, or select it, press A (Space on a keyboard) to pick it up, move it with the arrows (left turns it off, right on) and press A again to put it down. Files many mods add to, such as a level's objects, keep everyone's additions. Text, settings and table rows follow the same order: the higher mod's word is the one used.
+The Mods page has two lists: Off and On (the higher one wins). Mods apply from the bottom of the On list up, so the one on top wins where two change the same file, texture or setting. Drag a mod to move it, or select it, press A (Space on a keyboard) to pick it up, move it with the arrows (left turns it off, right on) and press A again to put it down. Files many mods add to, such as a level's objects, keep everyone's additions. Text, settings and table rows follow the same order: the higher mod's word is the one used.
 
 The line under a selected mod says what it changes and where it overlaps another mod: OVERRIDES: {NAME} (3 FILES) means it wins those, OVERRIDDEN BY: {NAME} means the other one does.
 
@@ -177,13 +188,13 @@ Select a mod and press Details. Its page shows:
 | Folder | Its folder in the mods folder. |
 | Options | Its choices, the text it shows in a language it lacks, a texture pack's categories. |
 
-About shows its description, then its icon and pictures, a page at a time. Remove removes it (to the Recycle Bin on Windows) after asking; a mod the game started with is removed after a restart without it.
+About shows its description, then its icon and pictures, a page at a time. Remove removes it (to the Recycle Bin on Windows) after asking; a mod the game started with is in use: turn it off, restart, then remove it.
 
 <a id="p-using-mods--updating"></a>
 
 ### Updating
 
-Importing a `.luma` whose `id` is already in the mods folder replaces that mod, whatever its folder is called, and keeps its place, its options and its saves. The message says which: Updated: {name} ({old} to {new}), Older version, or Replaced (the same version). A different mod that happens to have the same folder name is left alone; the new one gets a folder of its own.
+Importing a `.luma` whose `id` is already in the mods folder replaces that mod, whatever its folder is called, and keeps its place, its options and its saves. The message says which: Updated: {name} ({old} to {new}), Older version, or Replaced (the same version). A different mod that happens to have the same folder name is left alone; the new one gets a folder of its own. On Windows, if another program has a file of the mod open, the update waits and takes its place at the next start. If Nebula closes during an import, the next start puts the mod back as it was and clears what was half copied.
 
 Two folders holding the same mod (a copy made by hand) can't both be on: the lower one says ANOTHER COPY OF THIS MOD IS ON.
 
@@ -191,7 +202,7 @@ Two folders holding the same mod (a copy made by hand) can't both be on: the low
 
 ### Mods with code
 
-Some mods hold their own compiled code. The game asks before that code first runs, and again whenever it changes. It runs with the same rights as the game, so turn it on only for mods you trust. If the game crashes in a plugin, the report names the mod and the next start offers to turn its code off.
+Some mods hold their own compiled code. The game asks before that code first runs, and again whenever it changes. It runs with the same rights as the game, so turn it on only for mods you trust. If the game crashes with mods' code on, the crash report names the mods, and on Windows the next run starts with every mod's code off.
 
 <a id="p-using-mods--saves"></a>
 
@@ -205,7 +216,7 @@ A mod says which saves it plays on.
 | `own` | Saves of its own, starting new or from what the mod brings |
 | `copy` | Saves of its own, starting as a copy of yours. Yours stay as they are |
 
-A mod that adds a galaxy always has its own, since a save's shape follows the list of galaxies. Saves of its own outlast updating or removing the mod.
+A mod that adds a galaxy always has its own, since a save's shape follows the list of galaxies; two such mods play on the higher one's. Saves of its own outlast updating or removing the mod.
 
 <a id="p-using-mods--when-a-mod-cant-be-used"></a>
 
@@ -680,7 +691,7 @@ Players choose on the Mods page, and the choice lasts through updates to the mod
 
 ### Your own shaders
 
-Materials build their own shaders, so most mods never think about this. For a special effect, run `lumalink shader model.bdl -o folder`, change the HLSL it writes, and name it:
+Materials build their own shaders, so most mods never think about this. For a special effect, run `lumalink shader model.glb -o folder`, change the HLSL it writes, and name it:
 
 ```json
 "requires": ["custom-shaders"],
@@ -725,9 +736,13 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 |---|---|
 | [`one-health`](https://github.com/keepvaibin/lumalink/blob/main/examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-kills) | Events |
+| [`achievements`](https://github.com/keepvaibin/lumalink/blob/main/examples/achievements) | The mod's own achievements: three unlocked by events, one by its code |
 | [`boss-music`](https://github.com/keepvaibin/lumalink/blob/main/examples/boss-music) | Starting and stopping music |
 | [`double-jump`](https://github.com/keepvaibin/lumalink/blob/main/examples/double-jump) | A new move for the player: the buttons, gravity, an animation |
 | [`little-boss`](https://github.com/keepvaibin/lumalink/blob/main/examples/little-boss) | A new enemy: its model, music, health, placement and what it does |
+| [`coin-bank`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-bank) | Keeping numbers and words across plays (`store_get`, `store_set_text`), a message when the player has control |
+| [`goomba-tempo`](https://github.com/keepvaibin/lumalink/blob/main/examples/goomba-tempo) | Every object of a kind (`find_actor`), its animation's speed, an option |
+| [`first-person`](https://github.com/keepvaibin/lumalink/blob/main/examples/first-person) | A camera of the plugin's own every frame (`set_camera`, `set_camera_near`), the player's model hidden, the game's cameras back for cutscenes ([tutorial 18](#p-tutorials-18-first-person)) |
 | [`pulse`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/pulse) | A new object with the game's headers, and a hook |
 | [`cube`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/cube) | A new object with the stable interface and a glTF model |
 
@@ -1049,6 +1064,35 @@ StageData/MyGalaxy/MyGalaxyScenario.arc/scenariodata.bcsv.json
 
 More than eight stars in a galaxy is fine. The star-choosing screen shows pages of six, the save keeps them all, and left and right turn the page. See [A new galaxy](#p-tutorials-09-new-galaxy).
 
+<a id="p-tutorials-03-levels--a-stages-light-and-cameras"></a>
+
+### A stage's light and cameras
+
+Light and cameras are tables too, so a merge changes them without replacing the files.
+
+A galaxy's lights are `ObjectData/LightData.arc/Light<Galaxy>.bcsv`, one row per light by its `AreaLightName`, and `LightData.bcsv` says which light each area of the game uses. Colours are 0 to 255 per channel, for the player, the planets, and strong and weak objects, each with a light and an ambient (`PlayerLight0ColorR`, `PlanetAmbientG`...). A table read out may show 255 as `-1`: the same value.
+
+```text
+layers/base/merge/ObjectData/LightData.arc/LightEggStarGalaxy.bcsv.json
+```
+
+```json
+{ "change": [ { "where": { "AreaLightName": "[デフォルト]エッグプラネット" },
+                "set": { "PlayerLight0ColorR": 255, "PlayerLight0ColorG": 140, "PlayerLight0ColorB": 60 } } ] }
+```
+
+A galaxy's cameras are `StageData/<Galaxy>.arc/camera/CameraParam.bcam`, one row per camera: its kind (`camtype`), distance (`dist`), field of view (`fovy`) and the rest.
+
+```text
+layers/base/merge/StageData/EggStarGalaxy.arc/camera/CameraParam.bcam.json
+```
+
+```json
+{ "change": [ { "where": { "camtype": "CAM_TYPE_XZ_PARA" }, "set": { "dist": 2600.0, "fovy": 55.0 } } ] }
+```
+
+Examples: `examples/evening-light` (Good Egg in an evening's light), `examples/far-camera` (its cameras further back and wider). `lumalink check`, given your game, tries each merge on it: it names a column the table doesn't have, and a row that matches nothing.
+
 <a id="p-tutorials-03-levels--stage-rules"></a>
 
 ### Stage rules
@@ -1190,6 +1234,122 @@ Any number of mods can add messages, which replacing the message files doesn't a
 | Anything else | Each talk and interface message. A level's `MessageId` names its message, and the message file names them all |
 
 To list every message in the game, open its message file: `lumalink extract LocalizeData/UsEnglish/MessageData/Message.arc --game game.pak -o out`. In a language folder such as `UsEnglish`.
+
+<a id="p-tutorials-05-text--pauses-pages-colours-message-tags"></a>
+
+### Pauses, pages, colours: message tags
+
+Words can hold the game's own message tags, in brackets. They work in `text`, in talk lines (below) and in a plugin's words.
+
+| Tag | Does |
+|---|---|
+| `[wait 30]` | Stops the text for 30 frames |
+| `[page]` | Ends the box; the rest comes on the next press |
+| `[center]` | Centres the line |
+| `[sound SE_NAME]` | Plays one of the game's system sounds as the text reaches it |
+| `[icon 7]` | Picture 7 of the game's picture font: buttons, stars, coins |
+| `[small]`, `[normal]`, `[large]` | The text's size from here |
+| `[player]` | The player's name: Mario or Luigi |
+| `[color 1]` | The game's text colour 1 from here; `[color 0]` goes back |
+| `[tag G T u...]` | Any other tag of the game: its group, its number and its parameters |
+
+`[[` is one `[`. Anything else in brackets stays as written. A message read out with `lumalink extract` shows its tags this way, so one copied and put back is the game's own.
+
+A new message in `text` can take the talk settings (balloon, camera, sound) of one of the game's with `like`:
+
+```json
+"text": {
+  "MyNpc_Hello": { "default": "Hi, [player]!", "like": "AstroGalaxy_Kinopio012" }
+}
+```
+
+<a id="p-tutorials-05-text--talk-new-lines-and-what-follows-them"></a>
+
+### Talk: new lines, and what follows them
+
+A character's talk is lines joined by a flow: after this line, that one, or a question, or an event. A layer's `merge/MessageData/messages.json` adds lines and changes flows, in every language the game has (`merge/<Language>/MessageData/Message.arc/message.bmg.json` for one language). Any number of mods can add to it.
+
+```json
+{
+  "lines": {
+    "NewTalk_Ask": { "default": "Say, [player]...[wait 20] want to hear a secret?", "fr": "Dis, [player]...[wait 20] tu veux connaître un secret ?", "like": "AstroGalaxy_Kinopio012" },
+    "NewTalk_Secret": { "default": "The Toad Brigade naps in shifts.[page]Don't tell the captain!", "like": "AstroGalaxy_Kinopio012" },
+    "NewTalk_Later": { "default": "Suit yourself!", "like": "AstroGalaxy_Kinopio012" }
+  },
+  "flows": {
+    "AstroGalaxy_Kinopio012": "NewTalk_Ask",
+    "NewTalk_Ask": {
+      "ask": "select",
+      "choices": { "yes": { "default": "Yes!", "fr": "Oui !" }, "no": "Not now" },
+      "yes": "NewTalk_Secret",
+      "no": "NewTalk_Later"
+    },
+    "NewTalk_Secret": "AstroGalaxy_Kinopio013",
+    "NewTalk_Later": "AstroGalaxy_Kinopio013"
+  }
+}
+```
+
+This is `examples/new-talk`: a Toad in the Comet Observatory asks a question of his own, then talks on as before. `examples/new-npc` gives a new character its own talk the same way.
+
+<a id="p-tutorials-05-text--lines"></a>
+
+#### Lines
+
+A line is its words (one string for every language), or an object of words by language and its talk settings. Languages are named as in `text` (`fr-CA`, then `fr`), or by the game's folder (`UsFrench`), then `default`. A line of the game given no words in a language keeps its own there. A new line needs words for every language: give it a `default`.
+
+| Key | Sets |
+|---|---|
+| `like` | A game line whose talk settings a new line starts from. Without it: an ordinary talk |
+| `talk` | `normal`, `short`, `event`, `compose`, `flow` or `null` |
+| `balloon` | The balloon's kind, 0 to 255 |
+| `camera` | `normal`, `event` or `none` |
+| `camera_set` | The stage's camera for the line, 0 to 65535 |
+| `sound` | The talker's voice, -128 to 127 |
+| `area` | The line's area number, as the game's lines have it, -128 to 127 |
+| `already_read` | The number the game marks the line read under (see `message_read`), -128 to 127 |
+
+<a id="p-tutorials-05-text--flows"></a>
+
+#### Flows
+
+`flows` says, for a line by its id, what comes after it. A step is:
+
+| Step | Means |
+|---|---|
+| A line's id | That line next |
+| `null` | The talk ends |
+| `{ "ask": ..., "yes": step, "no": step }` | A question: one step if it holds, the other if not |
+| `{ "event": ..., "value": n, "next": step }` | Something happens, then `next` |
+
+What `ask` can be:
+
+| `ask` | Holds when |
+|---|---|
+| `select` | The player answers yes. `choices` gives the two answers' words; or `param` picks one of the game's 19 answer pairs (0 to 18) |
+| `func` | The talker's own test, with `param` |
+| `near_player` | The player is near the talker |
+| `switch_a`, `switch_b` | The talker's switch is on |
+| `player_normal`, `player_bee`, `player_boo` | The player is in that form |
+| `player_luigi` | The player is Luigi |
+| `power_star_appeared` | The stage's power star has appeared |
+| `already_done` | The talker has done its part already |
+| `galaxy_result` | One of the Comet Observatory's results, `param` saying which |
+| `time_keep_demo` | A timed scene is running |
+| `message_read` | Message-read number `param` is set |
+
+What `event` can be:
+
+| `event` | Does |
+|---|---|
+| `func`, `func_stop` | The talker's own action, with `value`; the talk waits until it is done |
+| `anime` | The talker's animation `value` |
+| `switch_a`, `switch_b` | Turns the talker's switch on |
+| `kill` | The talker's leaving, with `value` |
+| `skip` | Ends the talk at once |
+| `none` | Nothing: a place for a plugin to watch |
+
+A plugin hears each line open (`NEBULA_MOD_EVENT_TALK_LINE`, with the line's id) and each answer (`NEBULA_MOD_EVENT_TALK_CHOICE`). `lumalink check` reads the lines and flows and names what's wrong: a flow naming no line, a new line without words, an unknown `ask` or `event`, a `select` with both `choices` and `param`.
 
 <a id="p-tutorials-05-text--whole-message-files"></a>
 
@@ -1832,7 +1992,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) has 140 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](#p-reference-plugin-api) lists all 167 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -1842,6 +2002,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 |---|---|
 | [`one-health`](https://github.com/keepvaibin/lumalink/blob/main/examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-kills) | Events |
+| [`achievements`](https://github.com/keepvaibin/lumalink/blob/main/examples/achievements) | The mod's own achievements |
 | [`boss-music`](https://github.com/keepvaibin/lumalink/blob/main/examples/boss-music) | Starting and stopping music |
 | [`double-jump`](https://github.com/keepvaibin/lumalink/blob/main/examples/double-jump) | A new move: the buttons, gravity, an animation |
 | [`little-boss`](https://github.com/keepvaibin/lumalink/blob/main/examples/little-boss) | A new enemy, whole |
@@ -2281,6 +2442,38 @@ Nebula isn't the Wii's program, so a write over that program is read for what it
 
 A write nothing here can read is listed under "code changes Nebula has no version of yet". The mod still converts and everything else in it works. See [What conversion reads](#p-reference--4-what-conversion-does).
 
+<a id="p-tutorials-15-converting--popular-gecko-codes"></a>
+
+### Popular Gecko codes
+
+A popular code in a Dolphin `RMGE01.ini` is known by its name, and its writes are not read: the report names the mod
+in `examples/` that does the same thing natively, or the Nebula setting that does. Each of those mods builds for every
+device with `lumalink build examples/<name>` and becomes a file with `lumalink pack examples/<name>`.
+
+| A code named like | Native way |
+|---|---|
+| Moon jump | `gecko-moon-jump` |
+| Infinite health, invincible | `gecko-infinite-health` |
+| Lives | `gecko-infinite-lives` |
+| Star bits, coins | `gecko-max-star-bits` |
+| Gravity | `gecko-low-gravity` |
+| Rainbow | `gecko-rainbow-forever` |
+| Power-ups never end, infinite power | `gecko-power-ups-last` |
+| Fire, Bee, Boo or Ice Mario, power-up anywhere | `gecko-power-up-anywhere` |
+| Timer | `gecko-freeze-timer` |
+| Free camera | `gecko-free-camera` |
+| FOV | `gecko-wide-fov` |
+| HUD | `gecko-hide-hud` |
+| Fall | `gecko-no-fall-death` |
+| Slow motion, frame advance, speed hack | `gecko-slow-motion` |
+| Position, coordinates | `gecko-position-display` |
+| Freeze enemies | `gecko-freeze-enemies` |
+| Stage select, level select, warp | `gecko-warp-anywhere` |
+| Mario size, big, giant, tiny or mini Mario | `gecko-mario-size` |
+| Spin cooldown, always spin, infinite spin | `gecko-no-spin-cooldown` |
+| Star pointer, spin from the start | `gecko-spin-and-pointer` |
+| Fast text, text speed, instant text | Text speed, in Nebula's settings |
+
 <a id="p-tutorials-15-converting--what-it-decides-for-you"></a>
 
 ### What it decides for you
@@ -2368,7 +2561,7 @@ So the hub's counters stay up and its star bits count as a hub's, and the final 
 | Comets | `comet_schedule`, `comet_time_limits` |
 | The map | `map_position`, and `LayoutData/MapGrandGalaxy.arc` |
 | Your hero | `ObjectData/Mario.arc`, `MarioAnime.arc`, and `player_constants` |
-| The numbers | `max_lives`, `starting_lives`, `player_health`... |
+| The numbers | `tunables`: `GameDataPlayerStatus.cMaxPlayerLeft`, `GameRules.cPlayerHealth`... ([settings](#p-reference-settings)) |
 | The title | `LayoutData` for its layouts, and the stage `FileSelect` |
 | The intro and ending movies | `MovieData`, and `movies/` |
 | The credits | `text`, and `StaffRoll` in the message files |
@@ -2444,6 +2637,120 @@ Use `merge/` in place of replacing a whole level or table, so yours and others' 
 Its name, icon, description, authors and options are on its row of the Mods page, in the player's language where you've given one. See [`luma.json`](#p-format).
 
 
+<a id="p-tutorials-18-first-person"></a>
+
+<a id="p-tutorials-18-first-person--the-game-in-first-person-a-camera-of-your-own"></a>
+
+## The game in first person: a camera of your own
+
+This tutorial walks through `examples/first-person`, a plugin that plays the whole game through Mario's eyes. It's about 220 lines of C, and it shows how a plugin takes the camera, follows the player on a round planet, hides the player's model and gives the game its cameras back for cutscenes and talks.
+
+You need [Your first plugin](#p-tutorials-10-first-plugin) first.
+
+<a id="p-tutorials-18-first-person--what-it-does"></a>
+
+### What it does
+
+- The camera sits at Mario's eyes and looks where he faces. Pushing the stick ahead walks ahead; to the side, he turns, and the view turns with him.
+- The pointer above or below the screen's middle tilts the view up or down. Off the screen, the view comes level.
+- The camera button switches between his eyes and the game's camera.
+- Cutscenes, talks, a launch star's flight, a star's "You got a Star!" and every camera a stage starts for an event keep the game's own camera while they last; his eyes come back when they end.
+- Two options: the field of view (60°, 75° or 90°), and whether each stage starts in his eyes or the game's camera.
+
+<a id="p-tutorials-18-first-person--each-frame-before-anything-moves"></a>
+
+### Each frame, before anything moves
+
+`NEBULA_MOD_EVENT_STAGE_FRAME` runs once a frame, before the stage's objects move. The plugin reads where the player is, how fast he moves and which way is down, then sets the camera for the frame the game is about to draw:
+
+```c
+game->get_position(player, at);
+game->get_velocity(player, moving);   /* this frame's step is still to come */
+game->get_gravity(player, down);      /* on a planet, down is no one axis */
+...
+eye = at + moving + up * eye_height;
+game->set_camera(eye, look, fov);
+```
+
+Adding this frame's velocity puts the eye where the player will be once he has moved, so the camera doesn't trail a frame behind.
+
+<a id="p-tutorials-18-first-person--up-is-wherever-gravity-says"></a>
+
+### Up is wherever gravity says
+
+On a small planet, up turns as the player walks around it. The plugin takes up from `get_gravity`, and keeps its forward direction flat against it:
+
+```c
+along = dot(front, up);
+front -= up * along;   /* along the ground */
+normalise(front);
+```
+
+The forward direction is eased toward the player's (a third of the way each frame), so a sharp turn is felt but not a jolt. The eye height comes from the model's `Head` joint (`get_joint_position`), so crouching, swimming and a dive bring the view down with him.
+
+<a id="p-tutorials-18-first-person--hiding-the-player"></a>
+
+### Hiding the player
+
+```c
+game->show_model(player, 0);
+game->set_camera_near(10.0f);
+```
+
+`show_model` hides the model, his hands, face and power-up suit with it; he still moves, animates, touches and is hit, and his shadow stays on the ground under you. `set_camera_near` brings the near plane in from the game's 100 units to 10, as the game's own look-around view does, so a wall right in front of him is drawn instead of cut open.
+
+<a id="p-tutorials-18-first-person--giving-the-camera-back"></a>
+
+### Giving the camera back
+
+The plugin hands back when a cutscene plays, an event camera holds the view, the player is gone, or the camera button says so:
+
+```c
+if (!wanted || player == 0 || game->is_dead(player) || game->is_cutscene_playing() || event_camera) {
+    game->set_camera(0, 0, 0.0f);      /* the game's camera again */
+    game->set_camera_near(0.0f);       /* the game's near plane */
+    game->show_model(player, 1);
+}
+```
+
+`is_cutscene_playing` covers cutscenes, the stage's start and a star's get sequence. Event cameras (a talk's, a cutscene's, a launch star's, `start_camera`'s) come as `NEBULA_MOD_EVENT_CAMERA_CHANGE` with value 1; when the last one ends and the area's camera takes the view back, the same event comes with value 0:
+
+```c
+static int32_t camera_change(const NebulaModEventData* data, void* user) {
+    (void)user;
+    event_camera = data->value == 1;
+    return data->value;
+}
+```
+
+A launch star shows it: its cameras come one after another as Mario is shot off (value 1 each), and value 0 comes as he lands on the next planet, where his eyes take the view again.
+
+<a id="p-tutorials-18-first-person--no-c-library"></a>
+
+### No C library
+
+A plugin built for every device has no C library, so the plugin writes its own square root (a first guess from the float's bits, then Newton's steps) and its own text compare. `game->alloc` and `game->format` are there when a plugin needs memory or `printf`.
+
+<a id="p-tutorials-18-first-person--build-and-try-it"></a>
+
+### Build and try it
+
+```console
+lumalink build examples/first-person
+lumalink run examples/first-person
+```
+
+`lumalink build` makes the library for Windows, Linux, Android and macOS, x64 and arm64 each. `lumalink pack examples/first-person` makes the `.luma`.
+
+<a id="p-tutorials-18-first-person--going-further"></a>
+
+### Going further
+
+- Turn with the pointer at the screen's edges, as pointer shooters do: rotate `forward` about `up` while the pointer is near the left or right edge.
+- Show the player's hands: a model of your own (`register_object`) placed at the eye each frame.
+- Hide the HUD for a cleaner view: `show_hud(NEBULA_HUD_ALL, 0)`.
+
+
 # Reference
 
 <a id="p-reference"></a>
@@ -2496,19 +2803,19 @@ A mod is made once. Nothing about it depends on one build of Nebula: the game pr
 
 ### 2. Using a mod
 
-**On a computer.** Double-click a `.luma`, or Settings, Mods, Import. Nebula's settings open on the Mods page with the mod in the list. Turn it on and press Apply.
+**On a computer.** Double-click a `.luma`, or Settings, Mods, Import. Nebula's settings open on the Mods page with the mod on, at the top of the list. It applies when Nebula restarts; the page offers the restart. A mod with its own code asks first.
 
 **A mod as you downloaded it** (zip, 7z, rar or folder): open LumaLink, drop it on the window, tick it, press Convert. Then open the `.luma`.
 
-**On a phone.** Move the `.luma` to the phone and import it from the app. A raw mod folder can't be used on a phone: convert it on a computer first. The app says so.
+**On a phone.** Move the `.luma` to the phone and import it from the app. It's on from the next start. A raw mod folder can't be used on a phone: convert it on a computer first. The app says so.
 
 **The list.** The mod higher on the list wins where two change the same file. Files that many mods add to (see [Adding to shared files](#p-reference--adding-to-shared-files)) keep everyone's additions.
 
 **Options.** A mod's options are on its row. A change takes effect at the next reset. Reset with mods changed restarts the game by itself.
 
-**Code.** The game asks before a mod's code first runs, and again if that code changes. If the game crashes in a plugin, the report names the mod, and the next start offers to turn its code off.
+**Code.** The game asks before a mod's code first runs, and again if that code changes. If the game crashes with mods' code on, the crash report names the mods, and on Windows the next run starts with every mod's code off.
 
-**Saves.** A mod says which saves it plays on. A mod that adds a galaxy always gets its own, since a save's shape follows the list of galaxies. Your normal saves are never touched by a mod with saves of its own.
+**Saves.** A mod says which saves it plays on. A mod that adds a galaxy always gets its own, since a save's shape follows the list of galaxies; two such mods play on the higher one's. Your normal saves are never touched by a mod with saves of its own.
 
 <a id="p-reference--3-lumalink"></a>
 
@@ -2533,7 +2840,7 @@ A grid of tiles, one per mod. Drop files or folders on it. Tick the ones you wan
 | `lumalink pack FOLDER [-o FOLDER]` | Builds a project into a `.luma`, checking it first |
 | `lumalink check PATH` | Lists every problem with a project or a `.luma` |
 | `lumalink unpack FILE -o FOLDER` | Opens a `.luma` into a project folder |
-| `lumalink shader MODEL -o FOLDER` | Writes the pixel program Nebula makes for each material, to start a hand-written one |
+| `lumalink shader MODEL -o FOLDER` | Writes the pixel program Nebula makes for each material of a model (.bdl, .bmd, .glb, .gltf, or an archive), to start a hand-written one |
 | `lumalink cook FILE` | Converts one file alone, to test a model, texture or track |
 
 `--game` is your imported game, Nebula's `game.pak`. Mods that name files only by their name (loose `.arc` files with no folders) need it, to find where each one goes. `--game-id` picks the version to check against when you have no game file; a `.luma` works on every version anyway.
@@ -2709,7 +3016,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 
 | Field | Meaning |
 |---|---|
-| `path` | Its folder. May be left out for a layer of settings alone |
+| `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](#p-reference-settings)) |
 | `object_changes` | Objects changed or gone |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)) |
@@ -2717,10 +3024,11 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](#p-tutorials-04-music-and-sound)) |
 | `stages` | Rules for stages ([stage rules](#p-reference-stage-rules)) |
-| `text` | Messages for this layer alone, as the top-level `text` |
+| `text`, `story`, `galaxies`, `music`, `event_flags`, `comet_schedule` | As the top-level keys, for this layer alone |
 | `comet_time_limits` | Comet missions' time limits |
-| `materials` | Hand-written shaders by material name |
+| `materials` | Hand-written shaders by material name (`"requires": ["custom-shaders"]`) |
 | `when` | When it's used. Left out: always |
+| `switches` | From earlier versions: refused, naming the tunable for each ([settings](#p-reference-settings--from-switches)) |
 
 `when` may hold any of these, and all given must hold. A key this Nebula doesn't know makes it false.
 
@@ -2774,6 +3082,7 @@ A mission here is timed on Cosmic and Daredevil comets, and this comes before th
 | `name`, `description` | Text |
 | `default` | A choice's `id` |
 | `choices` | Each `{ "id", "name" }`. `off` is shown in the player's language and means this adds nothing |
+| `range` | A choice per number: `{ "from": 1, "to": 20, "step": 1 }`, at most 10001; `default` a number |
 
 <a id="p-reference--saves"></a>
 
@@ -3301,7 +3610,7 @@ When a plugin can't start it's left out and the log says why:
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start` |
 | it needs a newer Nebula | Built against a later interface |
 
-A plugin runs inside the game, so a crash in one takes the game down. The report names the mod, and the next start offers to turn its code off.
+A plugin runs inside the game, so a crash in one takes the game down. The crash report names the mods that were on, and on Windows the next run starts with every mod's code off.
 
 <a id="p-reference--14-limits-that-are-gone"></a>
 
@@ -3333,7 +3642,7 @@ Nobody writes shaders for a mod, and nobody compiles them. A model's materials s
 | Windows | Setup installs Microsoft's dxc beside the game. No download at play time |
 | Linux, Android, Mac | glslang and the SPIR-V tools, built into the game. Nothing to download |
 
-To write one yourself, `lumalink shader model.bdl -o folder`, change the pixel program it writes for a material, and name it:
+To write one yourself, `lumalink shader model.glb -o folder` (or the game's `.bdl`), change the pixel program it writes for a material, and name it:
 
 ```json
 "requires": ["custom-shaders"],
@@ -3365,12 +3674,41 @@ A mod that can't be used stays in the list, off, with one line:
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` it lacks, or `nebula` above its version |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5` |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game` |
+| THIS MOD IS FOR ANOTHER VERSION OF THE GAME | A Riivolution mod whose `<id game>` names another release |
+| THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
+| MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off or unusable |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | |
-| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on |
+| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on, or another mod higher on the list keeps its own saves |
+| ANOTHER COPY OF THIS MOD IS ON: {FOLDER} | Two folders hold the same `id`: the higher one is used |
 | THIS MOD HAS NO VERSION FOR THIS DEVICE | A plugin has no library for it |
 | THIS FILE IS DAMAGED | Not a zip, `luma.json` unreadable, or a listed path missing |
+| THIS MOD'S CODE IS FOR AN OLDER NEBULA: REBUILD IT WITH THIS NEBULA'S NEBULA_MOD_API.H | A plugin's `api` is below the game's |
+| THIS MOD'S CODE IS OFF AFTER A CRASH. RESTART TO TRY IT AGAIN | The last run crashed with mods' code on (Windows): every mod's code stays off for one run |
+| A FOLDER OF THIS MOD COULD NOT BE READ IN FULL | A folder of it could not be listed (permissions) |
+| CONVERT THIS MOD WITH LUMALINK ON A COMPUTER, THEN OPEN THE FILE HERE | A phone: a mod that is not a `.luma` |
+
+Importing and removing say what happened on the Mods page's line:
+
+| Line | When |
+|---|---|
+| IMPORTED: {NAME} ({KINDS}) | Added, on, at the top of the list. MODS APPLY WHEN NEBULA RESTARTS follows |
+| UPDATED: {NAME} ({OLD} TO {NEW}) | The same `id` with a newer `version`; its place, options and saves stay |
+| OLDER VERSION: {NAME} ({OLD} TO {NEW}) / REPLACED: {NAME} ({VERSION}) | The same `id`, an older or the same `version` |
+| ALREADY IN YOUR MODS: {NAME} | Exactly these files are there (under any name): nothing was added |
+| THIS FOLDER IS ALREADY IN THE MODS FOLDER | The folder chosen is in the mods folder |
+| NOT AN ARCHIVE NEBULA READS (ZIP, 7Z, RAR OR TAR): {FILE} | |
+| THIS ARCHIVE HAS A PASSWORD. UNPACK IT FIRST, THEN ADD THE FOLDER | |
+| THIS DOWNLOAD IS DAMAGED. DOWNLOAD IT AGAIN | The archive breaks off |
+| THE ARCHIVE HOLDS NO FILES / THE FOLDER HOLDS NO FILES | |
+| THE ARCHIVE HOLDS TOO MANY FILES / THE ARCHIVE UNPACKS TO TOO MUCH DATA | Past a million files or 256 GB |
+| CANNOT WRITE: {FILE}. IS THE DISK FULL? | |
+| IN USE: {NAME}. CLOSE WHAT HAS ITS FILES OPEN AND TRY AGAIN | Another program has its files open |
+| IN USE UNTIL NEBULA RESTARTS: TURN IT OFF AND RESTART FIRST | Remove on a mod the game started with |
+| MOVED TO THE RECYCLE BIN: {NAME} / REMOVED: {NAME} | |
+
+A mod with its own code asks first, by name, as the Mods page shows: Allow keeps it on, Not now turns it off. On Windows, an update of a mod with a file open in another program waits and takes its place at the next start.
 
 <a id="p-reference--in-lumalink"></a>
 
@@ -3500,6 +3838,8 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `comet_schedule` | no | Each dome's comets: see "The game's progression". |
 | `text` | no | Messages of the game by id: see "Messages". |
 | `plugins` | no | The mod's code: see "Plugins". |
+| `achievements` | no | The mod's own achievements: see "Achievements". |
+| `story` | no | Where a new file starts and where the player comes back to: see "The journey". |
 | `tool` | no | What made the file. Not used by the game. |
 
 <a id="p-format--text"></a>
@@ -3522,9 +3862,20 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 
 | Field | Meaning |
 |---|---|
-| `path` | The layer's folder. It may hold `files/`, `textures/` and `movies/`. May be left out for a layer that only sets tunables. |
+| `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](#p-reference-settings). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
+| `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](#p-reference--object-changes). |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). |
+| `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](#p-reference-player-numbers). |
+| `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
+| `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
+| `stages` | Rules for stages: `{ "stage": "MyHub", "scenario": 1, "acts_as": ["AstroGalaxy"], "own_rules": true }`. See [stage rules](#p-reference-stage-rules). |
+| `comet_time_limits` | Comet missions' time limits: `{ "galaxy": "BattleShipGalaxy", "mission": 4, "seconds": 150 }`. |
+| `materials` | Hand-written shaders by material name: see "Hand-written shaders". |
+| `text`, `story`, `galaxies`, `music`, `event_flags`, `comet_schedule` | As the same keys at the top, for this layer alone: so a galaxy, a track or a message can depend on an option or a version. |
 | `when` | Conditions. All of those given must hold. Left out: always. |
+
+A layer's folder holds `files/` (whole files, see "Files"), `merge/` (additions to shared files, see "Adding to shared files"), `textures/` and `movies/`.
 
 `when` may hold:
 
@@ -3549,7 +3900,10 @@ Players choose in the game, on the Mods page, and can change their minds without
 | `name` | Text. |
 | `description` | Text, optional. |
 | `default` | A choice's `id`. |
-| `choices` | At least one, each `{ "id": ..., "name": ... }`. A choice with the id `off` is shown in the player's language and means this option adds nothing. Without one, the option has no Off. |
+| `choices` | Each `{ "id": ..., "name": ... }`. A choice with the id `off` is shown in the player's language and means this option adds nothing. Without one, the option has no Off. |
+| `range` | A choice for each number: `{ "from": 1, "to": 20, "step": 1 }`, each choice's id being its number (counting down when `from` is the larger), at most 10001. `default` is then a number. For tunables and player numbers taken from `{ "option": "id" }`. |
+
+An option needs `choices` or a `range`, or both.
 
 <a id="p-format--files"></a>
 
@@ -3619,6 +3973,24 @@ A folder named `.arc` in `files/` changes the game's archive of that name file b
 
 A new galaxy with no `GalaxyName_` message shows an empty name.
 
+Words may hold the game's message tags in brackets: `[wait 30]`, `[page]`, `[center]`, `[sound SE_NAME]`, `[icon 7]`, `[small]`, `[normal]`, `[large]`, `[player]`, `[color 1]`, `[tag G T u...]`; `[[` is one `[`. A new message takes the talk settings of a game message named in `like`: `"MyNpc_Hello": { "default": "Hi, [player]!", "like": "AstroGalaxy_Kinopio012" }`. See [tutorial 5](#p-tutorials-05-text).
+
+<a id="p-format--the-journey"></a>
+
+#### The journey
+
+```json
+"story": { "first_stage": "MyFirstGalaxy", "first_mission": 1, "hub": "MyHub", "story_scenes": false }
+```
+
+| Key | Meaning |
+|---|---|
+| `first_stage`, `first_mission` | Where a new file begins, in place of the prologue |
+| `hub` | Where the player goes after a galaxy, in place of the Comet Observatory. A file with a star opens there |
+| `story_scenes` | `false`: none of the game's own story scenes |
+
+See [tutorial 16](#p-tutorials-16-total-conversion).
+
 <a id="p-format--hand-written-shaders"></a>
 
 #### Hand-written shaders
@@ -3633,7 +4005,7 @@ Most mods never need this: a model's materials get their shaders by themselves. 
 }]
 ```
 
-`lumalink shader <model>` writes the pixel program Nebula makes for each of a model's materials, to start from; a hand-written one takes the place of that material's plain program. The file is HLSL, one file for every device. It includes `program.hlsli` (and `program_lit.hlsli` for a lit material), as the programs Nebula generates do, and the command writes those beside it; and Nebula builds it for the device's graphics interface with a progress screen. A shader that doesn't build leaves that material undrawn, and the log says why. It applies to materials of that name in the models the mod brings: a model of the game's own has to be in the layer's `files/` for its materials to change.
+`lumalink shader <model>` writes the pixel program Nebula makes for each of a model's materials (a `.glb` or `.gltf` as Nebula converts it, or a `.bdl`/`.bmd`), to start from; a hand-written one takes the place of that material's plain program. The file is HLSL, one file for every device. It includes `program.hlsli` (and `program_lit.hlsli` for a lit material), as the programs Nebula generates do, and the command writes those beside it; and Nebula builds it for the device's graphics interface with a progress screen. A shader that doesn't build leaves that material undrawn, and the log says why. It applies to materials of that name in the models the mod brings: a model of the game's own has to be in the layer's `files/` for its materials to change, and `lumalink check` says when no model of the mod has a material of that name. A program has no clock: for motion, give the material an animation (a `.btk` texture matrix, [tutorial 2](#p-tutorials-02-models--a-material-that-moves)) and read its moving coordinates. Example: `examples/glowing-lantern`.
 
 <a id="p-format--adding-to-shared-files"></a>
 
@@ -3649,11 +4021,25 @@ layers/base/merge/ParticleData/Effect.arc/ParticleNames.bcsv.json      the names
 layers/base/merge/ParticleData/Effect.arc/Particles.jpc                those particles
 ```
 
-A table's rows are JSON. A column is named, or written as `0x` and its hash. A column left out is zero or empty.
+A table's rows are JSON. A column is named, or written as `0x` and its hash. A column left out is zero or empty. A table merge can also take rows away and change them:
 
 ```json
-{ "rows": [ { "GroupName": "MyEnemy", "UniqueName": "Smoke", "EffectName": "MyFire", "JointName": "Center" } ] }
+{
+  "remove": [ { "name": "EarthenPipe" } ],
+  "change": [ { "where": { "name": "SuperSpinDriver" }, "set": { "scale_x": 2.0 } } ],
+  "rows": [ { "GroupName": "MyEnemy", "UniqueName": "Smoke", "EffectName": "MyFire", "JointName": "Center" } ]
+}
 ```
+
+| Key | Does |
+|---|---|
+| `remove` | Takes away every row whose columns hold all the values given |
+| `change` | Sets columns (`set`) of every row matching `where` |
+| `rows` | Adds rows |
+
+They run in that order, mod by mod down the player's list. A row that matches nothing is not an error: another mod may have taken it. Two mods setting one cell: the higher on the list wins, and the Mods page shows the two overlap.
+
+Messages merge too: `merge/MessageData/messages.json` (every language) or `merge/<Language>/MessageData/Message.arc/message.bmg.json` (one) adds talk lines and changes what follows each. See [tutorial 5](#p-tutorials-05-text--talk-new-lines-and-what-follows-them).
 
 `Particles.jpc` holds only the new particles. Each one's number in the file is its place in `ParticleNames.bcsv.json`, starting at 0. Nebula renumbers them, and their textures, when it adds them to the game's.
 
@@ -3756,6 +4142,48 @@ A mod's code: a native library per device, with what it needs named in [plugins.
 
 `api` is the plugin interface it was built for. A Nebula with an older one says it needs a newer Nebula. A device with no entry in `binaries` says the mod has no version for it, and nothing of the mod is used.
 
+<a id="p-format--achievements"></a>
+
+#### Achievements
+
+A mod's own achievements, beside the game's. Each unlocks once, for good: the game keeps it in `achievements.ini` with
+the game's own, under the key `mod:<mod id>/<id>`, so it stays unlocked across save files, updates of the mod, and a
+mod turned off and on again. When one unlocks, the game's pop-up shows its name. The achievement board gets a Mods tab
+(only while a mod on has achievements) listing each with its description, and the All tab lists them after the game's.
+
+```json
+"achievements": [
+  { "id": "first-coin", "name": { "default": "Pocket Change", "ja": "はじめてのコイン" }, "description": "Collect a coin.",
+    "when": { "event": "coin" } },
+  { "id": "kameck", "name": "Wand Breaker", "description": "Defeat a Magikoopa.", "hidden": true,
+    "when": { "event": "actor_kill", "name": "Kameck" } },
+  { "id": "fifty-coins", "name": "Coin Purse", "description": "Collect 50 coins in one sitting." }
+]
+```
+
+| Field | Needed | Meaning |
+|---|---|---|
+| `id` | yes | Lower-case letters, digits and dashes, unique in the mod. Keep it for good: a new id is a new achievement, and the old one's unlock is no longer shown. |
+| `name` | yes | Text, shown on the pop-up and the board. |
+| `description` | no | Text: what earns it, shown on the board's card. |
+| `hidden` | no | `true`: the board lists it only once it is unlocked. |
+| `when` | no | The game event that unlocks it, from the list below. Without `when`, only the mod's code unlocks it. |
+| `when.name` | no | Only that event with this name: the galaxy for `star_get`, the object's name for `actor_kill`, the message id for `talk_line` (the names [events](#p-reference-events) gives each event). |
+| `when.value` | no | Only that event with this value: the star's number for `star_get`, the action for `player_action`. |
+
+Events `when` can name: `frame`, `stage_frame`, `stage_start`, `player_damage`, `player_miss`, `power_up`, `coin`,
+`star_bit`, `star_get`, `cutscene_start`, `cutscene_end`, `actor_appear`, `actor_kill`, `player_spin`, `player_jump`,
+`player_land`, `pause`, `stage_end`, `game_save`, `power_star_appear`, `talk_line`, `talk_choice`, `cutscene_part`,
+`camera_change`, `sound_start`, `effect_start`, `screen`, `actor_message`, `player_action`. Each is the
+`NEBULA_MOD_EVENT_` of the same name; [events](#p-reference-events) says when it comes and what its name and value are.
+
+Anything a single event cannot say (fifty coins, a galaxy with no damage, a time) is the mod's code: it counts what it
+needs and calls `unlock_achievement(self, "fifty-coins")` (see [plugins](#p-plugins)); it returns 1 when that unlocked
+it now. The game keeps the first 64 achievements of a mod; one with no name, an id that is not an id, or the id of one
+before it is left out.
+
+The `achievements` example in LumaLink's `examples` folder has three unlocked by events and one by its code.
+
 <a id="p-format--what-the-game-says"></a>
 
 ### What the game says
@@ -3804,6 +4232,7 @@ Nebula reads every format it has ever read.
 - Every `path`, `icon`, `pictures` entry and `save.path` exists in the file.
 - `icon` and `pictures` are PNGs of at most 8192 pixels a side and 64 MB; at most 16 pictures. Over 1024 pixels a side gets a note: the game shows a picture at most 1024 a side.
 - `homepage` starts with `https://` or `http://`; `license` is text.
+- Each achievement has an id (unique in the mod) and a name; its `when` names an event the game has, `when.value` is a whole number, and one without `when` is in a mod with code; at most 64.
 - No path leaves the file.
 - `when` names only options the file declares, and only their choices.
 - `default` is one of its option's choices.
@@ -4054,6 +4483,35 @@ game->set_comet_schedule(2, galaxies, coins, 2);
 
 Both only in `nebula_plugin_start`, and both can be data instead: `event_flags` and `comet_schedule` in [format.md](#p-format).
 
+<a id="p-plugins--achievements"></a>
+
+### Achievements
+
+A mod's achievements are listed in `luma.json` (see [format.md](#p-format)): an id, a name, a description. One that a
+single event earns needs no code (`"when": { "event": "star_get" }`). For the rest, the plugin counts and unlocks:
+
+```c
+static int32_t coins;
+
+static int32_t coin(const NebulaModEventData* data, void* user) {
+    if (coins < 50 && (coins += data->value) >= 50 && NEBULA_MOD_API_HAS(game, unlock_achievement)) {
+        game->unlock_achievement(me, "fifty-coins");
+    }
+    return data->value;
+}
+```
+
+`unlock_achievement(self, id)` returns 1 when it unlocked it now, 0 when it was already unlocked or the mod has no
+achievement of that id. Its pop-up shows at once; any thread may call it.
+
+<a id="p-plugins--calls-added-later"></a>
+
+### Calls added later
+
+Calls are only ever added at the end of `NebulaModApi`, so a plugin keeps working on every later Nebula. On an
+earlier Nebula a newer call is not there: `NEBULA_MOD_API_HAS(api, call)` is true when it is. Check it before a call
+added after the oldest Nebula the mod names in `nebula`, as above.
+
 <a id="p-plugins--building-on-linux-and-mac"></a>
 
 ### Building on Linux and Mac
@@ -4077,7 +4535,7 @@ On Linux, a library's undefined functions are found when it's loaded, in the gam
 
 Written from `nebula_mod_api.h` (by `tools/plugin_api_doc.py`), in its order: fields are only ever added at the end, so a plugin keeps working on later versions of Nebula. Check `game->size` before using a call newer than the oldest Nebula you support.
 
-A call on an actor with a null pointer is your bug: nothing checks. Calls about the player or the stage do nothing, and answer 0 or null, between stages and on the file select screen.
+A null object, layout, point or name where a call needs one makes the call do nothing: it answers 0, null, or -1 where -1 means "no such". Where null means something (`find_actor`'s `name`), the call says so. Calls about the player or the stage do nothing, and answer 0 or null, between stages and on the file select screen. A number that is NaN or infinite, where a position, motion, angle, scale, time or tuning number is set, changes nothing either.
 
 | Call | Signature |
 |---|---|
@@ -4247,6 +4705,7 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `release` | `void release(void* memory)` |
 | `format` | `int32_t format(char* buffer, uint64_t size, const char* format, ...)` |
 | `set_camera_near` | `void set_camera_near(float distance)` |
+| `unlock_achievement` | `int32_t unlock_achievement(const NebulaPlugin* self, const char* id)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -4450,7 +4909,7 @@ int32_t is_dead(NebulaActor* actor)
 void show_model(NebulaActor* actor, int32_t show)
 ```
 
-Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model.
+Its model drawn (1) or not (0); it still moves and touches. Nothing for an object with no model. The player: his hands, face and power-up suit with it; his shadow stays.
 
 <a id="p-reference-plugin-api--play"></a>
 
@@ -4520,7 +4979,7 @@ The controls pressed on this frame only: NEBULA_BUTTON_*.
 void stick(float* x, float* y)
 ```
 
-The stick, each from -1 to 1.
+The stick, each from -1 to 1 (either may be null).
 
 <a id="p-reference-plugin-api--shakecamera"></a>
 
@@ -5070,7 +5529,7 @@ The rail's whole length.
 int32_t raycast(const float* from, const float* to, float* hit)
 ```
 
-The world. 1 and where (`hit`) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
+The world. 1 and where (`hit`, which may be null) if the line from `from` to `to` meets the map's collision; 0 if it's clear.
 
 <a id="p-reference-plugin-api--isonground"></a>
 
@@ -5190,7 +5649,7 @@ The actor's part in that cutscene ends; the cutscene ends when every part has.
 int32_t is_cutscene_playing(void)
 ```
 
-1 while any cutscene plays.
+1 while any cutscene plays, while the stage starts (its opening camera and the player's arrival) and while a star's get sequence plays ("You got a Star!"), which send no NEBULA_MOD_EVENT_CUTSCENE: the player has control when it is 0. A message is best shown then.
 
 <a id="p-reference-plugin-api--shakecameraby"></a>
 
@@ -5270,7 +5729,7 @@ In a stage: the player goes back to the dome, as when a galaxy is left.
 int32_t is_event_flag_on(const char* name)
 ```
 
-1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on.
+1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on. "SpinAndStarPointer" is the spin and the Star Pointer the Gateway's Luma grants.
 
 <a id="p-reference-plugin-api--seteventflagon"></a>
 
@@ -5280,7 +5739,7 @@ int32_t is_event_flag_on(const char* name)
 void set_event_flag_on(const char* name)
 ```
 
-Turns it on in the save (written with the next save).
+Turns it on in the save (written with the next save). "SpinAndStarPointer" grants the spin and the Star Pointer at once, in the stage being played too.
 
 <a id="p-reference-plugin-api--hasstar"></a>
 
@@ -5300,7 +5759,7 @@ int32_t has_star(const char* galaxy, int32_t star)
 void show_message(const char* utf8_or_id, int32_t centre)
 ```
 
-In a stage: the game's information box (at the bottom, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags). It stays until hide_message.
+In a stage: the game's information box (at the top, or the middle with `centre` 1) shows a message by its id (the game's or add_text's), else these words (with the game's message tags; lines wrap between words). It stays until hide_message. Asked for while the stage starts, it appears when the player has control.
 
 <a id="p-reference-plugin-api--hidemessage"></a>
 
@@ -5730,7 +6189,7 @@ The game writes the save, as it does after a star.
 int32_t set_tunable(const char* key, double value)
 ```
 
-A file's tuning number by "<file stem>.<name>" ("Kuribo.cWalkSpeed"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds round and clamp. 0: done; -1: no such number.
+A file's tuning number by "<file stem>.<name>" ("GameRules.cPlayerHealth"), or a list's place by "<file stem>.<name>[<i>]", as luma.json's "tunables" set them. Any time; most are read when an object starts, so the host sets luma.json's before the first stage. Whole kinds round and clamp. 0: done; -1: no such number.
 
 <a id="p-reference-plugin-api--tunableat"></a>
 
@@ -5912,6 +6371,16 @@ void set_camera_near(float distance)
 
 The camera's near plane in units: nothing closer to the camera is drawn. 0: the game's (100; 10 in its own first-person view). Kept until set again.
 
+<a id="p-reference-plugin-api--unlockachievement"></a>
+
+#### `unlock_achievement`
+
+```c
+int32_t unlock_achievement(const NebulaPlugin* self, const char* id)
+```
+
+One of the mod's achievements (its luma.json "achievements", by id) is unlocked: 1 now, 0 when it was already or the mod has none of that id. Its pop-up shows; the board keeps it under Mods.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -5978,8 +6447,8 @@ The camera's near plane in units: nothing closer to the camera is drawn. 0: the 
     /* A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the
        cutscene's time sheet names it. */
     NEBULA_MOD_EVENT_CUTSCENE_PART,
-    /* The camera changes. value: 0 an area's camera, 1 an event camera (a cutscene's, start_camera's). name: its
-       id, as the stage's camera table names it. */
+    /* The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view
+       back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. */
     NEBULA_MOD_EVENT_CAMERA_CHANGE,
     /* A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another
        sound's, or -1 for none. Subscribing costs a call per sound. */
@@ -6311,7 +6780,7 @@ returns. An event no plugin subscribes to costs the game one load and one branch
 | `NEBULA_MOD_EVENT_TALK_LINE` | A line of talk opens in its balloon. actor: who talks. name: the line's message id, as luma.json "text" and add_text name it (null for a line with no id). |
 | `NEBULA_MOD_EVENT_TALK_CHOICE` | The player answered a talk's yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's message id. |
 | `NEBULA_MOD_EVENT_CUTSCENE_PART` | A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the cutscene's time sheet names it. |
-| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changes. value: 0 an area's camera, 1 an event camera (a cutscene's, start_camera's). name: its id, as the stage's camera table names it. |
+| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. |
 | `NEBULA_MOD_EVENT_SOUND_START` | A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another sound's, or -1 for none. Subscribing costs a call per sound. |
 | `NEBULA_MOD_EVENT_EFFECT_START` | An object starts one of its effects. actor: the object. name: the effect, as the object's effect table names it. Subscribing costs a call per effect. |
 | `NEBULA_MOD_EVENT_SCREEN` | A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its name in the game's code. |
@@ -7756,7 +8225,7 @@ after the game's source file:
 
 | Key | Is |
 |---|---|
-| `"<file stem>.<name>"` | A named number: `Kuribo.cWalkSpeed` |
+| `"<file stem>.<name>"` | A named number: `GameRules.cPlayerHealth`, how many hits Mario takes |
 | `"<file stem>.<function>.<k>"` | The k-th step count (frames) in a function: `Kuribo.exeFlatDown.1`, how long a flattened Goomba stays |
 | `"<file stem>.<function>.<call>.<k>"` | The k-th number a function gives a motion, animation or reach call: `Kuribo.tryActive.isNearPlayerAnyTime.1`, how near the player a Goomba wakes |
 
@@ -8450,7 +8919,7 @@ returns. An event no plugin subscribes to costs the game one load and one branch
 | `NEBULA_MOD_EVENT_TALK_LINE` | A line of talk opens in its balloon. actor: who talks. name: the line's message id, as luma.json "text" and add_text name it (null for a line with no id). |
 | `NEBULA_MOD_EVENT_TALK_CHOICE` | The player answered a talk's yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's message id. |
 | `NEBULA_MOD_EVENT_CUTSCENE_PART` | A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the cutscene's time sheet names it. |
-| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changes. value: 0 an area's camera, 1 an event camera (a cutscene's, start_camera's). name: its id, as the stage's camera table names it. |
+| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. |
 | `NEBULA_MOD_EVENT_SOUND_START` | A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another sound's, or -1 for none. Subscribing costs a call per sound. |
 | `NEBULA_MOD_EVENT_EFFECT_START` | An object starts one of its effects. actor: the object. name: the effect, as the object's effect table names it. Subscribing costs a call per effect. |
 | `NEBULA_MOD_EVENT_SCREEN` | A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its name in the game's code. |
@@ -18021,7 +18490,7 @@ src/Game/Screen/YesNoLayout.cpp
 
 ## The game's tables
 
-Generated by tools/modding/tables_dump.py from a store of version 17: 13552 tables in 345 kinds, 7046 columns (6513 named from the game's source; #hash for the rest).
+Generated by tools/modding/tables_dump.py from a store of version 18: 13552 tables in 345 kinds, 7046 columns (7014 named; #hash for the rest).
 
 A mod changes a table with a file at the table's path under a .luma layer's `merge/` folder, `<path>.json`:
 `remove` (rows matching a set of columns), `change` (`where` a set of columns, `set` columns), and `rows` to add.
@@ -18032,23 +18501,23 @@ for each one's own table of that name.
 | Table | Files | Rows | Columns |
 |---|---|---|---|
 | `<language>/MessageData/Message/messageid.tbl` | 3 | 7392 | Index (int), MessageId (text) |
-| `<language>/MessageData/Message/struct.tbl` | 3 | 3 | #1336af42 (int), #17b17bfe (int), #1c133e8d (int), #6443a44c (int), #89e62702 (int), #ae377161 (int), #bec614a2 (int), #fb681135 (int) |
+| `<language>/MessageData/Message/struct.tbl` | 3 | 3 | mAreaID (int), mBalloon (int), mCameraID (int), mCameraType (int), mMainMessage (int), mReadID (int), mSound (int), #1336af42 (int) |
 | `NebulaData/ErrorMessageArchive/<language>/messagedata/system/messageid.tbl` | 10 | 70 | Index (int), MessageId (text) |
-| `NebulaData/ErrorMessageArchive/<language>/messagedata/system/struct.tbl` | 10 | 10 | #1336af42 (int), #17b17bfe (int), #1c133e8d (int), #6443a44c (int), #89e62702 (int), #ae377161 (int), #bec614a2 (int), #fb681135 (int) |
+| `NebulaData/ErrorMessageArchive/<language>/messagedata/system/struct.tbl` | 10 | 10 | mAreaID (int), mBalloon (int), mCameraID (int), mCameraType (int), mMainMessage (int), mReadID (int), mSound (int), #1336af42 (int) |
 | `NebulaData/GalaxyInfoTable.bcsv` | 1 | 55 | GrandGalaxyNo (int), MapPaneName (text), name (text), OpenCondition0 (text), OpenCondition1 (text), OpenCondition2 (text), PowerStarNum (int) |
 | `NebulaData/StoryProgressTable.bcsv` | 1 | 14 | name (text), progress (int) |
-| `ObjectData/<object>/<collision>.pa` | 1015 | 678337 | camera_id (field), Camera_through (field), Floor_code (field), Sound_code (field), Wall_code (field), #188f0076 (text), #38a5ee5f (text), #4c6e744b (text) |
+| `ObjectData/<object>/<collision>.pa` | 1015 | 678337 | camera_id (field), Camera_through (field), comment (text), Floor_code (field), Sound_code (field), Wall_code (field), #188f0076 (text), #4c6e744b (text) |
 | `ObjectData/<object>/<object>.banmt` | 144 | 875 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
-| `ObjectData/<object>/actoranimctrl.bcsv` | 49 | 845 | ActorAnimName (text), BckName (text), #2ec2fbc8 (float), #36010f09 (float), #3e264686 (float), #4d899144 (float), #5b36581d (int), #62746b5e (int), #6882cde8 (text), #6a99a2db (int), #6bec7f26 (text), #6f563064 (text), #6f9ca5e9 (text), #7232f698 (text), #79fced99 (int), #8bfde078 (float), #b8713ccd (int), #cabd95f5 (float), #f730f24a (int) |
+| `ObjectData/<object>/actoranimctrl.bcsv` | 49 | 845 | ActorAnimName (text), BckName (text), BckStartFrame (float), BpkName (text), BpkStartFrame (float), BrkName (text), BrkStartFrame (float), BtkName (text), BtkStartFrame (float), BtpName (text), BtpStartFrame (float), BvaName (text), BvaStartFrame (float), #5b36581d (int), #62746b5e (int), #6a99a2db (int), #79fced99 (int), #b8713ccd (int), #f730f24a (int) |
 | `ObjectData/<object>/dynamicjointctrl.bcsv` | 3 | 10 | AccelRateToBckPos (float), BendMaxDegree (float), CtrlJointNumMax (int), Friction (float), Gravity (float), JointName (text) |
 | `ObjectData/<object>/facejointctrl.bcsv` | 4 | 4 | DegreeMax (float), JointName (text) |
-| `ObjectData/<object>/groupinfo` | 112 | 490 | name (text), #00000e46 (float), #00000e47 (float), #00000e48 (float), #00000e65 (float), #00000e66 (float), #00000e67 (float), #00000e84 (float), #00000e85 (float), #00000e86 (float), #05a3f51c (text), #08fda4c0 (text), #38a5ee5f (text), #c4ab08aa (text) |
+| `ObjectData/<object>/groupinfo` | 112 | 490 | brother (text), child (text), comment (text), name (text), parent (text), rx (float), ry (float), rz (float), sx (float), sy (float), sz (float), tx (float), ty (float), tz (float) |
 | `ObjectData/<object>/padandcameractrl.bcsv` | 37 | 268 | BckName (text), CameraShakeName (text), CameraShakeNameFar (text), CameraShakeNameMiddle (text), DistanceFar (float), DistanceInvalid (float), DistanceNear (float), EndFrame (float), PadRumbleName (text), PadRumbleNameFar (text), PadRumbleNameMiddle (text), StartFrame (float) |
 | `ObjectData/<object>/padrumbledata.bcsv` | 6 | 391 | PadRumbleName (text), StartFrame (int) |
 | `ObjectData/<object>/sandstormparam.bcsv` | 3 | 3 | BindHeight (float), SensorHeight (float), SensorMin (float), SizeUpRate (float), SpiralRadius (float), SpiralRot (float), StepAdjust (int), StepEnd (int), StepFix (int), StepStorm (int) |
-| `ObjectData/<object>/shadow.bcsv` | 62 | 261 | Collision (int), DropLength (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), LineEnd (text), LineEndRadius (float), LineStart (text), LineStartRadius (float), Model (text), Name (text), Radius (float), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float), #04c33057 (float), #04c33058 (float), #04c33059 (float), #18916416 (float), #18916417 (float), #18916418 (float) |
-| `ObjectData/<object>/storydemoshadow.bcsv` | 6 | 23 | Collision (int), DropLength (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), LineEnd (text), LineEndRadius (float), LineStart (text), LineStartRadius (float), Name (text), Radius (float), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float), #04c33057 (float), #04c33058 (float), #04c33059 (float), #18916416 (float), #18916417 (float), #18916418 (float) |
-| `ObjectData/AstroNamePlateData/astronameplatedata.bcsv` | 1 | 10 | ModelName (text), #124196e2 (int), #124196e3 (int), #d6cafaea (float), #d6cafaeb (float) |
+| `ObjectData/<object>/shadow.bcsv` | 62 | 261 | Collision (int), DropLength (float), DropOffsetX (float), DropOffsetY (float), DropOffsetZ (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), LineEnd (text), LineEndRadius (float), LineStart (text), LineStartRadius (float), Model (text), Name (text), Radius (float), SizeX (float), SizeY (float), SizeZ (float), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float) |
+| `ObjectData/<object>/storydemoshadow.bcsv` | 6 | 23 | Collision (int), DropLength (float), DropOffsetX (float), DropOffsetY (float), DropOffsetZ (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), LineEnd (text), LineEndRadius (float), LineStart (text), LineStartRadius (float), Name (text), Radius (float), SizeX (float), SizeY (float), SizeZ (float), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float) |
+| `ObjectData/AstroNamePlateData/astronameplatedata.bcsv` | 1 | 10 | ModelName (text), OffsetY0 (float), OffsetY1 (float), UpperFlag0 (int), UpperFlag1 (int) |
 | `ObjectData/BossStinkBug/ikjointctrl.bcsv` | 1 | 6 | EndDirMaxDegree (float), EndLocalDirX (float), EndLocalDirY (float), EndLocalDirZ (float), FarLimitRate (float), JointName (text), NearLimitRate (float) |
 | `ObjectData/DemoSheet/<demo>/<demo>action.bcsv` | 138 | 487 | ActionType (int), AnimName (text), CastID (int), CastName (text), PartName (text), PosName (text) |
 | `ObjectData/DemoSheet/<demo>/<demo>camera.bcsv` | 138 | 216 | AnimCameraEndFrame (int), AnimCameraName (text), AnimCameraStartFrame (int), CameraTargetCastID (int), CameraTargetName (text), IsContinuous (int), PartName (text) |
@@ -18059,17 +18528,17 @@ for each one's own table of that name.
 | `ObjectData/DemoSheet/<demo>/<demo>wipe.bcsv` | 80 | 52 | PartName (text), WipeFrame (int), WipeName (text), WipeType (int) |
 | `ObjectData/DinoPackun2/dinopackun.banmt` | 1 | 25 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
 | `ObjectData/DodoryuRabbit/trickrabbit.banmt` | 1 | 7 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
-| `ObjectData/Dossun/shadow2d.bcsv` | 1 | 1 | Collision (int), DropLength (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), Name (text), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float), #04c33057 (float), #04c33058 (float), #04c33059 (float), #18916416 (float), #18916417 (float), #18916418 (float) |
+| `ObjectData/Dossun/shadow2d.bcsv` | 1 | 1 | Collision (int), DropLength (float), DropOffsetX (float), DropOffsetY (float), DropOffsetZ (float), DropStart (float), FollowScale (int), Gravity (int), GroupName (text), Joint (text), Name (text), SizeX (float), SizeY (float), SizeZ (float), SyncShow (int), Type (text), VolumeCut (int), VolumeEnd (float), VolumeStart (float) |
 | `ObjectData/DummyNPC/npc.bcsv` | 1 | 1 | name (text), #0eae47c3 (int), #1e5fb4b7 (float), #ca0053ba (field) |
 | `ObjectData/IceMeramera/meramera.banmt` | 1 | 6 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
-| `ObjectData/Koopa/armorbreakfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/rockbreakfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/rockfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/rollballfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/tailthornbigfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/tailthornsmallfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/Koopa/thornbreakfixpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/LightData/light<zone>.bcsv` | 265 | 948 | AreaLightName (text), Dummy (int), Interpolate (int), LightID (int), #000113f5 (field), #059a5892 (field), #0a71f2c8 (field), #0b1c280f (int), #0b1c2810 (int), #0b1c2815 (int), #0b1c2820 (int), #0ecf2d59 (int), #0ecf2d5a (int), #0ecf2d5f (int), #0ecf2d6a (int), #0f67a990 (int), #0f67a991 (int), #0f67a996 (int), #0f67a9a1 (int), #165c8f89 (field), #17175211 (field), #1beeec47 (field), #27d98908 (field), #3c8bea81 (int), #3c8bea82 (int), #3c8bea87 (int), #3c8bea92 (int), #40026350 (int), #40026351 (int), #40026356 (int), #40026361 (int), #43b5689a (int), #43b5689b (int), #43b568a0 (int), #43b568ab (int), #444de4d1 (int), #444de4d2 (int), #444de4d7 (int), #444de4e2 (int), #5ff07156 (float), #5ff07157 (float), #5ff07158 (float), #5ffe88d7 (float), #5ffe88d8 (float), #5ffe88d9 (float), #690ea42b (int), #69b44f36 (float), #69b44f37 (float), #69b44f38 (float), #69c266b7 (float), #69c266b8 (float), #69c266b9 (float), #7193684c (int), #75c8535f (float), #75c85360 (float), #75c85361 (float), #75d66ae0 (float), #75d66ae1 (float), #75d66ae2 (float), #77608395 (float), #77608396 (float), #77608397 (float), #776dc061 (int), #776dc062 (int), #776dc067 (int), #776dc072 (int), #776e9b16 (float), #776e9b17 (float), #776e9b18 (float), #79d6baca (int), #79d6bacb (int), #79d6bad0 (int), #79d6badb (int), #7cd48d69 (field), #7d098080 (int), #7d098081 (int), #7d098086 (int), #7d098091 (int), #8e5186e8 (field), #b7ab8f70 (int), #b7ab8f71 (int), #b7ab8f76 (int), #b7ab8f81 (int), #db99e8f5 (int), #e6759a6c (int), #ec91cab1 (int), #ec91cab2 (int), #ec91cab7 (int), #ec91cac2 (int) |
+| `ObjectData/Koopa/armorbreakfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/rockbreakfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/rockfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/rollballfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/tailthornbigfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/tailthornsmallfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/Koopa/thornbreakfixpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/LightData/light<zone>.bcsv` | 265 | 948 | AreaLightName (text), Dummy (int), Fix (field), Interpolate (int), LightID (int), PlanetAlpha2 (int), PlanetAmbientA (int), PlanetAmbientB (int), PlanetAmbientG (int), PlanetAmbientR (int), PlanetLight0ColorA (int), PlanetLight0ColorB (int), PlanetLight0ColorG (int), PlanetLight0ColorR (int), PlanetLight0FollowCamera (field), PlanetLight0PosX (float), PlanetLight0PosY (float), PlanetLight0PosZ (float), PlanetLight1ColorA (int), PlanetLight1ColorB (int), PlanetLight1ColorG (int), PlanetLight1ColorR (int), PlanetLight1FollowCamera (field), PlanetLight1PosX (float), PlanetLight1PosY (float), PlanetLight1PosZ (float), PlayerAlpha2 (int), PlayerAmbientA (int), PlayerAmbientB (int), PlayerAmbientG (int), PlayerAmbientR (int), PlayerLight0ColorA (int), PlayerLight0ColorB (int), PlayerLight0ColorG (int), PlayerLight0ColorR (int), PlayerLight0FollowCamera (field), PlayerLight0PosX (float), PlayerLight0PosY (float), PlayerLight0PosZ (float), PlayerLight1ColorA (int), PlayerLight1ColorB (int), PlayerLight1ColorG (int), PlayerLight1ColorR (int), PlayerLight1FollowCamera (field), PlayerLight1PosX (float), PlayerLight1PosY (float), PlayerLight1PosZ (float), StrongAlpha2 (int), StrongAmbientA (int), StrongAmbientB (int), StrongAmbientG (int), StrongAmbientR (int), StrongLight0ColorA (int), StrongLight0ColorB (int), StrongLight0ColorG (int), StrongLight0ColorR (int), StrongLight0FollowCamera (field), StrongLight0PosX (float), StrongLight0PosY (float), StrongLight0PosZ (float), StrongLight1ColorA (int), StrongLight1ColorB (int), StrongLight1ColorG (int), StrongLight1ColorR (int), StrongLight1FollowCamera (field), StrongLight1PosX (float), StrongLight1PosY (float), StrongLight1PosZ (float), WeakAlpha2 (int), WeakAmbientA (int), WeakAmbientB (int), WeakAmbientG (int), WeakAmbientR (int), WeakLight0ColorA (int), WeakLight0ColorB (int), WeakLight0ColorG (int), WeakLight0ColorR (int), WeakLight0FollowCamera (field), WeakLight0PosX (float), WeakLight0PosY (float), WeakLight0PosZ (float), WeakLight1ColorA (int), WeakLight1ColorB (int), WeakLight1ColorG (int), WeakLight1ColorR (int), WeakLight1FollowCamera (field), WeakLight1PosX (float), WeakLight1PosY (float), WeakLight1PosZ (float) |
 | `ObjectData/LuigiTornado/mariotornado.banmt` | 1 | 1 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
 | `ObjectData/NPCData/caretakeritem.bcsv` | 1 | 2 | mGoods0 (text), mGoods1 (text), mGoodsJoint0 (text), mGoodsJoint1 (text) |
 | `ObjectData/NPCData/honeybeeitem.bcsv` | 1 | 10 | mGoods0 (text), mGoods1 (text), mGoodsJoint0 (text), mGoodsJoint1 (text) |
@@ -18081,16 +18550,16 @@ for each one's own table of that name.
 | `ObjectData/NPCData/ticogalaxyitem.bcsv` | 1 | 1 | mGoods0 (text), mGoods1 (text), mGoodsJoint0 (text), mGoodsJoint1 (text) |
 | `ObjectData/NPCData/ticoshopitem.bcsv` | 1 | 1 | mGoods0 (text), mGoods1 (text), mGoodsJoint0 (text), mGoodsJoint1 (text) |
 | `ObjectData/PenguinMaster/penguincoach.banmt` | 1 | 1 | attribute (int), end_frame (int), interpole (int), name (text), play_frame (int), start_frame (int) |
-| `ObjectData/PigPoppo/kibaposl.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/PigPoppo/kibaposr.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/PigPoppo/riderpos.bcsv` | 1 | 1 | JointName (text), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/PlanetMapDataTable/planetmapdatatable.bcsv` | 1 | 258 | BloomFlag (int), IndirectFlag (int), LowFlag (int), MiddleFlag (int), PlanetName (text), WaterFlag (int), #2253ab4c (text), #2253ab4d (text), #2253ab4e (text), #2253ab4f (text), #2253ab50 (text), #2253ab51 (text), #2253ab52 (text), #2253ab53 (text) |
-| `ObjectData/SandGolem/blockinfo.bcsv` | 1 | 82 | JointName (text), ModelName (text), #04c0192a (float), #95cb4ed0 (float), #95cb4ed1 (float), #95cb4ed2 (float), #b5b9663d (float), #b5b9663e (float), #b5b9663f (float) |
-| `ObjectData/SkeletalFishBoss/param.bcsv` | 1 | 1 | LevelNum (int), #30bce39a (int), #30bce39b (int), #30bce39c (int), #4074ac1e (int), #4074ac1f (int), #4074ac20 (int), #491c0859 (int), #491c085a (int), #491c085b (int), #4dd0914e (float), #4dd0914f (float), #4dd09150 (float), #6b26d748 (int), #6b26d749 (int), #6b274ba7 (int), #6b274ba8 (int), #6b274ba9 (int), #6b274baa (int), #84d2d63f (float), #84d2d640 (float), #84d2d641 (float), #e79fcc7b (float), #e79fcc7c (float), #e79fcc7d (float), #e79fcc9a (float), #e79fcc9b (float), #e79fcc9c (float), #e7ade3fc (float), #e7ade3fd (float), #e7ade3fe (float), #e7ade41b (float), #e7ade41c (float), #e7ade41d (float), #e7ade43a (float), #e7ade43b (float), #e7ade43c (float), #e7ade459 (float), #e7ade45a (float), #e7ade45b (float) |
-| `ObjectData/SkeletalFishBoss/parameters.bcsv` | 1 | 1 | LevelNum (int), #4074ac1e (int), #4074ac1f (int), #4074ac20 (int), #491c0859 (int), #491c085a (int), #491c085b (int), #84d2d63f (float), #84d2d640 (float), #84d2d641 (float), #9f69cfa0 (float), #9f69cfa1 (float), #9f69cfa2 (float), #9f69cfbf (float), #9f69cfc0 (float), #9f69cfc1 (float) |
-| `ParticleData/Effect/autoeffectlist.bcsv` | 1 | 2591 | Affect (text), AnimName (text), ContinueAnimEnd (text), DrawOrder (text), EffectName (text), EndFrame (int), EnvColor (text), Follow (text), GroupName (text), JointName (text), LightAffectValue (float), OffsetX (float), OffsetY (float), OffsetZ (float), ParentName (text), PrmColor (text), RateValue (float), ScaleValue (float), StartFrame (int), UniqueName (text), #000009e1 (int) |
+| `ObjectData/PigPoppo/kibaposl.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/PigPoppo/kibaposr.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/PigPoppo/riderpos.bcsv` | 1 | 1 | JointName (text), RotateX (float), RotateY (float), RotateZ (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/PlanetMapDataTable/planetmapdatatable.bcsv` | 1 | 258 | BloomFlag (int), ForceLowScenarioName0 (text), ForceLowScenarioName1 (text), ForceLowScenarioName2 (text), ForceLowScenarioName3 (text), ForceLowScenarioName4 (text), ForceLowScenarioName5 (text), ForceLowScenarioName6 (text), ForceLowScenarioName7 (text), IndirectFlag (int), LowFlag (int), MiddleFlag (int), PlanetName (text), WaterFlag (int) |
+| `ObjectData/SandGolem/blockinfo.bcsv` | 1 | 82 | JointName (text), ModelName (text), RotateX (float), RotateY (float), RotateZ (float), Scale (float), TransX (float), TransY (float), TransZ (float) |
+| `ObjectData/SkeletalFishBoss/param.bcsv` | 1 | 1 | EnergyLv0 (int), EnergyLv1 (int), EnergyLv2 (int), GuardAppearNumLv0 (int), GuardAppearNumLv1 (int), GuardAppearNumLv2 (int), GuardOffsetLv0 (float), GuardOffsetLv1 (float), GuardOffsetLv2 (float), GuardPosLv1Id0X (float), GuardPosLv1Id0Y (float), GuardPosLv1Id0Z (float), GuardPosLv1Id1X (float), GuardPosLv1Id1Y (float), GuardPosLv1Id1Z (float), GuardPosLv2Id0X (float), GuardPosLv2Id0Y (float), GuardPosLv2Id0Z (float), GuardPosLv2Id1X (float), GuardPosLv2Id1Y (float), GuardPosLv2Id1Z (float), GuardPosLv2Id2X (float), GuardPosLv2Id2Y (float), GuardPosLv2Id2Z (float), GuardPosLv2Id3X (float), GuardPosLv2Id3Y (float), GuardPosLv2Id3Z (float), GuardWaitLv1Id0 (int), GuardWaitLv1Id1 (int), GuardWaitLv2Id0 (int), GuardWaitLv2Id1 (int), GuardWaitLv2Id2 (int), GuardWaitLv2Id3 (int), LevelNum (int), RailIDLv0 (int), RailIDLv1 (int), RailIDLv2 (int), SpeedLv0 (float), SpeedLv1 (float), SpeedLv2 (float) |
+| `ObjectData/SkeletalFishBoss/parameters.bcsv` | 1 | 1 | EnergyLv0 (int), EnergyLv1 (int), EnergyLv2 (int), LevelNum (int), RailIDLv0 (int), RailIDLv1 (int), RailIDLv2 (int), SpeedLv0 (float), SpeedLv1 (float), SpeedLv2 (float), #9f69cfa0 (float), #9f69cfa1 (float), #9f69cfa2 (float), #9f69cfbf (float), #9f69cfc0 (float), #9f69cfc1 (float) |
+| `ParticleData/Effect/autoeffectlist.bcsv` | 1 | 2591 | Affect (text), AnimName (text), ContinueAnimEnd (text), DrawOrder (text), EffectName (text), EndFrame (int), EnvColor (text), Follow (text), GroupName (text), JointName (text), LightAffectValue (float), No (int), OffsetX (float), OffsetY (float), OffsetZ (float), ParentName (text), PrmColor (text), RateValue (float), ScaleValue (float), StartFrame (int), UniqueName (text) |
 | `ParticleData/Effect/particlenames.bcsv` | 1 | 3327 | id (int), name (text) |
-| `StageData/<stage>/camera/cameraparam.bcam` | 230 | 9530 | angleA (float), angleB (float), camendint (int), camint (int), camtype (text), dist (float), eflag.enableEndErpFrame (int), eflag.enableErpFrame (int), evfrm (int), evpriority (int), flag.antibluroff (int), flag.collisionoff (int), flag.lofserpoff (int), flag.nofovy (int), flag.noreset (int), flag.subjectiveoff (int), fovy (float), gflag.camendint (int), gflag.enableEndErpFrame (int), gflag.thru (int), gndint (int), id (text), loffset (float), loffsetv (float), lower (float), lplay (float), num1 (int), num2 (int), pushdelay (int), pushdelaylow (int), roll (float), string (text), udown (int), uplay (float), upper (float), version (int), vpanuse (int), #0036d9c5 (float), #0036d9c6 (float), #0036d9c7 (float), #31cb1323 (float), #31cb1324 (float), #31cb1325 (float), #3b5cb472 (float), #3b5cb473 (float), #3b5cb474 (float), #ac52894b (float), #ac52894c (float), #ac52894d (float), #bec02b34 (float), #bec02b35 (float), #bec02b36 (float) |
+| `StageData/<stage>/camera/cameraparam.bcam` | 230 | 9530 | angleA (float), angleB (float), axis.X (float), axis.Y (float), axis.Z (float), camendint (int), camint (int), camtype (text), dist (float), eflag.enableEndErpFrame (int), eflag.enableErpFrame (int), evfrm (int), evpriority (int), flag.antibluroff (int), flag.collisionoff (int), flag.lofserpoff (int), flag.nofovy (int), flag.noreset (int), flag.subjectiveoff (int), fovy (float), gflag.camendint (int), gflag.enableEndErpFrame (int), gflag.thru (int), gndint (int), id (text), loffset (float), loffsetv (float), lower (float), lplay (float), num1 (int), num2 (int), pushdelay (int), pushdelaylow (int), roll (float), string (text), udown (int), up.X (float), up.Y (float), up.Z (float), uplay (float), upper (float), version (int), vpanaxis.X (float), vpanaxis.Y (float), vpanaxis.Z (float), vpanuse (int), woffset.X (float), woffset.Y (float), woffset.Z (float), wpoint.X (float), wpoint.Y (float), wpoint.Z (float) |
 | `StageData/<stage>/jmp/childobj/common/childobjinfo` | 224 | 37 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), ParentID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/childobj/layera/childobjinfo` | 161 | 31 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), ParentID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/childobj/layerb/childobjinfo` | 75 | 5 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), ParentID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
@@ -18125,8 +18594,8 @@ for each one's own table of that name.
 | `StageData/<stage>/jmp/generalpos/layern/generalposinfo` | 7 | 2 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), name (text), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), PosName (text) |
 | `StageData/<stage>/jmp/generalpos/layero/generalposinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), name (text), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), PosName (text) |
 | `StageData/<stage>/jmp/generalpos/layerp/generalposinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), name (text), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), PosName (text) |
-| `StageData/<stage>/jmp/list/changescenelistinfo` | 230 | 4 | MarioNo (int), ScenarioNo (int), #d557c74d (int), #de82372a (text) |
-| `StageData/<stage>/jmp/list/stageinfo` | 230 | 230 | #15adc947 (text), #e4ef3738 (text) |
+| `StageData/<stage>/jmp/list/changescenelistinfo` | 230 | 4 | MarioNo (int), ScenarioNo (int), SceneList (text), SceneNo (int) |
+| `StageData/<stage>/jmp/list/stageinfo` | 230 | 230 | StageType (text), #15adc947 (text) |
 | `StageData/<stage>/jmp/mapparts/common/mappartsinfo` | 230 | 725 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FarClip (int), GroupId (int), l_id (int), MoveConditionType (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), PressType (int), RotateAccelType (int), RotateAngle (int), RotateAxis (int), RotateSpeed (int), RotateStopTime (int), RotateType (int), scale_x (float), scale_y (float), scale_z (float), ShadowType (int), ShapeModelNo (int), SignMotionType (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/mapparts/layera/mappartsinfo` | 162 | 407 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FarClip (int), GroupId (int), l_id (int), MoveConditionType (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), PressType (int), RotateAccelType (int), RotateAngle (int), RotateAxis (int), RotateSpeed (int), RotateStopTime (int), RotateType (int), scale_x (float), scale_y (float), scale_z (float), ShadowType (int), ShapeModelNo (int), SignMotionType (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/mapparts/layerb/mappartsinfo` | 76 | 153 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FarClip (int), GroupId (int), l_id (int), MoveConditionType (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), PressType (int), RotateAccelType (int), RotateAngle (int), RotateAxis (int), RotateSpeed (int), RotateStopTime (int), RotateType (int), scale_x (float), scale_y (float), scale_z (float), ShadowType (int), ShapeModelNo (int), SignMotionType (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
@@ -18213,119 +18682,119 @@ for each one's own table of that name.
 | `StageData/<stage>/jmp/path/commonpathpointinfo.8` | 100 | 350 | id (int), pnt0_x (float), pnt0_y (float), pnt0_z (float), pnt1_x (float), pnt1_y (float), pnt1_z (float), pnt2_x (float), pnt2_y (float), pnt2_z (float), point_arg0 (int), point_arg1 (int), point_arg2 (int), point_arg3 (int), point_arg4 (int), point_arg5 (int), point_arg6 (int), point_arg7 (int) |
 | `StageData/<stage>/jmp/path/commonpathpointinfo.9` | 89 | 344 | id (int), pnt0_x (float), pnt0_y (float), pnt0_z (float), pnt1_x (float), pnt1_y (float), pnt1_z (float), pnt2_x (float), pnt2_y (float), pnt2_z (float), point_arg0 (int), point_arg1 (int), point_arg2 (int), point_arg3 (int), point_arg4 (int), point_arg5 (int), point_arg6 (int), point_arg7 (int) |
 | `StageData/<stage>/jmp/placement/common/areaobjinfo` | 230 | 1942 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/common/cameracubeinfo` | 230 | 1406 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/common/cameracubeinfo` | 230 | 1406 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/common/demoobjinfo` | 229 | 59 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/common/objinfo` | 230 | 5719 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/common/planetobjinfo` | 230 | 743 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/common/soundinfo` | 230 | 98 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/common/stageobjinfo` | 230 | 150 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layera/areaobjinfo` | 162 | 620 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layera/cameracubeinfo` | 162 | 448 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layera/cameracubeinfo` | 162 | 448 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layera/demoobjinfo` | 162 | 34 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layera/objinfo` | 162 | 5149 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layera/planetobjinfo` | 162 | 269 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layera/soundinfo` | 162 | 14 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layera/stageobjinfo` | 162 | 7 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerb/areaobjinfo` | 76 | 128 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerb/cameracubeinfo` | 76 | 34 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerb/cameracubeinfo` | 76 | 34 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerb/demoobjinfo` | 76 | 9 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerb/objinfo` | 76 | 1377 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerb/planetobjinfo` | 76 | 22 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerb/soundinfo` | 76 | 2 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerb/stageobjinfo` | 76 | 6 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerc/areaobjinfo` | 50 | 162 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerc/cameracubeinfo` | 50 | 42 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerc/cameracubeinfo` | 50 | 42 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerc/demoobjinfo` | 50 | 4 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerc/objinfo` | 50 | 939 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerc/planetobjinfo` | 50 | 23 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerc/soundinfo` | 50 | 1 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerc/stageobjinfo` | 50 | 8 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerd/areaobjinfo` | 24 | 20 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerd/cameracubeinfo` | 24 | 16 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerd/cameracubeinfo` | 24 | 16 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerd/demoobjinfo` | 24 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerd/objinfo` | 24 | 456 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerd/planetobjinfo` | 24 | 9 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerd/soundinfo` | 24 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerd/stageobjinfo` | 24 | 1 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layere/areaobjinfo` | 23 | 31 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layere/cameracubeinfo` | 23 | 32 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layere/cameracubeinfo` | 23 | 32 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layere/demoobjinfo` | 23 | 2 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layere/objinfo` | 23 | 293 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layere/planetobjinfo` | 23 | 2 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layere/soundinfo` | 23 | 1 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layere/stageobjinfo` | 23 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerf/areaobjinfo` | 14 | 5 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerf/cameracubeinfo` | 14 | 8 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerf/cameracubeinfo` | 14 | 8 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerf/demoobjinfo` | 14 | 2 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerf/objinfo` | 14 | 164 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerf/planetobjinfo` | 14 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerf/soundinfo` | 14 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerf/stageobjinfo` | 14 | 1 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerg/areaobjinfo` | 9 | 7 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerg/cameracubeinfo` | 9 | 23 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerg/cameracubeinfo` | 9 | 23 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerg/demoobjinfo` | 9 | 4 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerg/objinfo` | 9 | 69 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerg/planetobjinfo` | 9 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerg/soundinfo` | 9 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerg/stageobjinfo` | 9 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerh/areaobjinfo` | 7 | 7 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerh/cameracubeinfo` | 7 | 6 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerh/cameracubeinfo` | 7 | 6 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerh/demoobjinfo` | 7 | 2 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerh/objinfo` | 7 | 127 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerh/planetobjinfo` | 7 | 3 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerh/soundinfo` | 7 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerh/stageobjinfo` | 7 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layeri/areaobjinfo` | 8 | 3 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layeri/cameracubeinfo` | 8 | 6 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layeri/cameracubeinfo` | 8 | 6 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layeri/demoobjinfo` | 8 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layeri/objinfo` | 8 | 513 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layeri/planetobjinfo` | 8 | 3 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layeri/soundinfo` | 8 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layeri/stageobjinfo` | 8 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerj/areaobjinfo` | 4 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerj/cameracubeinfo` | 4 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerj/cameracubeinfo` | 4 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerj/demoobjinfo` | 4 | 2 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerj/objinfo` | 4 | 264 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerj/planetobjinfo` | 4 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerj/soundinfo` | 4 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerj/stageobjinfo` | 4 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerk/areaobjinfo` | 5 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerk/cameracubeinfo` | 5 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerk/cameracubeinfo` | 5 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerk/demoobjinfo` | 5 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerk/objinfo` | 5 | 15 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerk/planetobjinfo` | 5 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerk/soundinfo` | 5 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerk/stageobjinfo` | 5 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerl/areaobjinfo` | 7 | 2 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerl/cameracubeinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerl/cameracubeinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerl/demoobjinfo` | 7 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerl/objinfo` | 7 | 136 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerl/planetobjinfo` | 7 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerl/soundinfo` | 7 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerl/stageobjinfo` | 7 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerm/areaobjinfo` | 9 | 9 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerm/cameracubeinfo` | 9 | 3 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerm/cameracubeinfo` | 9 | 3 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerm/demoobjinfo` | 9 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerm/objinfo` | 9 | 307 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerm/planetobjinfo` | 9 | 1 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layerm/soundinfo` | 9 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layerm/stageobjinfo` | 9 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layern/areaobjinfo` | 7 | 3 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layern/cameracubeinfo` | 7 | 1 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layern/cameracubeinfo` | 7 | 1 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layern/demoobjinfo` | 7 | 1 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layern/objinfo` | 7 | 153 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layern/planetobjinfo` | 7 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layern/soundinfo` | 7 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layern/stageobjinfo` | 7 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layero/areaobjinfo` | 7 | 4 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layero/cameracubeinfo` | 7 | 2 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layero/cameracubeinfo` | 7 | 2 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layero/demoobjinfo` | 7 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layero/objinfo` | 7 | 39 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layero/planetobjinfo` | 7 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
 | `StageData/<stage>/jmp/placement/layero/soundinfo` | 7 | 0 | CommonPath_ID (int), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int) |
 | `StageData/<stage>/jmp/placement/layero/stageobjinfo` | 7 | 0 | dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float) |
 | `StageData/<stage>/jmp/placement/layerp/areaobjinfo` | 7 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), GroupId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int) |
-| `StageData/<stage>/jmp/placement/layerp/cameracubeinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text), #50f5d5e6 (int), #cdc4fead (int) |
+| `StageData/<stage>/jmp/placement/layerp/cameracubeinfo` | 7 | 0 | ChildObjId (int), dir_x (float), dir_y (float), dir_z (float), FollowId (int), InterpolateIn (int), InterpolateOut (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_SLEEP (int), Validity (text) |
 | `StageData/<stage>/jmp/placement/layerp/demoobjinfo` | 7 | 0 | DemoName (text), dir_x (float), dir_y (float), dir_z (float), l_id (int), name (text), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), TimeSheetName (text) |
 | `StageData/<stage>/jmp/placement/layerp/objinfo` | 7 | 47 | CameraSetId (int), CastId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), GroupId (int), l_id (int), MapParts_ID (int), MessageId (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_arg4 (int), Obj_arg5 (int), Obj_arg6 (int), Obj_arg7 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float), ShapeModelNo (int), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int), ViewGroupId (int) |
 | `StageData/<stage>/jmp/placement/layerp/planetobjinfo` | 7 | 0 | ChildObjId (int), ClippingGroupId (int), CommonPath_ID (int), DemoGroupId (int), dir_x (float), dir_y (float), dir_z (float), Distant (float), FollowId (int), Gravity_type (text), GroupId (int), Inverse (int), l_id (int), MapParts_ID (int), name (text), Obj_arg0 (int), Obj_arg1 (int), Obj_arg2 (int), Obj_arg3 (int), Obj_ID (int), pos_x (float), pos_y (float), pos_z (float), Power (text), Priority (int), Range (float), scale_x (float), scale_y (float), scale_z (float), SW_A (int), SW_APPEAR (int), SW_B (int), SW_DEAD (int), SW_SLEEP (int) |
@@ -18348,7 +18817,7 @@ for each one's own table of that name.
 | `StageData/<stage>/jmp/start/layern/startinfo` | 7 | 3 | Camera_id (int), dir_x (float), dir_y (float), dir_z (float), MarioNo (int), name (text), Obj_arg0 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float) |
 | `StageData/<stage>/jmp/start/layero/startinfo` | 7 | 2 | Camera_id (int), dir_x (float), dir_y (float), dir_z (float), MarioNo (int), name (text), Obj_arg0 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float) |
 | `StageData/<stage>/jmp/start/layerp/startinfo` | 7 | 0 | Camera_id (int), dir_x (float), dir_y (float), dir_z (float), MarioNo (int), name (text), Obj_arg0 (int), pos_x (float), pos_y (float), pos_z (float), scale_x (float), scale_y (float), scale_z (float) |
-| `StageData/<stage>/scenariodata.bcsv` | 48 | 136 | AppearPowerStarObj (text), AstroDome (int), AstroGalaxy (int), BattleShipGalaxy (int), BeltConveyerExGalaxy (int), BreakDownPlanetGalaxy (int), CannonFleetGalaxy (int), CocoonExGalaxy (int), Comet (text), CosmosGardenGalaxy (int), CubeBubbleExLv1Galaxy (int), CubeBubbleExLv2Galaxy (int), DarkRoomGalaxy (int), EggStarGalaxy (int), EpilogueDemoStage (int), FactoryGalaxy (int), FileSelect (int), FishTunnelGalaxy (int), FlipPanelExGalaxy (int), FloaterOtaKingGalaxy (int), HeavenlyBeachGalaxy (int), HeavensDoorGalaxy (int), HellProminenceGalaxy (int), HoneyBeeExGalaxy (int), HoneyBeeKingdomGalaxy (int), IceVolcanoGalaxy (int), IsHidden (field), KoopaBattleVs1Galaxy (int), KoopaBattleVs2Galaxy (int), KoopaBattleVs3Galaxy (int), KoopaJrShipLv1Galaxy (int), LibraryRoom (int), OceanFloaterLandGalaxy (int), OceanPhantomCaveGalaxy (int), OceanRingGalaxy (int), PeachCastleFinalGalaxy (int), PeachCastleGardenGalaxy (int), PhantomGalaxy (int), PowerStarId (int), ReverseKingdomGalaxy (int), SandClockGalaxy (int), ScenarioNo (int), SkullSharkGalaxy (int), SnowCapsuleGalaxy (int), StarDustGalaxy (int), SurfingLv1Galaxy (int), SurfingLv2Galaxy (int), TamakoroExLv1Galaxy (int), TamakoroExLv2Galaxy (int), TearDropGalaxy (int), TeresaMario2DGalaxy (int), TransformationExGalaxy (int), TriLegLv1Galaxy (int), #085a4ec5 (int), #0949fe14 (int), #09581595 (int), #0a3b36a3 (int), #0a8123e0 (int), #0cd31fce (int), #0e6d5e65 (int), #0edf5ee0 (int), #0faa7423 (int), #101ef11e (int), #12cabfcb (int), #130c7f47 (int), #131a96c8 (int), #13c1f4d6 (int), #15bd80c8 (int), #165b3ccd (int), #197bdc57 (int), #1ae0f610 (int), #1bcbe24a (int), #207f0046 (int), #2132f503 (int), #2342cde4 (int), #242c628d (int), #28d879d6 (int), #2ae9d544 (int), #2b3f8665 (int), #2bada488 (int), #30b7e2a7 (int), #30c45e00 (int), #31da54ec (int), #35013d31 (int), #36845e8d (int), #36daa687 (int), #37cc68e1 (int), #39085ceb (int), #3b43303f (int), #3bcfe317 (int), #3bddfa98 (int), #3c0ed098 (int), #3cc66575 (int), #3eac87dd (int), #40026d8a (int), #40351677 (int), #41d6bb10 (int), #432413b8 (int), #43a7f7ee (int), #43b3a8df (int), #460b820b (int), #4919f14f (int), #4966cdf3 (int), #497d4880 (int), #4998256a (int), #4ab8d69b (int), #4cc03a0f (int), #4ef58836 (int), #500b84c0 (int), #51b1d8fa (int), #528d92cb (int), #529baa4c (int), #52a9c1cd (int), #52b7d94e (int), #535e5fb8 (int), #539bcac1 (int), #5518a02a (int), #5529c9dc (int), #57e38e3e (int), #59029b48 (int), #597d8c31 (int), #59e7433e (int), #5ba4df93 (int), #5bace070 (int), #5f14a6ed (int), #64f3fd6f (int), #650214f0 (int), #65102c71 (int), #6578d6ed (int), #665f26d9 (int), #6707ab9a (int), #696c223f (int), #696ebd1b (int), #69fe8014 (int), #6a6832f0 (int), #6aedffa8 (int), #6b3db09c (int), #7029aa7b (int), #72261740 (int), #7313e8a1 (int), #7462e6d4 (int), #75755b87 (int), #7589af4c (int), #76cc3c79 (int), #781e22af (int), #78e9b3f2 (int), #7a65563c (int), #7ab53219 (int), #7d9556e6 (int), #825582f3 (int), #82594221 (int), #830abb44 (int), #85a41ec0 (int), #865f52e8 (int), #87960ba3 (int), #8e881e04 (int), #8ee804db (int), #8fe573c1 (int), #91cd6a28 (int), #92949b94 (int), #950ba396 (int), #9845a25f (int), #98546744 (int), #9a3d8d34 (int), #9ba5d1a0 (field), #9ba65420 (field), #9ba7ca24 (int), #9cab5a03 (int), #9cc78905 (int), #a0a6b611 (int), #a1821b79 (int), #a3353f56 (int), #a40ebaee (int), #a55993ca (int), #a5e3ade0 (int), #a6db4e2b (int), #a89b5d9e (int), #a8ddc8de (int), #a9f03934 (int), #ad487947 (int), #ae037384 (int), #ae125572 (int), #aec90d32 (int), #aed724b3 (int), #b21e4ec1 (int), #b33a4740 (int), #b3539b5a (int), #b43a9e31 (int), #b4e2cebf (int), #b5c1310f (int), #b97a684f (int), #ba35c953 (int), #bb66da6d (int), #bc2b02d3 (int), #bd485d3d (int), #bd5674be (int), #bd648c3f (int), #c372129e (int), #c4fe6e64 (int), #c768f416 (int), #c889cf98 (int), #cabd1f4c (int), #cb28800c (int), #cbeb225b (int), #cd098d31 (int), #cdb16e5b (text), #d0cbc16c (int), #d43e6958 (int), #d44c80d9 (int), #d6c80400 (field), #d7885239 (int), #d79669ba (int), #d7a4813b (int), #d7b298bc (int), #d885f94b (int), #db8ab56e (int), #dd95ba89 (int), #dd9f5462 (int), #df786195 (int), #e04eb31f (int), #e142706a (int), #e15087eb (int), #e366dd87 (int), #e4b7f595 (int), #e798b4e7 (int), #e7fe1376 (int), #e820a289 (int), #ee1b82bd (int), #f35d7875 (int), #f55859ad (int), #f56e1a06 (int), #f5841325 (int), #f6bca9ac (int), #f7452790 (int), #fa891a3a (int), #faa395da (int), #fb0182c9 (int), #fd9048a7 (int), #fdad4876 (int), #ff90a53a (int) |
+| `StageData/<stage>/scenariodata.bcsv` | 48 | 136 | AppearPowerStarObj (text), AsteroidBlockZone (int), AstroDome (int), AstroGalaxy (int), AutumnMysteryRoomZone (int), BattleShipGalaxy (int), BattleShipKillerPlanetZone (int), BeamerRushZone (int), BeamGunChaindPlanetZone (int), BeltConveyerExGalaxy (int), BirthdayCakeZone (int), BlueStarZone (int), BombheiLectureZone (int), BombTimeAttack2Zone (int), BombTimeAttackZone (int), BossBazookaTowerZone (int), BreakDownPlanetGalaxy (int), BreakDownPlanetZone (int), BrokenKillerPlanetZone (int), CannonFleetGalaxy (int), CannonGCaptureZone (int), CanonTurnOverZone (int), CaveChangeSizeZone (int), CaveMysteryRoomZone (int), ChoConveyorZone (int), ClimbMysteryRoomZone (int), CocoonExGalaxy (int), CocoonEXZone (int), CocoPoihanaZone (int), CoCoTwinZone (int), ColdTwinFallZone (int), Comet (text), CosmosGardenGalaxy (int), CrossRingZone (int), CubeBubbleExDZone (int), CubeBubbleExLv1Galaxy (int), CubeBubbleExLv2Galaxy (int), CubeBubbleExSZone (int), DandelionHillZone (int), DarknessRoomZone (int), DarkRoomGalaxy (int), DesertConvectionZone (int), DesertDiskZone (int), DesertInsideZone (int), DinoPackunBattleLv2Zone (int), DinoPackunBattleZone (int), DiskGardenZone (int), DorayakiFortressZone (int), DoughnutZone (int), DropOfWaterZone (int), EggStarFlipPanelZone (int), EggStarGalaxy (int), ElectricBegomanSpikeZone (int), ElectricUfoLevel2Zone (int), ElectricUfoZone (int), EpilogueDemoStage (int), EringiPlanetZone (int), FactoryGalaxy (int), FileSelect (int), FishTunnelGalaxy (int), FlagDiscZone (int), FlipPanelExGalaxy (int), FlipPanelExZone (int), FloaterLandZone (int), FloaterOtaKingGalaxy (int), FlowerPlanetZone (int), FlowerRoadZone (int), ForestBossZone (int), ForestHomeZone (int), FortressCliffClimbZone (int), FortressEntranceZone (int), FortressJumpBeamerZone (int), GCaptureTutorialZone (int), GhostShipCaveZone (int), GlassyTwinsPlanetZone (int), HeavenlyBeachGalaxy (int), HeavenlyBeachZone (int), HeavensBlackHoleZone (int), HeavensDoorGalaxy (int), HeavensDoorInsideZone (int), HeavensDoorLargeZone (int), HeavensDoorMiddleZone (int), HeavensDoorMysteriousZone (int), HeavensDoorSmallZone (int), HellBallZone (int), HellGcapZone (int), HellHomeZone (int), HellJKillerZone (int), HellLavaBallRisingPlanetZone (int), HellLavaFloatingZone (int), HellMeteoZone (int), HellPoolAZone (int), HellPoolBZone (int), HellProminenceGalaxy (int), HellRotateGround2DPlanetZone (int), HellShellZone (int), HellTypeCDossunPlanetZone (int), HoneyBeeExGalaxy (int), HoneyBeeKingdomGalaxy (int), HoneyMysteryRoomZone (int), HoneyQueenZone (int), HopperBonusZone (int), HopperBottleZone (int), HopperTutorialZone (int), IceLavaIslandZone (int), IceMichihikiZone (int), IceMountainZone (int), IceRingAZone (int), IceRingBZone (int), IceVolcanoGalaxy (int), IsHidden (field), KoopaBattleVs1BossZone (int), KoopaBattleVs1Galaxy (int), KoopaBattleVs2BossZone (int), KoopaBattleVs2Galaxy (int), KoopaBattleVs3ArigaAZone (int), KoopaBattleVs3ArigaBZone (int), KoopaBattleVs3ArigaCZone (int), KoopaBattleVs3AZone (int), KoopaBattleVs3BossZone (int), KoopaBattleVs3BZone (int), KoopaBattleVs3CZone (int), KoopaBattleVs3DZone (int), KoopaBattleVs3Galaxy (int), KoopaBattleVs3StartZone (int), KoopaJrShipBattleLv1Tmp1Zone (int), KoopaJrShipLv1Galaxy (int), KuriboThirtyZone (int), LibraryRoom (int), MarblePlanetZone (int), MarioLancherLecture2Zone (int), MarioLancherLecture3Zone (int), MechanicKoopaZone (int), MiniKuriZone (int), MiniMechanicKoopaZone (int), MysteryGravityRoomZone (int), OceanFloaterLandGalaxy (int), OceanPhantomCaveGalaxy (int), OceanPuddingZone (int), OceanRingGalaxy (int), OceanRingZone (int), OceanTwinPiratesZone (int), OnimasuZone (int), OtaKingStageZone (int), PeachCastleFinalGalaxy (int), PeachCastleGardenGalaxy (int), PeanutZone (int), PhantomBossSpiderZone (int), PhantomDarknessRoomZone (int), PhantomGalaxy (int), PhantomIceMazeZone (int), PhantomNestZone (int), PhantomSpaceGraveyardZone (int), PoihanaPlanetZone (int), PoleUnizoZone (int), PowerStarId (int), PoyoPoyoPlanetZone (int), PuffballBZone (int), PuffballCZone (int), PuffballZone (int), PukupukuGambolZone (int), QuestionBoxZone (int), QuestionFlowerGardenZone (int), QuickSand2DZone (int), RabbitMazeZone (int), RabbitMoonZone (int), ReverseForestHomeZone (int), ReverseGravityTowerZone (int), ReverseKingdomGalaxy (int), SandChangeSizeZone (int), SandClockGalaxy (int), SandIslandSamboZone (int), SandIslandZone (int), SandKillerZone (int), SandRingZone (int), SandStormJumpZone (int), SandStreamZone (int), SandTowerZone (int), SandUpDownZone (int), ScenarioName (text), ScenarioNo (int), ScrewFleetZone (int), SeaVolcanoZone (int), SkullSharkGalaxy (int), SnowCapsuleGalaxy (int), SnowCapsuleZone (int), SoramameBZone (int), SoramameCZone (int), SoramameZone (int), SpaceMineGCaptureZone (int), SpaceStationZone (int), SphereInsideZone (int), SpringWaterPlanetZone (int), StarDustAssemblyBlockZone (int), StarDustGalaxy (int), StarEggRoadZone (int), SubmarineVolcanoPlanetZone (int), SurfingLv1Galaxy (int), SurfingLv2Galaxy (int), SweetsAsteroidZone (int), TamakoroExAZone (int), TamakoroExBZone (int), TamakoroExLv1Galaxy (int), TamakoroExLv2Galaxy (int), TearDropGalaxy (int), TeresaHouseZone (int), TeresaMario2DGalaxy (int), TeresaRaceZone (int), ThrowTutorialZone (int), ToySphereInsideZone (int), TransformationExGalaxy (int), TridentZone (int), TriLegLv1Galaxy (int), TriPodBossZone (int), TwinFallLakeZone (int), TwinPeanutsZone (int), UfoBegomanChainedPlanetZone (int), UfoFleetLv1Zone (int), UfoFleetLv3Zone (int), UfoGravityTurnOverZone (int), UnderseaTunnelZone (int), VanVanVanishLv2Zone (int), VolcanoPlanetZone (int), VolMichihikiZone (int), VsHugeBattleShipLv2Zone (int), VsHugeBattleShipZone (int), WallClimbEXAZone (int), WallClimbEXBZone (int), WallClimbEXCZone (int), WaterRoadCaveExZone (int), WaterShellZone (int), WormEatenZone (int), #30b7e2a7 (int), #500b84c0 (int), #9ba5d1a0 (field), #9ba65420 (field), #d6c80400 (field), #d7885239 (int), #d79669ba (int), #d7a4813b (int) |
 | `StageData/<stage>/zonelist.bcsv` | 48 | 234 | ZoneName (text) |
 | `StageData/ForestHomeZone/jmp/path/commonpathpointinfo.66` | 1 | 3 | id (int), pnt0_x (float), pnt0_y (float), pnt0_z (float), pnt1_x (float), pnt1_y (float), pnt1_z (float), pnt2_x (float), pnt2_y (float), pnt2_z (float), point_arg0 (int), point_arg1 (int), point_arg2 (int), point_arg3 (int), point_arg4 (int), point_arg5 (int), point_arg6 (int), point_arg7 (int) |
 | `StageData/ForestHomeZone/jmp/path/commonpathpointinfo.67` | 1 | 2 | id (int), pnt0_x (float), pnt0_y (float), pnt0_z (float), pnt1_x (float), pnt1_y (float), pnt1_z (float), pnt2_x (float), pnt2_y (float), pnt2_z (float), point_arg0 (int), point_arg1 (int), point_arg2 (int), point_arg3 (int), point_arg4 (int), point_arg5 (int), point_arg6 (int), point_arg7 (int) |
@@ -20838,7 +21307,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | Key | Type | Game's value |
 |---|---|---|
 | `BezierRail.cDirectionStep` | f32 | `0.01f` |
-| `BezierRail.cLengthSegments` | int | `10` |
+| `BezierRail.cLengthSegments` | s32 | `10` |
 | `BezierRail.cNearestSampleStep` | f32 | `100.0f` |
 | `BezierRail.cParamIterations` | s32 | `5` |
 | `BezierRail.cParamTolerance` | f32 | `0.01f` |
