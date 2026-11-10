@@ -42,7 +42,7 @@ layers/base/files/LayoutData/CoinCounter.arc/timg/myiconcoin.png
 
 ## Sizes
 
-Any size. The game's own limit of 1024 doesn't apply to files from mods. Textures larger than the original simply draw sharper; they don't need the same proportions, but the model's coordinates decide how they map.
+Any size. The game's own limit of 1024 doesn't apply to files from mods. Textures larger than the original draw sharper; they don't need the same proportions, but the model's coordinates decide how they map.
 
 ## Running it
 
