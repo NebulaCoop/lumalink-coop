@@ -1,0 +1,11 @@
+// Double Coins: one script for the whole game.
+var counted: int    // coins this run, doubled
+
+on coin(value, name, actor) {
+    let given = value * 2
+    counted = counted + given
+    if counted / 50 != (counted - given) / 50 {
+        nebula.show_message(format("{} coins!", counted), 1)
+    }
+    return given
+}

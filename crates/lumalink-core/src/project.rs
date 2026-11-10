@@ -390,10 +390,15 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
         let id = manifest.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
         let toolkit = crate::lumascript::Toolkit::bundled();
         for layer in &layers {
-            let (Some(path), Some(rows)) = (layer.get("path").and_then(Value::as_str), layer.get("objects").and_then(Value::as_array)) else {
+            let Some(path) = layer.get("path").and_then(Value::as_str) else {
                 continue;
             };
-            for script in rows.iter().filter_map(|r| r.get("script").and_then(Value::as_str)) {
+            // The objects' scripts and the mod-wide ones ("scripts"), each compiled once.
+            let mut scripts: Vec<&str> = layer.get("objects").and_then(Value::as_array).into_iter().flatten().filter_map(|r| r.get("script").and_then(Value::as_str)).collect();
+            scripts.extend(layer.get("scripts").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str));
+            scripts.sort_unstable();
+            scripts.dedup();
+            for script in scripts {
                 let bytes = compile_script(folder, script, &toolkit).map_err(|why| anyhow::anyhow!(why))?;
                 let target = building.join(path).join("files").join("LumaScripts").join(&id).join(format!("{script}.lumascript"));
                 if let Some(parent) = target.parent() {
@@ -942,6 +947,26 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
             match compile_script(folder, script, &toolkit) {
                 Ok(_) => {}
                 Err(why) => found.problem(format!("{name}: {object}: {why}")),
+            }
+        }
+    }
+    if let Some(scripts) = layer.get("scripts") {
+        // Mod-wide scripts: one instance each for the whole run (luma.cpp "scripts").
+        match scripts.as_array() {
+            None => found.problem(format!("{name}: scripts is a list of script names")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                let toolkit = crate::lumascript::Toolkit::bundled();
+                for row in rows {
+                    match row.as_str() {
+                        None => found.problem(format!("{name}: scripts is a list of script names, not {row}")),
+                        Some(script) => {
+                            if let Err(why) = compile_script(folder, script, &toolkit) {
+                                found.problem(format!("{name}: {why}"));
+                            }
+                        }
+                    }
+                }
             }
         }
     }

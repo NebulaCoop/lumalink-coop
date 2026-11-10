@@ -58,6 +58,12 @@ A layer's `objects` rows name new objects and their scripts:
 | `shadow_radius` | Its drop shadow; 0 for none. |
 | `clip_radius` | Past this distance from the camera it is clipped: not drawn, and its `frame` handler does not run. |
 
+A layer's `scripts` list runs scripts for the whole mod, not tied to an object (see Mod-wide scripts):
+
+```json
+"scripts": ["rules"]
+```
+
 `lumalink check` compiles every script and reports problems with their lines. `lumalink inspect file.lscript` prints
 the compiled steps.
 
@@ -99,8 +105,18 @@ on touch_player { }          // the player touched it
 on attacked(how) { }         // the player attacked it; return true to take the hit
 on appear { }                // it appeared (after being hidden)
 on kill { }                  // it was killed
+on message(number, from) { }     // any message another object sends it; return true to take it
+on message ACTMES_PUSH(from) { } // one message, by its name or number
 on event gumbo_paid(value) { }   // another script's `emit gumbo_paid value`
+on coin(value, name, actor) { }  // one of the game's events (below)
 ```
+
+A name the game has no handler for is refused when the script compiles.
+
+Messages are the game's way for objects to act on each other: a punch, a stomp, a push, a grab. `from` is the object
+that sent it (none when nothing did). Returning `true` takes the message: the game's own handling does not run. Any
+other result leaves it to the game (for the player's attacks, `on attacked`). A message's name is one of the game's
+`ACTMES_` names; the SDK's `messages.tsv` lists all 183 with their numbers.
 
 A handler outside a state runs in every state. Inside a state it runs only in that state:
 
@@ -114,6 +130,53 @@ state chase {
 
 `goto <state>` switches at the start of the next frame: `leave` of the old state, then `enter` of the new. A `goto`
 to the state it is already in does nothing.
+
+## Game events
+
+Any script, an object's or a mod-wide one, answers the game's events by name. Each handler gets three values:
+`value`, `name` (text or none) and `actor` (an object or none). Where the event uses a returned number, a handler that
+returns a number (or a bool: 1 or 0) changes it, and the next script gets the changed value. Returning nothing keeps
+it.
+
+| Event | When | value, name, actor | A returned number |
+|---|---|---|---|
+| `stage_frame` | every frame of a stage, before objects move | | |
+| `stage_start` | a stage started | the mission, the stage | |
+| `stage_end` | the stage is ending (its objects go after this) | name: the stage | |
+| `player_damage` | the player is about to lose one health | | 0 cancels the hit |
+| `player_miss` | the player is about to die | the cause (0: fell out) | -1 cancels: move the player and restore health yourself |
+| `power_up` | the player's form is about to change | the new form | the form used |
+| `coin` | coins are about to be added | how many | added instead |
+| `star_bit` | star bits are about to be added | how many | added instead |
+| `star_get` | a star was collected | the star, the galaxy | |
+| `power_star_appear` | a power star appeared | its number | |
+| `cutscene_start`, `cutscene_end` | a cutscene started, ended | name: the cutscene | |
+| `cutscene_part` | a part of a cutscene started | its index, its name | |
+| `actor_appear`, `actor_kill` | an object appeared, was killed | its name, the object | |
+| `actor_message` | an object received a message | the message, its name, the receiver | -1 cancels it |
+| `player_spin`, `player_jump`, `player_land` | the player spun, jumped, landed | | |
+| `player_action` | the player started an action (swimming, hanging, sliding) | the action | |
+| `pause` | the pause menu opened (1) or closed (0) | 1 or 0 | |
+| `game_save` | the game is about to write the save | | |
+| `talk_line` | a line of dialogue opened | its message id, the speaker | |
+| `talk_choice` | the player answered a yes/no question | 1 yes, 0 no; the question's id; who asked | |
+| `camera_change` | the camera changed | 0 area, 1 event camera; its id | |
+| `sound_start` | a sound effect is about to play | its number, its name | the sound played instead (-1: silence) |
+| `effect_start` | an object started an effect | its name, the object | |
+| `screen` | a screen layout was shown (1) or removed (0) | 1 or 0, its name | |
+
+Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
+
+## Mod-wide scripts
+
+A script named in a layer's `scripts` runs once for the whole run, from the game's start: `self` is none, its `var`s
+last the whole run, and `on frame` runs every frame. It answers the game's events and other scripts' `emit`s, and
+calls the toolkit and the plugin API like any script. Rules that are not about one object belong here:
+
+```text
+// Every coin counts twice.
+on coin(value, name, actor) { return value * 2 }
+```
 
 ## Statements
 
@@ -159,6 +222,15 @@ overloads picks by argument count, or by its letters: `MR::isBindedGround:hh(sel
 
 Letters: `a` none, `b` bool, `c` int, `d` float, `e` vec3, `g` text, `h` object. An upper-case letter is a value the
 function also gives back: `let ok, out = f(self, none)`.
+
+## The plugin API (nebula.*)
+
+The calls plugins make are rows of the toolkit too, named `nebula.<call>`: `nebula.player()`,
+`nebula.get_position(actor)`, `nebula.show_message("Hello", 1)`, `nebula.play_music("MyTrack")`. A call that takes a
+mod (`log`, `option`, `store_get`, `unlock_achievement`) gets the script's own. A call that writes into a vector or
+a number gives it back: `let position = nebula.get_position(self)`; `let found, value = nebula.get_tunable("key")`.
+Calls that only work while plugins start (adding music, galaxies, story rows) are luma.json rows instead. The plugin
+reference (plugin-api.md) explains every call.
 
 ## Fields
 

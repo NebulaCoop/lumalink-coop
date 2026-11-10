@@ -521,10 +521,11 @@ impl Parser {
             Tok::Text(t) => t,
             _ => return Err(Problem { line, text: "an event's name expected after 'on'".into() }),
         };
-        // on event boom / on message ACTMES_X: "event:boom", "message:ACTMES_X".
-        if (event == "event" || event == "message") && matches!(self.peek(), Tok::Name(_) | Tok::Text(_)) {
+        // on event boom / on message ACTMES_X / on message 41: "event:boom", "message:ACTMES_X", "message:41".
+        if (event == "event" || event == "message") && matches!(self.peek(), Tok::Name(_) | Tok::Text(_) | Tok::Int(_)) {
             let rest = match self.next() {
                 Tok::Name(n) | Tok::Text(n) => n,
+                Tok::Int(v) => v.to_string(),
                 _ => unreachable!(),
             };
             event = format!("{event}:{rest}");
@@ -1340,10 +1341,53 @@ impl FnCtx<'_> {
 }
 
 /// Compiles a script's text. `name` is used in messages (its file).
+/// What a handler's name answers, as the game reads it (LumaScript.cpp): its own events and the game's (the SDK's
+/// events.tsv), "event:<name>" for another script's emit, "message" for every message and "message:<number>" for one
+/// (an ACTMES_ name becomes its number, from the SDK's messages.tsv).
+pub fn handler_name(event: &str) -> Result<String, String> {
+    if let Some(name) = event.strip_prefix("event:") {
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+            return Err(format!("{name} is not an event's name (letters, digits and _)"));
+        }
+        return Ok(event.to_string());
+    }
+    if let Some(message) = event.strip_prefix("message:") {
+        if let Ok(number) = message.parse::<u32>() {
+            return if message_names().any(|(_, n)| n == number) {
+                Ok(format!("message:{number}"))
+            } else {
+                Err(format!("the game has no message {number} (docs/reference/lumascript.md lists them)"))
+            };
+        }
+        return match message_names().find(|(name, _)| *name == message) {
+            Some((_, number)) => Ok(format!("message:{number}")),
+            None => Err(format!("the game has no message {message} (docs/reference/lumascript.md lists them)")),
+        };
+    }
+    if event_names().any(|(name, _)| name == event) {
+        return Ok(event.to_string());
+    }
+    Err(format!("the game has no event {event} (docs/reference/lumascript.md lists them)"))
+}
+
+/// Every handler name the game answers, and whether it is the game's event ("game": (value, name, actor), and what it
+/// returns becomes the value) or an object's own ("own").
+pub fn event_names() -> impl Iterator<Item = (&'static str, &'static str)> {
+    include_str!("../sdk/events.tsv").lines().filter_map(|l| l.split_once('\t'))
+}
+
+/// The game's messages (ACTMES_ names) and their numbers.
+pub fn message_names() -> impl Iterator<Item = (&'static str, u32)> {
+    include_str!("../sdk/messages.tsv").lines().filter_map(|l| l.split_once('\t')).filter_map(|(n, v)| Some((n, v.parse().ok()?)))
+}
+
 pub fn compile(source: &str, toolkit: &Toolkit) -> Result<Vec<u8>, Problem> {
     let lexed = lex(source)?;
     let mut parser = Parser { toks: lexed.toks, at: 0 };
-    let (vars, handlers, fns) = parser.file()?;
+    let (vars, mut handlers, fns) = parser.file()?;
+    for h in &mut handlers {
+        h.event = handler_name(&h.event).map_err(|text| Problem { line: h.line, text })?;
+    }
 
     let mut out = Out::default();
     let mut var_map: HashMap<String, (VarKind, u16)> = HashMap::new();
@@ -1814,11 +1858,17 @@ mod tests {
             }
             state calm { on frame { return } }
             on event boom(value) { speed = float(value) }
-            on message ACTMES_PLAYER_SPIN { return true }
+            on message ACTMES_PUSH(from) { return true }
+            on message 3(from) { return false }
+            on message(number, from) { return none }
+            on coin(value, name, actor) { return value * 2 }
         "#);
         let s = verify(&b).expect("verifies");
         assert!(s.handlers.iter().any(|h| h == "event:boom"));
-        assert!(s.handlers.iter().any(|h| h == "message:ACTMES_PLAYER_SPIN"));
+        assert!(s.handlers.iter().any(|h| h == "message:41"));
+        assert!(s.handlers.iter().any(|h| h == "message:3"));
+        assert!(s.handlers.iter().any(|h| h == "message"));
+        assert!(s.handlers.iter().any(|h| h == "coin"));
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_REGISTRY && n == "form/Gold Flower"));
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_FIELD && n == "mVelocity"));
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_FIELD && n == "mFlag.mIsHiddenModel"));
@@ -1828,6 +1878,11 @@ mod tests {
     fn mistakes_name_their_line() {
         bad("on frame { wait 1 }\nfn f() { wait 2 }", "only a handler");
         bad("on frame { goto nowhere }", "no state nowhere");
+        bad("on touch { return }", "the game has no event touch");
+        bad("on message ACTMES_NO_SUCH { return }", "the game has no message ACTMES_NO_SUCH");
+        bad("on message 9999 { return }", "the game has no message 9999");
+        bad("on event \"a b\" { return }", "not an event's name");
+        bad("on message ACTMES_PUSH { return }\non message 41 { return }", "written twice");
         bad("on frame { MR::noSuch(self) }", "the game has no MR::noSuch");
         bad("on frame { MR::isBindedGround(self, self, self) }", "takes 1 or 2 values");
         bad("on frame { x = 1 }", "x is not a variable");
