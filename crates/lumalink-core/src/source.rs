@@ -74,13 +74,18 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
             if size > left {
                 bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
             }
-            let mut packed = Vec::new();
-            entry.read_to_end(&mut packed).with_context(|| format!("{name} cannot be read"))?;
-            let plain = unzip_lzma(&packed, size).with_context(|| format!("{name} cannot be unpacked"))?;
-            if crc32fast::hash(&plain) != crc {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).with_context(|| format!("{} cannot be created", parent.display()))?;
+            }
+            // Straight to the file, never whole in memory: an entry may state any size.
+            let file = fs::File::create(&target).with_context(|| format!("{} cannot be created", target.display()))?;
+            let mut to = Checked { to: std::io::BufWriter::new(file), crc: crc32fast::Hasher::new(), written: 0, size };
+            unzip_lzma(&mut entry, size, &mut to).with_context(|| format!("{name} cannot be unpacked"))?;
+            to.flush().with_context(|| format!("{} cannot be written", target.display()))?;
+            if to.written != size || to.crc.finalize() != crc {
                 bail!("{name} is damaged in the archive");
             }
-            write_limited(&mut plain.as_slice(), &target, &mut left)?;
+            left -= size;
             continue;
         }
         let mut entry = zip.by_index(i)?;
@@ -101,13 +106,36 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
     Ok(())
 }
 
+/// What an LZMA entry unpacks to on its way to the file: its CRC-32 taken, and nothing past the size the zip records.
+struct Checked {
+    to: std::io::BufWriter<fs::File>,
+    crc: crc32fast::Hasher,
+    written: u64,
+    size: u64,
+}
+
+impl Write for Checked {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if buf.len() as u64 > self.size - self.written {
+            return Err(std::io::Error::other("more than the archive says the file holds"));
+        }
+        let n = self.to.write(buf)?;
+        self.crc.update(&buf[..n]);
+        self.written += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.to.flush()
+    }
+}
+
 /// A zip entry's LZMA: version (2 bytes), size of the properties (2), the properties, then the stream. The stream may or
 /// may not end in a marker, so the size comes from the zip's own record.
-fn unzip_lzma(packed: &[u8], size: u64) -> Result<Vec<u8>> {
-    let Some(head) = packed.get(2..4) else {
-        bail!("too short");
-    };
-    if u16::from_le_bytes([head[0], head[1]]) != 5 || packed.len() < 9 {
+fn unzip_lzma(packed: &mut dyn Read, size: u64, to: &mut Checked) -> Result<()> {
+    let mut head = [0u8; 4];
+    packed.read_exact(&mut head).context("too short")?;
+    if u16::from_le_bytes([head[2], head[3]]) != 5 {
         bail!("not the LZMA a zip holds");
     }
     let options = lzma_rs::decompress::Options {
@@ -115,10 +143,9 @@ fn unzip_lzma(packed: &[u8], size: u64) -> Result<Vec<u8>> {
         memlimit: None,
         allow_incomplete: false,
     };
-    let mut plain = Vec::with_capacity(size.min(1 << 30) as usize);
-    let mut stream = &packed[4..];
-    lzma_rs::lzma_decompress_with_options(&mut stream, &mut plain, &options).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    Ok(plain)
+    let mut stream = std::io::BufReader::new(packed);
+    lzma_rs::lzma_decompress_with_options(&mut stream, to, &options).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    Ok(())
 }
 
 fn un7z(archive: &Path, into: &Path) -> Result<()> {
@@ -349,18 +376,17 @@ pub fn open(input: &Path, work: &Path) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    /// A zip with one LZMA entry, written as 7-Zip writes one: zip header, properties, stream with an end marker.
-    #[test]
-    fn unpacks_lzma_entries() {
-        let text = b"<wiidisc version=\"1\">the same words, the same words, the same words</wiidisc>".to_vec();
+    /// A zip with one LZMA entry, written as 7-Zip writes one: zip header, properties, stream with an end marker. The
+    /// zip's record says the entry unpacks to `stated` bytes.
+    fn lzma_zip(text: &[u8], stated: u32) -> Vec<u8> {
         let mut lzma = Vec::new();
-        lzma_rs::lzma_compress(&mut text.as_slice(), &mut lzma).unwrap();
+        lzma_rs::lzma_compress(&mut &text[..], &mut lzma).unwrap();
         // lzma_compress writes properties (5), size (8), stream.
         let mut data = vec![0x15, 0x07, 5, 0];
         data.extend_from_slice(&lzma[..5]);
         data.extend_from_slice(&lzma[13..]);
         let name = b"a/b.xml";
-        let crc = crc32fast::hash(&text);
+        let crc = crc32fast::hash(text);
         let mut record = Vec::new();
         record.extend_from_slice(&63u16.to_le_bytes());
         record.extend_from_slice(&2u16.to_le_bytes());
@@ -368,7 +394,7 @@ mod tests {
         record.extend_from_slice(&[0, 0, 0x21, 0]);
         record.extend_from_slice(&crc.to_le_bytes());
         record.extend_from_slice(&(data.len() as u32).to_le_bytes());
-        record.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        record.extend_from_slice(&stated.to_le_bytes());
         record.extend_from_slice(&(name.len() as u16).to_le_bytes());
         record.extend_from_slice(&0u16.to_le_bytes());
         let mut zip = b"PK".to_vec();
@@ -388,12 +414,30 @@ mod tests {
         zip.extend_from_slice(&size.to_le_bytes());
         zip.extend_from_slice(&central.to_le_bytes());
         zip.extend_from_slice(&[0, 0]);
+        zip
+    }
+
+    #[test]
+    fn unpacks_lzma_entries() {
+        let text = b"<wiidisc version=\"1\">the same words, the same words, the same words</wiidisc>".to_vec();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.zip");
-        std::fs::write(&path, &zip).unwrap();
+        std::fs::write(&path, lzma_zip(&text, text.len() as u32)).unwrap();
         let out = dir.path().join("out");
         super::unzip(&path, &out).unwrap();
         assert_eq!(std::fs::read(out.join("a/b.xml")).unwrap(), text);
+    }
+
+    /// An LZMA entry that unpacks to more or less than its record says is refused, not trusted.
+    #[test]
+    fn an_lzma_entry_is_held_to_its_size() {
+        let text = b"<wiidisc version=\"1\">the same words, the same words, the same words</wiidisc>".to_vec();
+        let dir = tempfile::tempdir().unwrap();
+        for stated in [text.len() as u32 - 1, text.len() as u32 + 1, u32::MAX] {
+            let path = dir.path().join(format!("{stated}.zip"));
+            std::fs::write(&path, lzma_zip(&text, stated)).unwrap();
+            assert!(super::unzip(&path, &dir.path().join(format!("out{stated}"))).is_err(), "{stated}");
+        }
     }
 
     use super::*;
