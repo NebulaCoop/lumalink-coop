@@ -28,7 +28,7 @@ pub(crate) fn safe_relative(name: &str) -> Option<PathBuf> {
         match part {
             Component::Normal(p) => {
                 let text = p.to_string_lossy();
-                if text.contains(':') || text.chars().any(char::is_control) || text.chars().all(|c| c == '.') || is_device_name(&text) {
+                if text.contains(':') || text.chars().any(char::is_control) || text.chars().all(|c| c == '.' || c == ' ') || is_device_name(&text) {
                     return None;
                 }
                 out.push(p);

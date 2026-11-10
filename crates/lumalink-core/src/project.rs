@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 const VERSION_LETTERS: [&str; 6] = ["E", "P", "J", "K", "W", "C"];
 const PLATFORMS: [&str; 5] = ["windows", "android", "linux", "macos", "ios"];
@@ -469,9 +469,10 @@ fn check_picture(folder: &Path, path: &str, what: &str, found: &mut Findings) {
     }
 }
 
-/// A path inside the file: going up or starting from a drive is refused.
+/// A path inside the file, by the rule for an archive's names: going up, starting from a drive, a control character or a
+/// part of dots and spaces (Windows drops a part's last dots and spaces) is refused, read the same on every system.
 fn inside(path: &str) -> bool {
-    !path.is_empty() && Path::new(path).components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) && !path.contains(':')
+    !path.is_empty() && !path.starts_with('\\') && crate::source::safe_relative(path).is_some()
 }
 
 fn string_list<'a>(value: &'a Value, field: &str, found: &mut Findings) -> Vec<&'a str> {
@@ -1797,6 +1798,16 @@ pub fn cook_one(source: &Path, path: &str, game_id: &str, store: Option<&Path>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_manifest_path_stays_inside_as_the_game_reads_it() {
+        for outside in ["../b", "a/../../b", "a/.. /b", "..\u{0}/b", "a/.../b", "C:b", "/b", "\\b", "a\\..\\..\\b", ""] {
+            assert!(!inside(outside), "{outside:?}");
+        }
+        for path in ["icon.png", "pictures/1.png", "./a/b.png", "a.b/c"] {
+            assert!(inside(path), "{path:?}");
+        }
+    }
 
     #[test]
     fn only_what_belongs_goes_in_the_file() {
