@@ -202,14 +202,21 @@ fn unrar(archive: &Path, into: &Path) -> Result<()> {
         }
         let root = fs::canonicalize(into)?;
         let mut total = 0u64;
+        let mut links = Vec::new();
         for entry in walkdir::WalkDir::new(into) {
             let entry = entry?;
             if !fs::canonicalize(entry.path())?.starts_with(&root) {
                 bail!("{}: a path in the archive leaves its folder", entry.path().display());
             }
-            if entry.file_type().is_file() {
+            if entry.path_is_symlink() {
+                links.push(entry.path().to_path_buf());
+            } else if entry.file_type().is_file() {
                 total = total.saturating_add(entry.metadata()?.len());
             }
+        }
+        // Links are left out, as from a zip: no mod needs one, and one to a folder above it would never end.
+        for link in links {
+            fs::remove_file(&link).or_else(|_| fs::remove_dir(&link)).with_context(|| format!("{} cannot be removed", link.display()))?;
         }
         if total > MAX_UNPACKED {
             bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");

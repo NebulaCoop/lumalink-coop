@@ -418,7 +418,13 @@ impl Builder<'_> {
         entries.sort_by_key(|e| e.file_name());
         for entry in entries {
             let name = entry.file_name().to_string_lossy().to_string();
-            if entry.path().is_dir() {
+            // A link is left out, as in an archive: one to a folder above it would never end.
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                self.plan.note(Level::Info, format!("{}: a link, left out", join(external, &name)));
+                continue;
+            }
+            if kind.is_dir() {
                 if folder.recursive {
                     self.folder(sd_root, patch_root, folder, &join(disc, &name), &join(external, &name));
                 }
@@ -867,7 +873,12 @@ impl Builder<'_> {
         let whole = FolderPatch { resize: true, create: true, recursive: true, ..Default::default() };
         for entry in entries {
             let name = entry.file_name().to_string_lossy().to_string();
-            if entry.path().is_dir() {
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                self.plan.note(Level::Info, format!("/{name}: a link, left out"));
+                continue;
+            }
+            if kind.is_dir() {
                 if !top_level || layout::is_disc_folder(&name) {
                     self.folder(root, root, &whole, &format!("/{name}"), &format!("/{name}"));
                 }
@@ -1084,6 +1095,32 @@ mod tests {
         assert_ne!(ids[2], ids[3]);
         assert_eq!(ids[3], "cafe-galaxy");
         assert!(ids[0].starts_with("mod-") && ids[2].starts_with("caf-galaxy-"), "{ids:?}");
+    }
+
+    /// A mod folder with a link to the folder above it: read once, the link left out, never followed round.
+    #[test]
+    fn a_link_in_a_mod_folder_is_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("mod");
+        write(&source, "StageData/a.arc", "x");
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&source, source.join("StageData/loop"));
+        // A junction: the link any Windows user can make.
+        #[cfg(windows)]
+        let linked = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(source.join("StageData").join("loop"))
+            .arg(&source)
+            .output()
+            .map_err(|e| e.to_string())
+            .and_then(|out| if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).to_string()) });
+        if linked.is_err() {
+            return; // this system lets no one make links
+        }
+        assert!(source.join("StageData/loop/StageData/a.arc").is_file());
+        let plan = build(&Layout::of(&source), "RMGE01", None).unwrap();
+        assert_eq!(plan.files.len(), 1, "{:?}", plan.files.keys());
+        assert!(plan.notes.iter().any(|n| n.text.contains("a link, left out")), "{:?}", plan.notes);
     }
 
     #[test]
