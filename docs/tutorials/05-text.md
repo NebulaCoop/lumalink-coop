@@ -141,6 +141,19 @@ A plugin hears each line open (`NEBULA_MOD_EVENT_TALK_LINE`, with the line's id)
 
 A mod can replace `Message.bmg` from a language's message archive, as Wii mods do. If a mod sets text in some language folders and not the one being played, the game shows the mod's text from the same language of another region, then English, then what it has.
 
+## A language from another release
+
+A US disc has English, French and Spanish. A European disc adds German, Italian and Dutch. A mod can bring any of these as a folder of its own:
+
+```
+files/EuGerman/MessageData/Message.arc
+files/EuGerman/LayoutData/...
+```
+
+With the mod on, German is in the game's language list in Nebula Settings. The game reads German from the mod's folder. Anything the folder doesn't have, a layout or a font, comes from the disc's English, so a pack can be just the message archive.
+
+Folder names: `UsEnglish`, `UsFrench`, `UsSpanish`, `EuEnglish`, `EuFrench`, `EuSpanish`, `EuGerman`, `EuItalian`, `EuDutch`, `JpJapanese`, `KrKorean`. German, Italian and Dutch are always read from the `Eu` folder and Japanese from `JpJapanese`, whatever the disc.
+
 ## A language the game doesn't have
 
 A fan translation goes in the language players pick with least to lose, with a layer limited to it:

@@ -150,6 +150,8 @@ An option needs `choices` or a `range`, or both.
 
 Text for languages the mod leaves out: if a mod sets files in some language folders and not the one being played, Nebula shows the mod's text anyway, from the same language of another region, then English, then what it has. A player can turn this off for a mod.
 
+A language folder the disc doesn't have (`files/EuGerman/` for a US disc) adds that language: it is listed with the game's languages, and files it lacks come from the disc's English. See [tutorial 5](tutorials/05-text.md#a-language-from-another-release).
+
 ### Saves
 
 ```json

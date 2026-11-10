@@ -8,6 +8,8 @@ after the game's source file:
 | `"<file stem>.<name>"` | A named number: `GameRules.cPlayerHealth`, how many hits Mario takes |
 | `"<file stem>.<function>.<k>"` | The k-th step count (frames) in a function: `Kuribo.exeFlatDown.1`, how long a flattened Goomba stays |
 | `"<file stem>.<function>.<call>.<k>"` | The k-th number a function gives a motion, animation or reach call: `Kuribo.tryActive.isNearPlayerAnyTime.1`, how near the player a Goomba wakes |
+| `"<file stem>.<function>.f<k>"` | The k-th other number written in a function: `Kuribo.exeAppearFromBox.f2`, how fast a Goomba jumps out of a box |
+| `"<file stem>.<name>"` (a list) | A record of numbers, set as a list in order: `BossBegoman.hWaitParam`, `[speed, gravity, damping, turn]` |
 
 A layer's `tunables` sets them, and the mod
 says `"requires": ["tunables"]`. A value is a number, `true` or `false`, a list for a list of numbers (`null` keeps a
