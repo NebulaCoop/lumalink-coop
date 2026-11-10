@@ -50,7 +50,7 @@ A mod is made once. Nothing about it depends on one build of Nebula: the game pr
 
 **Code.** The game asks before a mod's code first runs, and again if that code changes. If the game crashes with mods' code on, the crash report names the mods, and on Windows the next run starts with every mod's code off.
 
-**Saves.** A mod says which saves it plays on. A mod that adds a galaxy always gets its own, since a save's shape follows the list of galaxies. Your normal saves are never touched by a mod with saves of its own.
+**Saves.** A mod says which saves it plays on. A mod that adds a galaxy always gets its own, since a save's shape follows the list of galaxies; two such mods play on the higher one's. Your normal saves are never touched by a mod with saves of its own.
 
 ## 3. LumaLink
 
@@ -817,10 +817,14 @@ A mod that can't be used stays in the list, off, with one line:
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` it lacks, or `nebula` above its version |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5` |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game` |
+| THIS MOD IS FOR ANOTHER VERSION OF THE GAME | A Riivolution mod whose `<id game>` names another release |
+| THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
+| MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off or unusable |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | |
-| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on |
+| THIS MOD CAN'T RUN WITH: {NAME} | A mod in `conflicts` is on, or another mod higher on the list keeps its own saves |
+| ANOTHER COPY OF THIS MOD IS ON: {FOLDER} | Two folders hold the same `id`: the higher one is used |
 | THIS MOD HAS NO VERSION FOR THIS DEVICE | A plugin has no library for it |
 | THIS FILE IS DAMAGED | Not a zip, `luma.json` unreadable, or a listed path missing |
 | THIS MOD'S CODE IS FOR AN OLDER NEBULA: REBUILD IT WITH THIS NEBULA'S NEBULA_MOD_API.H | A plugin's `api` is below the game's |

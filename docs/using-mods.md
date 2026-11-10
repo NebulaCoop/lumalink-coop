@@ -50,7 +50,7 @@ A mod says which saves it plays on.
 | `own` | Saves of its own, starting new or from what the mod brings |
 | `copy` | Saves of its own, starting as a copy of yours. Yours stay as they are |
 
-A mod that adds a galaxy always has its own, since a save's shape follows the list of galaxies. Saves of its own outlast updating or removing the mod.
+A mod that adds a galaxy always has its own, since a save's shape follows the list of galaxies; two such mods play on the higher one's. Saves of its own outlast updating or removing the mod.
 
 ## When a mod can't be used
 
