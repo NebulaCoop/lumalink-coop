@@ -150,7 +150,8 @@ pub fn build_plugin(folder: &Path, clang: Option<&Path>) -> Result<Vec<BuiltLibr
     if list.is_empty() {
         list.push(json!({ "api": PLUGIN_API }));
     }
-    list[0]["binaries"] = Value::Object(binaries);
+    let first = list[0].as_object_mut().context("luma.json: the first of \"plugins\" isn't a set of fields")?;
+    first.insert("binaries".to_string(), Value::Object(binaries));
     fs::write(folder.join("luma.json"), serde_json::to_string_pretty(&manifest)? + "\n")?;
     Ok(built)
 }
