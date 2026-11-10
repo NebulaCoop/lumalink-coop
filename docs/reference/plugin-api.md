@@ -990,7 +990,7 @@ In a stage: the player goes back to the dome, as when a galaxy is left.
 int32_t is_event_flag_on(const char* name)
 ```
 
-1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on.
+1 if the save has that event flag (a name of the game's progression, or one set_event_flag added) on. "SpinAndStarPointer" is the spin and the Star Pointer the Gateway's Luma grants.
 
 ### `set_event_flag_on`
 
@@ -998,7 +998,7 @@ int32_t is_event_flag_on(const char* name)
 void set_event_flag_on(const char* name)
 ```
 
-Turns it on in the save (written with the next save).
+Turns it on in the save (written with the next save). "SpinAndStarPointer" grants the spin and the Star Pointer at once, in the stage being played too.
 
 ### `has_star`
 

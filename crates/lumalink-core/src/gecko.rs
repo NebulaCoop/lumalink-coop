@@ -75,49 +75,83 @@ pub fn from_gct(bytes: &[u8]) -> CodeList {
     read_pairs(&pairs)
 }
 
-/// A popular code Nebula does natively: the sample mod that does what it did (Nebula's
-/// native/plugin_sdk/examples/gecko/<sample>, MOD-PLAN M9) and what that is.
+/// Where Nebula does a popular code natively.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// A mod in LumaLink's examples folder (`examples/<name>`), built for every device by `lumalink build`.
+    Example(&'static str),
+    /// One of Nebula's own settings, by the name its settings show.
+    Setting(&'static str),
+}
+
+/// A popular code Nebula does natively: where, and what that is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KnownCode {
-    pub sample: &'static str,
+    pub route: Route,
     pub what: &'static str,
+}
+
+impl KnownCode {
+    /// What a converted mod's report says in place of the code.
+    pub fn advice(&self, code: &str) -> String {
+        match self.route {
+            Route::Example(name) => format!(
+                "Code \"{code}\": Nebula does this natively ({}). Use the mod {name} from LumaLink's examples (lumalink build, then lumalink pack) in place of the code.",
+                self.what
+            ),
+            Route::Setting(name) => format!("Code \"{code}\": Nebula does this natively ({}). Set {name} in Nebula's settings in place of the code.", self.what),
+        }
+    }
 }
 
 /// Popular codes by the words their names use in shared lists (all of a row's words, in any case and order).
 const KNOWN: &[(&[&str], KnownCode)] = &[
-    (&["moon", "jump"], KnownCode { sample: "moon_jump", what: "rise while jump is held" }),
-    (&["infinite", "health"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
-    (&["inf", "health"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
-    (&["invincib"], KnownCode { sample: "infinite_health", what: "no hit takes health" }),
-    (&["lives"], KnownCode { sample: "infinite_lives", what: "lives stay at 99" }),
-    (&["star", "bit"], KnownCode { sample: "max_star_bits", what: "star bits filled, coins added" }),
-    (&["coin"], KnownCode { sample: "max_star_bits", what: "star bits filled, coins added" }),
-    (&["gravity"], KnownCode { sample: "low_gravity", what: "a scale on gravity's pull (set_gravity_scale)" }),
-    (&["rainbow"], KnownCode { sample: "rainbow_forever", what: "the star power that never ends" }),
-    (&["power", "up", "never"], KnownCode { sample: "power_ups_last", what: "power-ups that never run out" }),
-    (&["infinite", "power"], KnownCode { sample: "power_ups_last", what: "power-ups that never run out" }),
-    (&["fire", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
-    (&["bee", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
-    (&["boo", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
-    (&["ice", "mario"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
-    (&["power", "up", "anywhere"], KnownCode { sample: "power_up_anywhere", what: "any power-up on a button" }),
-    (&["timer"], KnownCode { sample: "freeze_timer", what: "countdowns held (pause_timer)" }),
-    (&["free", "cam"], KnownCode { sample: "free_camera", what: "a camera the d-pad moves (set_camera)" }),
-    (&["fov"], KnownCode { sample: "wide_fov", what: "the camera's angle of view (set_camera)" }),
-    (&["hud"], KnownCode { sample: "hide_hud", what: "the HUD hidden (show_hud)" }),
-    (&["fall"], KnownCode { sample: "no_fall_death", what: "a fall out of the level puts the player back" }),
-    (&["slow", "motion"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
-    (&["frame", "advance"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
-    (&["speed", "hack"], KnownCode { sample: "slow_motion", what: "slow motion and frame advance (set_game_speed)" }),
-    (&["position"], KnownCode { sample: "position_display", what: "the player's place and speed on the screen (draw_text)" }),
-    (&["coordinates"], KnownCode { sample: "position_display", what: "the player's place and speed on the screen (draw_text)" }),
-    (&["freeze", "enem"], KnownCode { sample: "freeze_enemies", what: "enemies held still (hook_nerve)" }),
-    (&["stage", "select"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
-    (&["level", "select"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
-    (&["warp"], KnownCode { sample: "warp_anywhere", what: "any galaxy and star (change_stage)" }),
+    (&["moon", "jump"], KnownCode { route: Route::Example("gecko-moon-jump"), what: "rise while jump is held" }),
+    (&["infinite", "health"], KnownCode { route: Route::Example("gecko-infinite-health"), what: "no hit takes health" }),
+    (&["inf", "health"], KnownCode { route: Route::Example("gecko-infinite-health"), what: "no hit takes health" }),
+    (&["invincib"], KnownCode { route: Route::Example("gecko-infinite-health"), what: "no hit takes health" }),
+    (&["lives"], KnownCode { route: Route::Example("gecko-infinite-lives"), what: "lives stay at 99" }),
+    (&["star", "bit"], KnownCode { route: Route::Example("gecko-max-star-bits"), what: "star bits filled, coins added" }),
+    (&["coin"], KnownCode { route: Route::Example("gecko-max-star-bits"), what: "star bits filled, coins added" }),
+    (&["gravity"], KnownCode { route: Route::Example("gecko-low-gravity"), what: "a scale on gravity's pull (set_gravity_scale)" }),
+    (&["rainbow"], KnownCode { route: Route::Example("gecko-rainbow-forever"), what: "the star power that never ends" }),
+    (&["power", "up", "never"], KnownCode { route: Route::Example("gecko-power-ups-last"), what: "power-ups that never run out" }),
+    (&["infinite", "power"], KnownCode { route: Route::Example("gecko-power-ups-last"), what: "power-ups that never run out" }),
+    (&["fire", "mario"], KnownCode { route: Route::Example("gecko-power-up-anywhere"), what: "any power-up on a button" }),
+    (&["bee", "mario"], KnownCode { route: Route::Example("gecko-power-up-anywhere"), what: "any power-up on a button" }),
+    (&["boo", "mario"], KnownCode { route: Route::Example("gecko-power-up-anywhere"), what: "any power-up on a button" }),
+    (&["ice", "mario"], KnownCode { route: Route::Example("gecko-power-up-anywhere"), what: "any power-up on a button" }),
+    (&["power", "up", "anywhere"], KnownCode { route: Route::Example("gecko-power-up-anywhere"), what: "any power-up on a button" }),
+    (&["timer"], KnownCode { route: Route::Example("gecko-freeze-timer"), what: "countdowns held (pause_timer)" }),
+    (&["free", "cam"], KnownCode { route: Route::Example("gecko-free-camera"), what: "a camera the d-pad moves (set_camera)" }),
+    (&["fov"], KnownCode { route: Route::Example("gecko-wide-fov"), what: "the camera's angle of view (set_camera)" }),
+    (&["hud"], KnownCode { route: Route::Example("gecko-hide-hud"), what: "the HUD hidden (show_hud)" }),
+    (&["fall"], KnownCode { route: Route::Example("gecko-no-fall-death"), what: "a fall out of the level puts the player back" }),
+    (&["slow", "motion"], KnownCode { route: Route::Example("gecko-slow-motion"), what: "slow motion and frame advance (set_game_speed)" }),
+    (&["frame", "advance"], KnownCode { route: Route::Example("gecko-slow-motion"), what: "slow motion and frame advance (set_game_speed)" }),
+    (&["speed", "hack"], KnownCode { route: Route::Example("gecko-slow-motion"), what: "slow motion and frame advance (set_game_speed)" }),
+    (&["position"], KnownCode { route: Route::Example("gecko-position-display"), what: "the player's place and speed on the screen (draw_text)" }),
+    (&["coordinates"], KnownCode { route: Route::Example("gecko-position-display"), what: "the player's place and speed on the screen (draw_text)" }),
+    (&["freeze", "enem"], KnownCode { route: Route::Example("gecko-freeze-enemies"), what: "enemies held still (hook_nerve)" }),
+    (&["stage", "select"], KnownCode { route: Route::Example("gecko-warp-anywhere"), what: "any galaxy and star (change_stage)" }),
+    (&["level", "select"], KnownCode { route: Route::Example("gecko-warp-anywhere"), what: "any galaxy and star (change_stage)" }),
+    (&["warp"], KnownCode { route: Route::Example("gecko-warp-anywhere"), what: "any galaxy and star (change_stage)" }),
+    (&["mario", "size"], KnownCode { route: Route::Example("gecko-mario-size"), what: "the player's model at another size (set_scale)" }),
+    (&["big", "mario"], KnownCode { route: Route::Example("gecko-mario-size"), what: "the player's model at another size (set_scale)" }),
+    (&["giant", "mario"], KnownCode { route: Route::Example("gecko-mario-size"), what: "the player's model at another size (set_scale)" }),
+    (&["tiny", "mario"], KnownCode { route: Route::Example("gecko-mario-size"), what: "the player's model at another size (set_scale)" }),
+    (&["mini", "mario"], KnownCode { route: Route::Example("gecko-mario-size"), what: "the player's model at another size (set_scale)" }),
+    (&["spin", "cooldown"], KnownCode { route: Route::Example("gecko-no-spin-cooldown"), what: "a spin ready as soon as the last ends (player number mSpinIntervalTime)" }),
+    (&["always", "spin"], KnownCode { route: Route::Example("gecko-no-spin-cooldown"), what: "a spin ready as soon as the last ends (player number mSpinIntervalTime)" }),
+    (&["infinite", "spin"], KnownCode { route: Route::Example("gecko-no-spin-cooldown"), what: "a spin ready as soon as the last ends (player number mSpinIntervalTime)" }),
+    (&["star", "pointer"], KnownCode { route: Route::Example("gecko-spin-and-pointer"), what: "the spin and the Star Pointer from the start (set_event_flag_on)" }),
+    (&["spin", "start"], KnownCode { route: Route::Example("gecko-spin-and-pointer"), what: "the spin and the Star Pointer from the start (set_event_flag_on)" }),
+    (&["fast", "text"], KnownCode { route: Route::Setting("Text speed"), what: "text up to a whole page at once" }),
+    (&["text", "speed"], KnownCode { route: Route::Setting("Text speed"), what: "text up to a whole page at once" }),
+    (&["instant", "text"], KnownCode { route: Route::Setting("Text speed"), what: "text up to a whole page at once" }),
 ];
 
-/// The native sample a code's name says it is, if it is one of the popular codes.
+/// The native way of a code its name says it is, if it is one of the popular codes.
 pub fn known_code(name: &str) -> Option<KnownCode> {
     let lower = name.to_ascii_lowercase();
     KNOWN.iter().find(|(words, _)| words.iter().all(|w| lower.contains(w))).map(|(_, code)| *code)
@@ -259,12 +293,29 @@ mod tests {
 
     #[test]
     fn popular_codes_are_known_by_their_names() {
-        assert_eq!(known_code("Moon Jump [Ralf]").map(|c| c.sample), Some("moon_jump"));
-        assert_eq!(known_code("INFINITE HEALTH").map(|c| c.sample), Some("infinite_health"));
-        assert_eq!(known_code("Low Gravity (hold Z)").map(|c| c.sample), Some("low_gravity"));
-        assert_eq!(known_code("Stage Select").map(|c| c.sample), Some("warp_anywhere"));
-        assert_eq!(known_code("Freeze Enemies").map(|c| c.sample), Some("freeze_enemies"));
-        assert_eq!(known_code("Hide HUD").map(|c| c.sample), Some("hide_hud"));
+        let route = |name: &str| known_code(name).map(|c| c.route);
+        assert_eq!(route("Moon Jump [Ralf]"), Some(Route::Example("gecko-moon-jump")));
+        assert_eq!(route("INFINITE HEALTH"), Some(Route::Example("gecko-infinite-health")));
+        assert_eq!(route("Low Gravity (hold Z)"), Some(Route::Example("gecko-low-gravity")));
+        assert_eq!(route("Stage Select"), Some(Route::Example("gecko-warp-anywhere")));
+        assert_eq!(route("Freeze Enemies"), Some(Route::Example("gecko-freeze-enemies")));
+        assert_eq!(route("Hide HUD"), Some(Route::Example("gecko-hide-hud")));
+        assert_eq!(route("Giant Mario"), Some(Route::Example("gecko-mario-size")));
+        assert_eq!(route("No Spin Cooldown"), Some(Route::Example("gecko-no-spin-cooldown")));
+        assert_eq!(route("Star Pointer from the start"), Some(Route::Example("gecko-spin-and-pointer")));
+        assert_eq!(route("Fast Text"), Some(Route::Setting("Text speed")));
+        // Every example a code names is in examples/ and in the converting tutorial's list.
+        let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let tutorial = include_str!("../../../docs/tutorials/15-converting.md");
+        for (_, code) in KNOWN {
+            match code.route {
+                Route::Example(name) => {
+                    assert!(examples.join(name).join("luma.json").is_file(), "{name} is not in examples/");
+                    assert!(tutorial.contains(&format!("`{name}`")), "{name} is not in docs/tutorials/15-converting.md");
+                }
+                Route::Setting(name) => assert!(tutorial.contains(&format!("{name}, in Nebula's settings")), "{name}"),
+            }
+        }
         assert_eq!(known_code("Widescreen Fix"), None);
         let codes = ini_codes("[Gecko]\n$Moon Jump [someone]\n04001000 00000001\n$Other\n04001004 00000002\n[Gecko_Enabled]\n$Moon Jump\n");
         assert_eq!(codes.len(), 2);

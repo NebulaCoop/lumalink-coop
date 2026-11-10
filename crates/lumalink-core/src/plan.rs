@@ -936,13 +936,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                         let mut writes = Vec::new();
                         for one in crate::gecko::ini_codes(&text).into_iter().filter(|c| c.enabled) {
                             if let Some(known) = crate::gecko::known_code(&one.name) {
-                                builder.plan.note(
-                                    Level::Lost,
-                                    format!(
-                                        "Code \"{}\": Nebula does this natively ({}). Turn on its sample mod, gecko/{} in Nebula's plugin examples, in place of the code.",
-                                        one.name, known.what, known.sample
-                                    ),
-                                );
+                                builder.plan.note(Level::Lost, known.advice(&one.name));
                                 continue;
                             }
                             let list = crate::gecko::from_pairs(&one.pairs);
@@ -1090,8 +1084,8 @@ mod tests {
         let store = store();
         let plan = build(&Layout::of(dir.path()), "RMGE01", Some(&store)).unwrap();
         let text: Vec<_> = plan.notes.iter().map(|n| n.text.as_str()).collect();
-        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("gecko/moon_jump")), "{text:?}");
-        assert!(!text.iter().any(|t| t.contains("hide_hud")), "a code that is off says nothing: {text:?}");
+        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("gecko-moon-jump")), "{text:?}");
+        assert!(!text.iter().any(|t| t.contains("hide-hud")), "a code that is off says nothing: {text:?}");
         assert!(plan.unknown_code.is_empty(), "{:?}", plan.unknown_code);
     }
 

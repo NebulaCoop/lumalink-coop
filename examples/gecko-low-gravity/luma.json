@@ -1,0 +1,27 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Everything falls at half the pull.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-low-gravity",
+  "layers": [],
+  "name": "Low gravity",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-low-gravity-android-arm64.so",
+        "android-x64": "plugins/gecko-low-gravity-android-x64.so",
+        "linux-arm64": "plugins/gecko-low-gravity-linux-arm64.so",
+        "linux-x64": "plugins/gecko-low-gravity-linux-x64.so",
+        "macos-arm64": "plugins/gecko-low-gravity-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-low-gravity-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-low-gravity-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-low-gravity-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

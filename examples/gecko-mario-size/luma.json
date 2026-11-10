@@ -1,0 +1,52 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Mario tiny, small, big or giant, as the popular code made him: his model only, so he stands, jumps and is hit as at his own size.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-mario-size",
+  "layers": [],
+  "name": "Mario's size",
+  "options": [
+    {
+      "choices": [
+        {
+          "id": "tiny",
+          "name": "Tiny"
+        },
+        {
+          "id": "small",
+          "name": "Small"
+        },
+        {
+          "id": "big",
+          "name": "Big"
+        },
+        {
+          "id": "giant",
+          "name": "Giant"
+        }
+      ],
+      "default": "big",
+      "id": "size",
+      "name": "Size"
+    }
+  ],
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-mario-size-android-arm64.so",
+        "android-x64": "plugins/gecko-mario-size-android-x64.so",
+        "linux-arm64": "plugins/gecko-mario-size-linux-arm64.so",
+        "linux-x64": "plugins/gecko-mario-size-linux-x64.so",
+        "macos-arm64": "plugins/gecko-mario-size-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-mario-size-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-mario-size-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-mario-size-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

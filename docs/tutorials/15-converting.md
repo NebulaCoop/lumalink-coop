@@ -48,6 +48,36 @@ Nebula isn't the Wii's program, so a write over that program is read for what it
 
 A write nothing here can read is listed under "code changes Nebula has no version of yet". The mod still converts and everything else in it works. See [What conversion reads](../REFERENCE.md#4-what-conversion-does).
 
+## Popular Gecko codes
+
+A popular code in a Dolphin `RMGE01.ini` is known by its name, and its writes are not read: the report names the mod
+in `examples/` that does the same thing natively, or the Nebula setting that does. Each of those mods builds for every
+device with `lumalink build examples/<name>` and becomes a file with `lumalink pack examples/<name>`.
+
+| A code named like | Native way |
+|---|---|
+| Moon jump | `gecko-moon-jump` |
+| Infinite health, invincible | `gecko-infinite-health` |
+| Lives | `gecko-infinite-lives` |
+| Star bits, coins | `gecko-max-star-bits` |
+| Gravity | `gecko-low-gravity` |
+| Rainbow | `gecko-rainbow-forever` |
+| Power-ups never end, infinite power | `gecko-power-ups-last` |
+| Fire, Bee, Boo or Ice Mario, power-up anywhere | `gecko-power-up-anywhere` |
+| Timer | `gecko-freeze-timer` |
+| Free camera | `gecko-free-camera` |
+| FOV | `gecko-wide-fov` |
+| HUD | `gecko-hide-hud` |
+| Fall | `gecko-no-fall-death` |
+| Slow motion, frame advance, speed hack | `gecko-slow-motion` |
+| Position, coordinates | `gecko-position-display` |
+| Freeze enemies | `gecko-freeze-enemies` |
+| Stage select, level select, warp | `gecko-warp-anywhere` |
+| Mario size, big, giant, tiny or mini Mario | `gecko-mario-size` |
+| Spin cooldown, always spin, infinite spin | `gecko-no-spin-cooldown` |
+| Star pointer, spin from the start | `gecko-spin-and-pointer` |
+| Fast text, text speed, instant text | Text speed, in Nebula's settings |
+
 ## What it decides for you
 
 - **Versions.** An option that only asks which version you have becomes layers by version, chosen by the game.

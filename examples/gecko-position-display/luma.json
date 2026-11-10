@@ -1,0 +1,27 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "The player's place and speed in the screen's top-left corner.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-position-display",
+  "layers": [],
+  "name": "Position and speed display",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-position-display-android-arm64.so",
+        "android-x64": "plugins/gecko-position-display-android-x64.so",
+        "linux-arm64": "plugins/gecko-position-display-linux-arm64.so",
+        "linux-x64": "plugins/gecko-position-display-linux-x64.so",
+        "macos-arm64": "plugins/gecko-position-display-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-position-display-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-position-display-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-position-display-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

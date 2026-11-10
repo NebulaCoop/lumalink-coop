@@ -1,0 +1,20 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "A spin is ready again as soon as the last one ends, as the popular code made it. No code: one of the player numbers.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-no-spin-cooldown",
+  "layers": [
+    {
+      "player_constants": {
+        "both": {
+          "mSpinIntervalTime": 0
+        }
+      }
+    }
+  ],
+  "name": "No spin cooldown",
+  "version": "1.0.0"
+}

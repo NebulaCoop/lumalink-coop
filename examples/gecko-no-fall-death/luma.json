@@ -1,0 +1,27 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Falling out of a level puts the player back where they last stood.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-no-fall-death",
+  "layers": [],
+  "name": "No fall-out death",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-no-fall-death-android-arm64.so",
+        "android-x64": "plugins/gecko-no-fall-death-android-x64.so",
+        "linux-arm64": "plugins/gecko-no-fall-death-linux-arm64.so",
+        "linux-x64": "plugins/gecko-no-fall-death-linux-x64.so",
+        "macos-arm64": "plugins/gecko-no-fall-death-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-no-fall-death-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-no-fall-death-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-no-fall-death-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

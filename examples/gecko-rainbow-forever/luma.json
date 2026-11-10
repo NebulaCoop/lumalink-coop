@@ -1,0 +1,27 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "The invincible star power from the start of every stage, never ending.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-rainbow-forever",
+  "layers": [],
+  "name": "Rainbow Mario forever",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-rainbow-forever-android-arm64.so",
+        "android-x64": "plugins/gecko-rainbow-forever-android-x64.so",
+        "linux-arm64": "plugins/gecko-rainbow-forever-linux-arm64.so",
+        "linux-x64": "plugins/gecko-rainbow-forever-linux-x64.so",
+        "macos-arm64": "plugins/gecko-rainbow-forever-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-rainbow-forever-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-rainbow-forever-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-rainbow-forever-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

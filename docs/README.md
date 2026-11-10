@@ -70,6 +70,7 @@ Each one starts from nothing and ends with something running in the game.
 | `new-cutscene` | A whole cutscene from tables |
 | `one-health`, `coin-kills`, `boss-music`, `double-jump` | Small plugins |
 | `achievements` | The mod's own achievements, on the game's board: by events, and by its code |
+| `gecko-*` (20 of them) | Popular Gecko codes done natively: moon jump, infinite health, Mario's size, no spin cooldown and the rest ([the list](tutorials/15-converting.md#popular-gecko-codes)) |
 | `little-boss` | A three-phase boss: model, music, placement, attacks |
 | `gold-flower` | A new power-up: its item, model, particles, sounds, spin animation, fire damage and higher jump |
 | `new-galaxy` | A whole galaxy: planet, ground, gravity, a new enemy, stars, a cutscene with a glTF camera |

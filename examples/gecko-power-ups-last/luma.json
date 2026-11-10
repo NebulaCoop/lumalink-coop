@@ -1,0 +1,27 @@
+{
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "A power-up stays until another one replaces it or the player is hit.",
+  "format": 1,
+  "game": "RMG",
+  "id": "gecko-power-ups-last",
+  "layers": [],
+  "name": "Power-ups never run out",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/gecko-power-ups-last-android-arm64.so",
+        "android-x64": "plugins/gecko-power-ups-last-android-x64.so",
+        "linux-arm64": "plugins/gecko-power-ups-last-linux-arm64.so",
+        "linux-x64": "plugins/gecko-power-ups-last-linux-x64.so",
+        "macos-arm64": "plugins/gecko-power-ups-last-macos-arm64.dylib",
+        "macos-x64": "plugins/gecko-power-ups-last-macos-x64.dylib",
+        "windows-arm64": "plugins/gecko-power-ups-last-windows-arm64.dll",
+        "windows-x64": "plugins/gecko-power-ups-last-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
