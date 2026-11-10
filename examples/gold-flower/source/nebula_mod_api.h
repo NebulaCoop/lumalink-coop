@@ -7,7 +7,9 @@
    is not there: NEBULA_MOD_API_HAS(api, field) says whether it is, before the plugin calls it.
 
    A null object, layout, point or name where a call needs one makes the call do nothing: it returns 0, null, or -1
-   where -1 means "no such". Where null means something (find_actor's `name`, stop_effect's), the call says so. */
+   where -1 means "no such". Where null means something (find_actor's `name`, stop_effect's), the call says so. A
+   number that is NaN or infinite, where a position, motion, angle, scale, time or tuning number is set, does the same:
+   the call changes nothing. */
 #ifndef NEBULA_MOD_API_H
 #define NEBULA_MOD_API_H
 
@@ -544,8 +546,9 @@ typedef struct NebulaModApi {
     int32_t (*start_cutscene)(NebulaActor* actor, const char* name);
     /* The actor's part in that cutscene ends; the cutscene ends when every part has. */
     void (*end_cutscene)(NebulaActor* actor, const char* name);
-    /* 1 while any cutscene plays, and while the stage starts (its opening camera and the player's arrival, which send no
-       NEBULA_MOD_EVENT_CUTSCENE): the player has control when it is 0. A message is best shown then. */
+    /* 1 while any cutscene plays, while the stage starts (its opening camera and the player's arrival) and while a star's
+       get sequence plays ("You got a Star!"), which send no NEBULA_MOD_EVENT_CUTSCENE: the player has control when it is
+       0. A message is best shown then. */
     int32_t (*is_cutscene_playing)(void);
     /* In a stage: the camera shakes, as hard as `how` (NEBULA_SHAKE_*). */
     void (*shake_camera_by)(NebulaShake how);

@@ -78,7 +78,8 @@ out = ["# The plugin interface, call by call", "",
        "support.", "",
        "A null object, layout, point or name where a call needs one makes the call do nothing: it answers 0, null, or -1 where "
        "-1 means \"no such\". Where null means something (`find_actor`'s `name`), the call says so. Calls about the player or "
-       "the stage do nothing, and answer 0 or null, between stages and on the file select screen.", "",
+       "the stage do nothing, and answer 0 or null, between stages and on the file select screen. A number that is NaN or "
+       "infinite, where a position, motion, angle, scale, time or tuning number is set, changes nothing either.", "",
        "| Call | Signature |", "|---|---|"]
 for name, signature, _ in calls:
     out.append(f"| `{name}` | `{tidy(signature)}` |")

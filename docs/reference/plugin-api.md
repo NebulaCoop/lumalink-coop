@@ -2,7 +2,7 @@
 
 Written from `nebula_mod_api.h` (by `tools/plugin_api_doc.py`), in its order: fields are only ever added at the end, so a plugin keeps working on later versions of Nebula. Check `game->size` before using a call newer than the oldest Nebula you support.
 
-A null object, layout, point or name where a call needs one makes the call do nothing: it answers 0, null, or -1 where -1 means "no such". Where null means something (`find_actor`'s `name`), the call says so. Calls about the player or the stage do nothing, and answer 0 or null, between stages and on the file select screen.
+A null object, layout, point or name where a call needs one makes the call do nothing: it answers 0, null, or -1 where -1 means "no such". Where null means something (`find_actor`'s `name`), the call says so. Calls about the player or the stage do nothing, and answer 0 or null, between stages and on the file select screen. A number that is NaN or infinite, where a position, motion, angle, scale, time or tuning number is set, changes nothing either.
 
 | Call | Signature |
 |---|---|
@@ -926,7 +926,7 @@ The actor's part in that cutscene ends; the cutscene ends when every part has.
 int32_t is_cutscene_playing(void)
 ```
 
-1 while any cutscene plays, and while the stage starts (its opening camera and the player's arrival, which send no NEBULA_MOD_EVENT_CUTSCENE): the player has control when it is 0. A message is best shown then.
+1 while any cutscene plays, while the stage starts (its opening camera and the player's arrival) and while a star's get sequence plays ("You got a Star!"), which send no NEBULA_MOD_EVENT_CUTSCENE: the player has control when it is 0. A message is best shown then.
 
 ### `shake_camera_by`
 
