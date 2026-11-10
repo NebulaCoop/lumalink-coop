@@ -313,6 +313,29 @@ pub fn slug(name: &str) -> String {
     }
 }
 
+/// A mod's id from its name. Letters outside ASCII make no part of an id, so a name with any gets a mark of the whole
+/// name too: two mods named in Japanese are two mods, not one replacing the other.
+pub fn mod_id(name: &str) -> String {
+    let id = slug(name);
+    if !name.chars().any(|c| c.is_alphanumeric() && !c.is_ascii()) {
+        return id;
+    }
+    // FNV-1a: the same on every system and in every build.
+    let mark = name.bytes().fold(0x811c_9dc5u32, |hash, byte| (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193));
+    let mut head = id;
+    head.truncate(49);
+    let head = head.trim_end_matches('-');
+    format!("{head}-{mark:08x}")
+}
+
+/// `id`, or the first of `id-2`, `id-3`... that `taken` doesn't hold.
+fn unused(id: String, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(&id) {
+        return id;
+    }
+    (2..).map(|n| format!("{id}-{n}")).find(|candidate| !taken(candidate)).unwrap_or(id)
+}
+
 /// Names Windows keeps for itself, which no folder can have.
 pub(crate) fn reserved_id(id: &str) -> bool {
     matches!(id, "con" | "prn" | "aux" | "nul") || (id.len() == 4 && (id.starts_with("com") || id.starts_with("lpt")) && id.as_bytes()[3].is_ascii_digit())
@@ -704,6 +727,8 @@ impl Builder<'_> {
         if self.plan.options.iter().any(|o| o.id == id) {
             id = format!("{}-{id}", slug(&disc.sections[section].name));
         }
+        // Each option its own id: the game keeps one choice per id, so two sharing one would move together.
+        let id = unused(id, |candidate| self.plan.options.iter().any(|o| o.id == candidate));
         let mut choices = vec![OptionChoice { id: "off".to_string(), name: "Off".to_string() }];
         let mut default = "off".to_string();
         // Choices that only differ in where a console keeps its save come to the same here: Nebula keeps saves itself.
@@ -770,20 +795,17 @@ impl Builder<'_> {
                     continue;
                 }
                 let name = entry.name.trim_end_matches(':').trim().to_string();
-                let id = slug(&name);
-                let on: Vec<String> = self
-                    .plan
-                    .options
-                    .iter()
-                    .find(|o| o.id == id)
-                    .map(|o| o.choices.iter().filter(|c| c.id != "off").map(|c| c.id.clone()).collect())
-                    .unwrap_or_default();
+                // The main file's option of the same name: its id may not be the name's own when two names met.
                 let mut when = When { version: vec![letter], ..Default::default() };
-                if !on.is_empty() {
-                    when.option.insert(id.clone(), on);
+                if let Some(option) = self.plan.options.iter().find(|o| o.name == name) {
+                    let on: Vec<String> = option.choices.iter().filter(|c| c.id != "off").map(|c| c.id.clone()).collect();
+                    if !on.is_empty() {
+                        when.option.insert(option.id.clone(), on);
+                    }
                 }
+                let layer = unused(format!("version-{}-{}", letter.to_ascii_lowercase(), slug(&name)), |candidate| self.plan.layers.iter().any(|l| l.name == candidate));
                 self.plan.layers.push(Layer {
-                    name: format!("version-{}-{}", letter.to_ascii_lowercase(), slug(&name)),
+                    name: layer,
                     when,
                     files: part.files,
                     ..Default::default()
@@ -1048,7 +1070,26 @@ mod tests {
     fn any_name_makes_an_id_the_game_reads() {
         for name in ["Aux", "CON", "com1", "!!!", "", "A Very Long Name That Goes On And On And On And On And On And On And On And On", "Kaizo: Rebalanced!"] {
             assert!(crate::project::valid_id(&slug(name)), "{name:?} -> {}", slug(name));
+            assert!(crate::project::valid_id(&mod_id(name)), "{name:?} -> {}", mod_id(name));
         }
+    }
+
+    #[test]
+    fn names_in_other_letters_are_different_mods() {
+        let ids: Vec<String> = ["スーパーマリオ", "マリオギャラクシー", "Café Galaxy", "Cafe Galaxy", "Ñandú ".repeat(20).as_str()].iter().map(|n| mod_id(n)).collect();
+        for id in &ids {
+            assert!(crate::project::valid_id(id), "{id}");
+        }
+        assert_ne!(ids[0], ids[1]);
+        assert_ne!(ids[2], ids[3]);
+        assert_eq!(ids[3], "cafe-galaxy");
+        assert!(ids[0].starts_with("mod-") && ids[2].starts_with("caf-galaxy-"), "{ids:?}");
+    }
+
+    #[test]
+    fn options_never_share_an_id() {
+        assert_eq!(unused("a".to_string(), |_| false), "a");
+        assert_eq!(unused("a".to_string(), |c| c == "a" || c == "a-2"), "a-3");
     }
 
     fn write(root: &Path, relative: &str, text: &str) {

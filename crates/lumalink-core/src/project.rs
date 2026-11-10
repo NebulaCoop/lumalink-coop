@@ -276,7 +276,7 @@ pub fn new_project(folder: &Path, name: &str) -> Result<()> {
     }
     let manifest = json!({
         "format": PACKAGE_FORMAT,
-        "id": crate::plan::slug(name),
+        "id": crate::plan::mod_id(name),
         "name": name,
         "version": "1.0.0",
         "game": crate::plan::ANY_VERSION,
@@ -1502,10 +1502,10 @@ fn check_achievements(manifest: &Value, found: &mut Findings) {
                     Some(event) => found.problem(format!("{name}: {event} isn't an event ({})", ACHIEVEMENT_EVENTS.join(", "))),
                     None => found.problem(format!("{name}: when needs an event")),
                 }
-                if fields.get("name").is_some_and(|n| !n.as_str().is_some_and(|n| !n.is_empty())) {
+                if fields.get("name").is_some_and(|n| n.as_str().is_none_or(str::is_empty)) {
                     found.problem(format!("{name}: when's name is text"));
                 }
-                if fields.get("value").is_some_and(|v| !v.as_i64().is_some_and(|v| i32::try_from(v).is_ok())) {
+                if fields.get("value").is_some_and(|v| v.as_i64().is_none_or(|v| i32::try_from(v).is_err())) {
                     found.problem(format!("{name}: when's value is a whole number"));
                 }
                 for key in fields.keys() {
@@ -1695,7 +1695,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
         }
     }
     if let Some(license) = manifest.get("license") {
-        if !license.as_str().is_some_and(|l| !l.trim().is_empty()) {
+        if license.as_str().is_none_or(|l| l.trim().is_empty()) {
             found.problem("license is text: a name such as CC-BY-4.0, or the license's own words");
         }
     }
@@ -1856,7 +1856,7 @@ mod tests {
             let found = check(&folder, None).unwrap();
             let left: Vec<&str> = problems(&found)
                 .into_iter()
-                .filter(|p| !(p.contains("isn't in the file") && p.contains("plugins/")) && !p.contains("has no library for"))
+                .filter(|p| (!p.contains("isn't in the file") || !p.contains("plugins/")) && !p.contains("has no library for"))
                 .collect();
             assert!(left.is_empty(), "{}: {left:?}", folder.display());
         }

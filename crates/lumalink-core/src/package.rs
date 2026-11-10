@@ -416,7 +416,7 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
     };
     let manifest = Manifest {
         format: PACKAGE_FORMAT,
-        id: crate::plan::slug(&shown_name),
+        id: crate::plan::mod_id(&shown_name),
         name: shown_name,
         version: pack
             .map(|p| p.version.clone())
