@@ -1878,7 +1878,7 @@ mod tests {
     fn mistakes_name_their_line() {
         bad("on frame { wait 1 }\nfn f() { wait 2 }", "only a handler");
         bad("on frame { goto nowhere }", "no state nowhere");
-        bad("on touch { return }", "the game has no event touch");
+        bad("on touched { return }", "the game has no event touched");
         bad("on message ACTMES_NO_SUCH { return }", "the game has no message ACTMES_NO_SUCH");
         bad("on message 9999 { return }", "the game has no message 9999");
         bad("on event \"a b\" { return }", "not an event's name");

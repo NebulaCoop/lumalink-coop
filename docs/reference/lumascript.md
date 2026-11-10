@@ -178,6 +178,26 @@ calls the toolkit and the plugin API like any script. Rules that are not about o
 on coin(value, name, actor) { return value * 2 }
 ```
 
+## Class scripts
+
+A row of `object_classes` with a `script` runs that script on every object the stages place by the name: one of the
+game's classes (`{ "name": "Kuribo", "script": "angry" }`, every Goomba) or a name the row makes `like` one. The game's
+class still runs; the script rides along and can take its place. `self` is the object; each object has its own `var`s.
+A name made `like` a class runs the class's scripts first, then its own.
+
+```text
+on start { }                   // the object was made and set up by its class
+on control { return false }    // every frame before the class moves it; true: the class doesn't move it this frame
+on touch(other, sensor) { }    // one of its sensors touches another object's; true: the class's reaction is skipped
+on message(number, from) { }   // as for scripted objects; true or false answers in place of the class
+on appear { }
+on kill { }
+```
+
+`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). Several mods may name
+one class: each script runs, in the order the mods load; the first `message` answer wins. A plugin does the same from
+C with `set_class_hooks` (see the plugin API).
+
 ## Statements
 
 | Statement | Meaning |

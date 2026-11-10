@@ -2026,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 196 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](#p-reference-plugin-api) lists all 198 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -3096,7 +3096,7 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](#p-reference-settings)) |
 | `object_changes` | Objects changed or gone |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)) |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)); a `script` runs on every object placed by the name, the game's own too ([class scripts](#p-reference-lumascript--class-scripts)) |
 | `player_constants` | The numbers of how the player moves, by name ([player numbers](#p-reference-player-numbers)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](#p-tutorials-04-music-and-sound)) |
@@ -3965,7 +3965,7 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](#p-reference-settings). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](#p-reference--object-changes). |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](#p-reference-player-numbers). |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
@@ -4832,6 +4832,8 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `registry_find` | `int32_t registry_find(const char* kind, const char* name)` |
 | `registry_value` | `int32_t registry_value(const char* kind, const char* name)` |
 | `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
+| `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
+| `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -6797,6 +6799,26 @@ const char* registry_mod(const char* kind, int32_t index)
 
 The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
 
+<a id="p-reference-plugin-api--setclassscript"></a>
+
+#### `set_class_script`
+
+```c
+int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
+<a id="p-reference-plugin-api--setclasshooks"></a>
+
+#### `set_class_hooks`
+
+```c
+int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -7049,6 +7071,26 @@ The registries: every kind of thing the game has, its own rows and the mods' by 
        `from` (null when it has no sender). Return 1 to take it; 0 leaves it to the game's own handling (attacked_by for
        the player's attacks). */
     int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+```
+
+<a id="p-reference-plugin-api--nebulaclasshooks"></a>
+
+#### `NebulaClassHooks`
+
+```c
+    uint32_t size;
+    void* user;
+    /* After the class made and set up the actor. */
+    void (*start)(NebulaActor* actor, void* user);
+    /* Every frame before the class's own update. Return 1 to skip the class's update this frame. */
+    int32_t (*control)(NebulaActor* actor, void* user);
+    /* A message another object sends it (docs/modding/EVENTS.md lists the numbers), from `from` (null when it has no
+       sender). Return -1 to leave it to the class; 0 or 1 is the actor's answer and the class never sees it. */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+    /* One of its touch spheres touching another object's. Return 1 to skip the class's own reaction. */
+    int32_t (*touch)(NebulaActor* actor, NebulaActor* other, void* user);
+    void (*appeared)(NebulaActor* actor, void* user);
+    void (*killed)(NebulaActor* actor, void* user);
 ```
 
 <a id="p-reference-plugin-api--nebulaobjectkind"></a>
@@ -9576,6 +9618,28 @@ calls the toolkit and the plugin API like any script. Rules that are not about o
 // Every coin counts twice.
 on coin(value, name, actor) { return value * 2 }
 ```
+
+<a id="p-reference-lumascript--class-scripts"></a>
+
+### Class scripts
+
+A row of `object_classes` with a `script` runs that script on every object the stages place by the name: one of the
+game's classes (`{ "name": "Kuribo", "script": "angry" }`, every Goomba) or a name the row makes `like` one. The game's
+class still runs; the script rides along and can take its place. `self` is the object; each object has its own `var`s.
+A name made `like` a class runs the class's scripts first, then its own.
+
+```text
+on start { }                   // the object was made and set up by its class
+on control { return false }    // every frame before the class moves it; true: the class doesn't move it this frame
+on touch(other, sensor) { }    // one of its sensors touches another object's; true: the class's reaction is skipped
+on message(number, from) { }   // as for scripted objects; true or false answers in place of the class
+on appear { }
+on kill { }
+```
+
+`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). Several mods may name
+one class: each script runs, in the order the mods load; the first `message` answer wins. A plugin does the same from
+C with `set_class_hooks` (see the plugin API).
 
 <a id="p-reference-lumascript--statements"></a>
 
@@ -31349,7 +31413,7 @@ damping and turn) is a list of its numbers in order.
 | `NebulaAchievementToast.cMargin` | f32 | `8.0f` |
 | `NebulaAchievementToast.cPadding` | f32 | `16.0f` |
 | `NebulaAchievementToast.cRiseFrames` | s32 | `24` |
-| `NebulaAchievementToast.cScale` | f32 | `0.5f` |
+| `NebulaAchievementToast.cScale` | f32 | `0.65f` |
 | `NebulaAchievementToast.cTextMax` | f32 | `440.0f` |
 | `NebulaFileSelectButton.cShowDelayFrames` | s32 | `8` |
 | `NebulaIcons.cDarkBottom` | u32 | `0x2E3036FF` |

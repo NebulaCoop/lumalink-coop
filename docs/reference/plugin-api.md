@@ -202,6 +202,8 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `registry_find` | `int32_t registry_find(const char* kind, const char* name)` |
 | `registry_value` | `int32_t registry_value(const char* kind, const char* name)` |
 | `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
+| `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
+| `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
 
 ## What each does
 
@@ -1773,6 +1775,22 @@ const char* registry_mod(const char* kind, int32_t index)
 
 The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
 
+### `set_class_script`
+
+```c
+int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
+### `set_class_hooks`
+
+```c
+int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
 ## Numbers and names
 
 ### `NebulaPlugin`
@@ -2001,6 +2019,24 @@ The registries: every kind of thing the game has, its own rows and the mods' by 
        `from` (null when it has no sender). Return 1 to take it; 0 leaves it to the game's own handling (attacked_by for
        the player's attacks). */
     int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+```
+
+### `NebulaClassHooks`
+
+```c
+    uint32_t size;
+    void* user;
+    /* After the class made and set up the actor. */
+    void (*start)(NebulaActor* actor, void* user);
+    /* Every frame before the class's own update. Return 1 to skip the class's update this frame. */
+    int32_t (*control)(NebulaActor* actor, void* user);
+    /* A message another object sends it (docs/modding/EVENTS.md lists the numbers), from `from` (null when it has no
+       sender). Return -1 to leave it to the class; 0 or 1 is the actor's answer and the class never sees it. */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+    /* One of its touch spheres touching another object's. Return 1 to skip the class's own reaction. */
+    int32_t (*touch)(NebulaActor* actor, NebulaActor* other, void* user);
+    void (*appeared)(NebulaActor* actor, void* user);
+    void (*killed)(NebulaActor* actor, void* user);
 ```
 
 ### `NebulaObjectKind`

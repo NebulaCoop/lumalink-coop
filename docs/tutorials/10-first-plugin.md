@@ -143,7 +143,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ## Everything else
 
-[The whole interface](../reference/plugin-api.md) lists all 196 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](../REFERENCE.md#13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](../reference/plugin-api.md) lists all 198 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](../REFERENCE.md#13-plugins-function-hooks) reach any function, where the device allows them.
 
 ## Examples
 

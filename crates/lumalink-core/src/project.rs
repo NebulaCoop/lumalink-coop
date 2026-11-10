@@ -398,8 +398,13 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
             let Some(path) = layer.get("path").and_then(Value::as_str) else {
                 continue;
             };
-            // The objects' scripts and the mod-wide ones ("scripts"), each compiled once.
-            let mut scripts: Vec<&str> = layer.get("objects").and_then(Value::as_array).into_iter().flatten().filter_map(|r| r.get("script").and_then(Value::as_str)).collect();
+            // The objects' scripts, the class scripts and the mod-wide ones ("scripts"), each compiled once.
+            let mut scripts: Vec<&str> = ["objects", "object_classes"]
+                .iter()
+                .filter_map(|key| layer.get(*key).and_then(Value::as_array))
+                .flatten()
+                .filter_map(|r| r.get("script").and_then(Value::as_str))
+                .collect();
             scripts.extend(layer.get("scripts").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str));
             scripts.sort_unstable();
             scripts.dedup();
@@ -1003,11 +1008,23 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
     }
     if let Some(rows) = layer.get("object_classes").and_then(Value::as_array) {
         any |= !rows.is_empty();
+        let toolkit = crate::lumascript::Toolkit::bundled();
         for row in rows {
             let object = row.get("name").and_then(Value::as_str).unwrap_or_default();
             let like = row.get("like").and_then(Value::as_str).unwrap_or_default();
-            if object.is_empty() || like.is_empty() {
-                found.problem(format!("{name}: a row of object_classes needs name and like"));
+            let script = row.get("script").and_then(Value::as_str).unwrap_or_default();
+            // A class script runs on every actor placed by the name (a game class, or one made like it here).
+            if !script.is_empty() {
+                if let Err(why) = compile_script(folder, script, &toolkit) {
+                    found.problem(format!("{name}: {object}: {why}"));
+                }
+                if !object.is_empty() && like.is_empty() && !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(object)) {
+                    found.note(format!("{name}: {object} isn't an object of the game's; its script runs only where another mod or a stage places it"));
+                }
+            }
+            if object.is_empty() || (like.is_empty() && script.is_empty()) {
+                found.problem(format!("{name}: a row of object_classes needs name, and like or script"));
+            } else if like.is_empty() {
             } else if !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(like)) {
                 found.note(format!("{name}: {like}, which {object} is made like, isn't an object of the game's. A plugin may add it"));
             } else if let Some(store) = store {
@@ -2042,6 +2059,25 @@ mod tests {
         let mut found = Findings::default();
         check_regions(&json!({}), &mut found);
         assert!(found.0.is_empty());
+    }
+
+    #[test]
+    fn class_scripts_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("scripts")).unwrap();
+        fs::write(dir.path().join("scripts/angry.lscript"), "on control { return true }\non touch(other, sensor) { }\n").unwrap();
+        fs::write(dir.path().join("scripts/broken.lscript"), "on nothing_like_this { }\n").unwrap();
+        let problems = |row: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &json!({ "path": "layers/base", "object_classes": [row] }), "base", None, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "angry" })), 0);
+        assert_eq!(problems(json!({ "name": "Bramblet", "like": "Kuribo", "script": "angry" })), 0);
+        assert_eq!(problems(json!({ "name": "Bramblet", "like": "Kuribo" })), 0);
+        assert_eq!(problems(json!({ "name": "Kuribo" })), 1, "neither like nor script");
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "missing" })), 1);
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "broken" })), 1);
     }
 
     #[test]
