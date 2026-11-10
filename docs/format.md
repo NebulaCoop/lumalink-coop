@@ -83,6 +83,7 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `comet_schedule` | no | Each dome's comets: see "The game's progression". |
 | `text` | no | Messages of the game by id: see "Messages". |
 | `plugins` | no | The mod's code: see "Plugins". |
+| `achievements` | no | The mod's own achievements: see "Achievements". |
 | `tool` | no | What made the file. Not used by the game. |
 
 ### Text
@@ -311,6 +312,46 @@ A mod's code: a native library per device, with what it needs named in [plugins.
 
 `api` is the plugin interface it was built for. A Nebula with an older one says it needs a newer Nebula. A device with no entry in `binaries` says the mod has no version for it, and nothing of the mod is used.
 
+### Achievements
+
+A mod's own achievements, beside the game's. Each unlocks once, for good: the game keeps it in `achievements.ini` with
+the game's own, under the key `mod:<mod id>/<id>`, so it stays unlocked across save files, updates of the mod, and a
+mod turned off and on again. When one unlocks, the game's pop-up shows its name. The achievement board gets a Mods tab
+(only while a mod on has achievements) listing each with its description, and the All tab lists them after the game's.
+
+```json
+"achievements": [
+  { "id": "first-coin", "name": { "default": "Pocket Change", "ja": "はじめてのコイン" }, "description": "Collect a coin.",
+    "when": { "event": "coin" } },
+  { "id": "kameck", "name": "Wand Breaker", "description": "Defeat a Magikoopa.", "hidden": true,
+    "when": { "event": "actor_kill", "name": "Kameck" } },
+  { "id": "fifty-coins", "name": "Coin Purse", "description": "Collect 50 coins in one sitting." }
+]
+```
+
+| Field | Needed | Meaning |
+|---|---|---|
+| `id` | yes | Lower-case letters, digits and dashes, unique in the mod. Keep it for good: a new id is a new achievement, and the old one's unlock is no longer shown. |
+| `name` | yes | Text, shown on the pop-up and the board. |
+| `description` | no | Text: what earns it, shown on the board's card. |
+| `hidden` | no | `true`: the board lists it only once it is unlocked. |
+| `when` | no | The game event that unlocks it, from the list below. Without `when`, only the mod's code unlocks it. |
+| `when.name` | no | Only that event with this name: the galaxy for `star_get`, the object's name for `actor_kill`, the message id for `talk_line` (the names [events](reference/events.md) gives each event). |
+| `when.value` | no | Only that event with this value: the star's number for `star_get`, the action for `player_action`. |
+
+Events `when` can name: `frame`, `stage_frame`, `stage_start`, `player_damage`, `player_miss`, `power_up`, `coin`,
+`star_bit`, `star_get`, `cutscene_start`, `cutscene_end`, `actor_appear`, `actor_kill`, `player_spin`, `player_jump`,
+`player_land`, `pause`, `stage_end`, `game_save`, `power_star_appear`, `talk_line`, `talk_choice`, `cutscene_part`,
+`camera_change`, `sound_start`, `effect_start`, `screen`, `actor_message`, `player_action`. Each is the
+`NEBULA_MOD_EVENT_` of the same name; [events](reference/events.md) says when it comes and what its name and value are.
+
+Anything a single event cannot say (fifty coins, a galaxy with no damage, a time) is the mod's code: it counts what it
+needs and calls `unlock_achievement(self, "fifty-coins")` (see [plugins](plugins.md)); it returns 1 when that unlocked
+it now. The game keeps the first 64 achievements of a mod; one with no name, an id that is not an id, or the id of one
+before it is left out.
+
+The `achievements` example in LumaLink's `examples` folder has three unlocked by events and one by its code.
+
 ## What the game says
 
 A mod that can't be used stays in the list, off, with one line saying why. These lines are in the game's own text, in the player's language.
@@ -353,6 +394,7 @@ Nebula reads every format it has ever read.
 - Every `path`, `icon`, `pictures` entry and `save.path` exists in the file.
 - `icon` and `pictures` are PNGs of at most 8192 pixels a side and 64 MB; at most 16 pictures. Over 1024 pixels a side gets a note: the game shows a picture at most 1024 a side.
 - `homepage` starts with `https://` or `http://`; `license` is text.
+- Each achievement has an id (unique in the mod) and a name; its `when` names an event the game has, `when.value` is a whole number, and one without `when` is in a mod with code; at most 64.
 - No path leaves the file.
 - `when` names only options the file declares, and only their choices.
 - `default` is one of its option's choices.

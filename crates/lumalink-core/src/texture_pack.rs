@@ -21,9 +21,14 @@ pub struct PackInfo {
     /// Texture files whose names this game's packs do not use.
     pub other_games: BTreeMap<String, usize>,
     pub title: String,
-    pub authors: String,
+    /// The pack's authors, one a name (a Dolphin resource pack's manifest.json lists them).
+    pub authors: Vec<String>,
     pub description: String,
     pub version: String,
+    /// The manifest's `website`, when it is a web address.
+    pub homepage: String,
+    /// The PNG a Dolphin resource pack shows for itself: `logo.png` beside its manifest.json.
+    pub logo: Option<PathBuf>,
 }
 
 /// The first part of sixteen hexadecimal digits of a Dolphin name: the source image's hash.
@@ -286,6 +291,24 @@ fn game_folder(name: &str) -> Option<&str> {
     ((name.len() == 3 || name.len() == 6) && name.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) && name.bytes().next().is_some_and(|b| b.is_ascii_uppercase())).then_some(name)
 }
 
+fn manifest_list(text: &str, field: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
+    let names = match value.get(field) {
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        Some(serde_json::Value::Array(a)) => a.iter().filter_map(|v| v.as_str()).map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    names.into_iter().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect()
+}
+
+/// A PNG by its first bytes, whatever its name says.
+fn is_png(path: &Path) -> bool {
+    let mut head = [0u8; 8];
+    std::fs::File::open(path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && head == *b"\x89PNG\r\n\x1a\n"
+}
+
 fn manifest_field(text: &str, field: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
         return String::new();
@@ -308,9 +331,21 @@ pub fn scan(root: &Path) -> Option<PackInfo> {
         if name == "manifest.json" {
             let text = crate::riivolution::decode(&std::fs::read(entry.path()).unwrap_or_default());
             info.title = manifest_field(&text, "name");
-            info.authors = manifest_field(&text, "authors");
+            info.authors = manifest_list(&text, "authors");
             info.description = manifest_field(&text, "description");
             info.version = manifest_field(&text, "version");
+            let website = manifest_field(&text, "website");
+            if website.starts_with("https://") || website.starts_with("http://") {
+                info.homepage = website;
+            }
+            if let Some(folder) = entry.path().parent() {
+                info.logo = std::fs::read_dir(folder)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .map(|e| e.path())
+                    .find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("logo.png")) && is_png(p));
+            }
             continue;
         }
         if !name.starts_with("tex1_") || !(name.ends_with(".png") || name.ends_with(".dds")) {
@@ -389,7 +424,8 @@ mod tests {
         fs::write(ours.join("tex1_8x8_0123456789abcdee_14_mip1.png"), b"").unwrap();
         fs::write(ours.join("tex1_8x8_$_14.dds"), b"").unwrap();
         fs::write(theirs.join("tex1_8x8_0123456789abcdef_14.png"), b"").unwrap();
-        fs::write(dir.path().join("manifest.json"), br#"{"name":"HD","authors":["a","b"],"version":"1.0"}"#).unwrap();
+        fs::write(dir.path().join("manifest.json"), br#"{"name":"HD","authors":["a","b"],"version":"1.0","website":"https://example.com/hd"}"#).unwrap();
+        fs::write(dir.path().join("Logo.png"), b"\x89PNG\r\n\x1a\n....").unwrap();
         let info = scan(dir.path()).unwrap();
         assert_eq!(info.textures, 2);
         assert_eq!(info.mips, 1);
@@ -398,7 +434,14 @@ mod tests {
         assert_eq!(info.dds, 1);
         assert_eq!(info.other_games["SB4E01"], 1);
         assert_eq!(info.title, "HD");
-        assert_eq!(info.authors, "a, b");
+        assert_eq!(info.authors, ["a", "b"]);
+        assert_eq!(info.homepage, "https://example.com/hd");
+        assert_eq!(info.logo.as_deref().and_then(Path::file_name).unwrap(), "Logo.png");
+        fs::write(dir.path().join("Logo.png"), b"not a png").unwrap();
+        fs::write(dir.path().join("manifest.json"), br#"{"name":"HD","authors":"one","website":"example.com"}"#).unwrap();
+        let info = scan(dir.path()).unwrap();
+        assert_eq!(info.authors, ["one"]);
+        assert!(info.homepage.is_empty() && info.logo.is_none(), "a website that is no address, a logo that is no PNG");
     }
 
     #[test]

@@ -1245,6 +1245,83 @@ fn binary_machines(bytes: &[u8]) -> Vec<(BinaryKind, u32)> {
     Vec::new()
 }
 
+/// The achievements a mod adds (the game's `kMaxAchievements`).
+const MAX_ACHIEVEMENTS: usize = 64;
+/// The events an achievement's "when" can name: NebulaModEvent's, in lower case.
+const ACHIEVEMENT_EVENTS: [&str; 29] = [
+    "frame", "stage_frame", "stage_start", "player_damage", "player_miss", "power_up", "coin", "star_bit", "star_get",
+    "cutscene_start", "cutscene_end", "actor_appear", "actor_kill", "player_spin", "player_jump", "player_land", "pause",
+    "stage_end", "game_save", "power_star_appear", "talk_line", "talk_choice", "cutscene_part", "camera_change",
+    "sound_start", "effect_start", "screen", "actor_message", "player_action",
+];
+
+/// A mod's own achievements: each with an id and a name, unlocked by an event ("when") or by the mod's code.
+fn check_achievements(manifest: &Value, found: &mut Findings) {
+    let Some(list) = manifest.get("achievements") else {
+        return;
+    };
+    let Some(list) = list.as_array() else {
+        found.problem("achievements is a list");
+        return;
+    };
+    if list.len() > MAX_ACHIEVEMENTS {
+        found.problem(format!("achievements lists {}: the game keeps the first {MAX_ACHIEVEMENTS}", list.len()));
+    }
+    let has_code = manifest.get("plugins").and_then(Value::as_array).is_some_and(|p| !p.is_empty());
+    let mut seen = std::collections::BTreeSet::new();
+    for (index, entry) in list.iter().enumerate() {
+        let id = entry.get("id").and_then(Value::as_str).unwrap_or("");
+        let name = if id.is_empty() { format!("achievement {}", index + 1) } else { format!("the achievement {id}") };
+        if !entry.is_object() {
+            found.problem(format!("{name}: an achievement is a set of fields"));
+            continue;
+        }
+        if !valid_id(id) {
+            found.problem(format!("{name}: its id has to be lower case letters, digits and -, at most 64"));
+        } else if !seen.insert(id) {
+            found.problem(format!("two achievements are called {id}"));
+        }
+        match entry.get("name") {
+            Some(text) if !text_of(text).trim().is_empty() => check_text(text, &format!("{name}: name"), found),
+            _ => found.problem(format!("{name} has no name")),
+        }
+        if let Some(text) = entry.get("description") {
+            check_text(text, &format!("{name}: description"), found);
+        }
+        if let Some(hidden) = entry.get("hidden") {
+            if !hidden.is_boolean() {
+                found.problem(format!("{name}: hidden is true or false"));
+            }
+        }
+        match entry.get("when") {
+            Some(when) => {
+                let Some(fields) = when.as_object() else {
+                    found.problem(format!("{name}: when is a set of fields (event, and maybe name and value)"));
+                    continue;
+                };
+                match fields.get("event").and_then(Value::as_str) {
+                    Some(event) if ACHIEVEMENT_EVENTS.contains(&event) => {}
+                    Some(event) => found.problem(format!("{name}: {event} isn't an event ({})", ACHIEVEMENT_EVENTS.join(", "))),
+                    None => found.problem(format!("{name}: when needs an event")),
+                }
+                if fields.get("name").is_some_and(|n| !n.as_str().is_some_and(|n| !n.is_empty())) {
+                    found.problem(format!("{name}: when's name is text"));
+                }
+                if fields.get("value").is_some_and(|v| !v.as_i64().is_some_and(|v| i32::try_from(v).is_ok())) {
+                    found.problem(format!("{name}: when's value is a whole number"));
+                }
+                for key in fields.keys() {
+                    if !["event", "name", "value"].contains(&key.as_str()) {
+                        found.problem(format!("{name}: when has event, name and value, not {key}"));
+                    }
+                }
+            }
+            None if !has_code => found.problem(format!("{name}: nothing unlocks it (no when, and the mod has no code to call unlock_achievement)")),
+            None => {}
+        }
+    }
+}
+
 /// A mod's code: a library for each device, each truly for that device.
 fn check_plugins(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<String>>, found: &mut Findings) {
     let Some(plugins) = manifest.get("plugins") else { return };
@@ -1446,6 +1523,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
     }
     let options = check_options(&manifest, found);
     check_plugins(folder, &manifest, &options, found);
+    check_achievements(&manifest, found);
     check_galaxies(folder, &manifest, found);
     check_music(folder, &manifest, found);
     check_progression(&manifest, found);
@@ -1551,6 +1629,54 @@ mod tests {
         assert_eq!(problems(json!([{ "name": "Mine", "file": "AudioRes/Stream/Mine.wav" }, { "name": "Mine", "file": "AudioRes/Stream/Mine.wav" }])), 1);
         assert_eq!(problems(json!([{ "name": "Mine", "file": "AudioRes/Stream/Mine.wav", "stages": [{ "stage": "S", "scenario": 1, "change_area": 1 }] }])), 1);
         assert_eq!(problems(json!("Mine")), 1);
+    }
+
+    /// Every example in examples/ checks with no problem, but for its libraries before `lumalink build` makes them
+    /// (they are not kept in the repository).
+    #[test]
+    fn every_example_checks() {
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let mut count = 0;
+        for entry in fs::read_dir(&examples).unwrap() {
+            let folder = entry.unwrap().path();
+            if !folder.join("luma.json").is_file() {
+                continue;
+            }
+            count += 1;
+            let found = check(&folder, None).unwrap();
+            let left: Vec<&str> = problems(&found)
+                .into_iter()
+                .filter(|p| !(p.contains("isn't in the file") && p.contains("plugins/")) && !p.contains("has no library for"))
+                .collect();
+            assert!(left.is_empty(), "{}: {left:?}", folder.display());
+        }
+        assert!(count >= 15, "{count} examples");
+    }
+
+    #[test]
+    fn achievements_are_checked() {
+        let problems = |manifest: Value| {
+            let mut found = Findings::default();
+            check_achievements(&manifest, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        let one = |entry: Value| problems(json!({ "achievements": [entry] }));
+        assert_eq!(one(json!({ "id": "coins", "name": "Coins", "when": { "event": "coin" } })), 0);
+        assert_eq!(one(json!({ "id": "boss", "name": { "default": "Boss", "ja": "ボス" }, "description": "Beat it", "hidden": true,
+                                "when": { "event": "actor_kill", "name": "Kameck", "value": 1 } })), 0);
+        assert_eq!(problems(json!({ "achievements": [{ "id": "a", "name": "A" }], "plugins": [{ "file": "x" }] })), 0);
+        assert_eq!(one(json!({ "id": "a", "name": "A" })), 1, "nothing unlocks it");
+        assert_eq!(one(json!({ "id": "A b", "name": "A", "when": { "event": "coin" } })), 1);
+        assert_eq!(one(json!({ "id": "a", "when": { "event": "coin" } })), 1);
+        assert_eq!(one(json!({ "id": "a", "name": "A", "when": { "event": "coins" } })), 1);
+        assert_eq!(one(json!({ "id": "a", "name": "A", "when": { "event": "coin", "value": 1.5 } })), 1);
+        assert_eq!(one(json!({ "id": "a", "name": "A", "when": { "event": "coin", "count": 3 } })), 1);
+        assert_eq!(one(json!({ "id": "a", "name": "A", "hidden": "yes", "when": { "event": "coin" } })), 1);
+        assert_eq!(one(json!({ "id": "a", "name": "A", "when": "coin" })), 1);
+        let twice = json!({ "id": "a", "name": "A", "when": { "event": "coin" } });
+        assert_eq!(problems(json!({ "achievements": [twice.clone(), twice.clone()] })), 1);
+        assert_eq!(problems(json!({ "achievements": vec![twice; 65] })), 65, "too many, and 64 repeats");
+        assert_eq!(problems(json!({ "achievements": "a" })), 1);
     }
 
     fn write(root: &Path, relative: &str, text: &str) {
@@ -1918,6 +2044,8 @@ mod tests {
             }
         }
         assert!(calls > 150, "{calls} calls read from the header");
+        let tutorial = include_str!("../../../docs/tutorials/10-first-plugin.md");
+        assert!(tutorial.contains(&format!("lists all {calls} calls")), "docs/tutorials/10-first-plugin.md counts the calls: {calls}");
     }
 
     #[test]

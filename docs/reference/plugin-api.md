@@ -172,6 +172,7 @@ A call on an actor with a null pointer is your bug: nothing checks. Calls about 
 | `release` | `void release(void* memory)` |
 | `format` | `int32_t format(char* buffer, uint64_t size, const char* format, ...)` |
 | `set_camera_near` | `void set_camera_near(float distance)` |
+| `unlock_achievement` | `int32_t unlock_achievement(const NebulaPlugin* self, const char* id)` |
 
 ## What each does
 
@@ -1502,6 +1503,14 @@ void set_camera_near(float distance)
 ```
 
 The camera's near plane in units: nothing closer to the camera is drawn. 0: the game's (100; 10 in its own first-person view). Kept until set again.
+
+### `unlock_achievement`
+
+```c
+int32_t unlock_achievement(const NebulaPlugin* self, const char* id)
+```
+
+One of the mod's achievements (its luma.json "achievements", by id) is unlocked: 1 now, 0 when it was already or the mod has none of that id. Its pop-up shows; the board keeps it under Mods.
 
 ## Numbers and names
 

@@ -3,10 +3,12 @@
    native library for the device can build against it.
 
    A plugin exports the two functions NEBULA_PLUGIN_ENTRY makes. Fields are only ever added at the end of NebulaModApi:
-   a plugin built against this header keeps working on every later Nebula. */
+   a plugin built against this header keeps working on every later Nebula. On an earlier one, a field added after it
+   is not there: NEBULA_MOD_API_HAS(api, field) says whether it is, before the plugin calls it. */
 #ifndef NEBULA_MOD_API_H
 #define NEBULA_MOD_API_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -727,7 +729,14 @@ typedef struct NebulaModApi {
     /* The camera's near plane in units: nothing closer to the camera is drawn. 0: the game's (100; 10 in its own
        first-person view). Kept until set again. */
     void (*set_camera_near)(float distance);
+    /* One of the mod's achievements (its luma.json "achievements", by id) is unlocked: 1 now, 0 when it was already or
+       the mod has none of that id. Its pop-up shows; the board keeps it under Mods. */
+    int32_t (*unlock_achievement)(const NebulaPlugin* self, const char* id);
 } NebulaModApi;
+
+/* Whether this Nebula's interface has `field` (one added at the end since the plugin's oldest Nebula):
+   if (NEBULA_MOD_API_HAS(api, unlock_achievement)) api->unlock_achievement(self, "coins"); */
+#define NEBULA_MOD_API_HAS(api, field) ((api)->size >= offsetof(NebulaModApi, field) + sizeof((api)->field) && (api)->field != 0)
 
 /* The HUD's parts, for show_hud: any together. */
 typedef enum NebulaHudPart {

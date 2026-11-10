@@ -143,7 +143,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ## Everything else
 
-[The whole interface](../reference/plugin-api.md) has 140 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](../REFERENCE.md#13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](../reference/plugin-api.md) lists all 167 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](../REFERENCE.md#13-plugins-the-games-headers-and-hooks) reach any function.
 
 ## Examples
 
@@ -151,6 +151,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 |---|---|
 | [`one-health`](../../examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](../../examples/coin-kills) | Events |
+| [`achievements`](../../examples/achievements) | The mod's own achievements |
 | [`boss-music`](../../examples/boss-music) | Starting and stopping music |
 | [`double-jump`](../../examples/double-jump) | A new move: the buttons, gravity, an animation |
 | [`little-boss`](../../examples/little-boss) | A new enemy, whole |

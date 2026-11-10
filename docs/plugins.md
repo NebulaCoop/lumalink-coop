@@ -213,6 +213,31 @@ game->set_comet_schedule(2, galaxies, coins, 2);
 
 Both only in `nebula_plugin_start`, and both can be data instead: `event_flags` and `comet_schedule` in [format.md](format.md).
 
+## Achievements
+
+A mod's achievements are listed in `luma.json` (see [format.md](format.md)): an id, a name, a description. One that a
+single event earns needs no code (`"when": { "event": "star_get" }`). For the rest, the plugin counts and unlocks:
+
+```c
+static int32_t coins;
+
+static int32_t coin(const NebulaModEventData* data, void* user) {
+    if (coins < 50 && (coins += data->value) >= 50 && NEBULA_MOD_API_HAS(game, unlock_achievement)) {
+        game->unlock_achievement(me, "fifty-coins");
+    }
+    return data->value;
+}
+```
+
+`unlock_achievement(self, id)` returns 1 when it unlocked it now, 0 when it was already unlocked or the mod has no
+achievement of that id. Its pop-up shows at once; any thread may call it.
+
+## Calls added later
+
+Calls are only ever added at the end of `NebulaModApi`, so a plugin keeps working on every later Nebula. On an
+earlier Nebula a newer call is not there: `NEBULA_MOD_API_HAS(api, call)` is true when it is. Check it before a call
+added after the oldest Nebula the mod names in `nebula`, as above.
+
 ## Building on Linux and Mac
 
 ```console

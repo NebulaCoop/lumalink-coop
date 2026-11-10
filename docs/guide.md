@@ -274,6 +274,7 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 |---|---|
 | [`one-health`](../examples/one-health) | Reading and setting the player's state |
 | [`coin-kills`](../examples/coin-kills) | Events |
+| [`achievements`](../examples/achievements) | The mod's own achievements: three unlocked by events, one by its code |
 | [`boss-music`](../examples/boss-music) | Starting and stopping music |
 | [`double-jump`](../examples/double-jump) | A new move for the player: the buttons, gravity, an animation |
 | [`little-boss`](../examples/little-boss) | A new enemy: its model, music, health, placement and what it does |

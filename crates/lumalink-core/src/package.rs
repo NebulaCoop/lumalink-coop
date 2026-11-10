@@ -73,6 +73,10 @@ struct Manifest {
     authors: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     description: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    homepage: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    icon: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     options: Vec<PlayerOption>,
     layers: Vec<ManifestLayer>,
@@ -405,6 +409,11 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
     let pack = layout.pack.as_ref();
     let shown_name = pack.map(|p| p.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| name.to_string());
     let authors = pack.map(|p| p.authors.clone()).unwrap_or_default();
+    // The pack's own logo is the mod's icon on the game's Mods page.
+    let icon = match pack.and_then(|p| p.logo.as_ref()) {
+        Some(logo) if fs::copy(logo, building.join("icon.png")).is_ok() => "icon.png".to_string(),
+        _ => String::new(),
+    };
     let manifest = Manifest {
         format: PACKAGE_FORMAT,
         id: crate::plan::slug(&shown_name),
@@ -416,8 +425,10 @@ fn write_inside(name: &str, version: Option<&str>, layout: &Layout, plan: &Plan,
             .unwrap_or_else(|| "1.0.0".to_string()),
         game: ANY_VERSION.to_string(),
         requires: if layers.iter().any(|l| !l.tunables.is_empty()) { vec!["tunables".to_string()] } else { Vec::new() },
-        authors: if authors.is_empty() { Vec::new() } else { vec![authors] },
+        authors,
         description: pack.map(|p| p.description.clone()).unwrap_or_default(),
+        homepage: pack.map(|p| p.homepage.clone()).unwrap_or_default(),
+        icon,
         options: plan.options.clone(),
         layers,
         save: (has_save || plan.save_folder.is_some() || plan.adds_galaxy).then(|| ManifestSave {
@@ -486,6 +497,28 @@ mod tests {
         assert!(unpacked.join("layers/base/textures/Load/Textures/RMGE01").is_dir());
         assert!(!unpacked.join("layers/base/textures/Load/Textures/SB4E01").exists());
         assert!(!dir.path().join("out/.My_ Mod.building").exists());
+    }
+
+    #[test]
+    fn a_resource_packs_own_details_come_along() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("pack");
+        write_file(&source, "manifest.json", r#"{"name":"Crisp HD","authors":["One","Two, Three"],"version":"2.1","description":"Sharper.","website":"https://example.com/crisp"}"#);
+        fs::write(source.join("logo.png"), b"\x89PNG\r\n\x1a\nrest").unwrap();
+        write_file(&source, "textures/RMGE01/tex1_8x8_0123456789abcdef_14.png", "p");
+        let layout = Layout::of(&source);
+        let plan = build(&layout, "RMGE01", None).unwrap();
+        let outcome = write("pack", &layout, &plan, None, &dir.path().join("out"), true).unwrap();
+        let unpacked = dir.path().join("unpacked");
+        zip::ZipArchive::new(fs::File::open(&outcome.file).unwrap()).unwrap().extract(&unpacked).unwrap();
+        let manifest: serde_json::Value = serde_json::from_slice(&fs::read(unpacked.join("luma.json")).unwrap()).unwrap();
+        assert_eq!(manifest["name"], "Crisp HD");
+        assert_eq!(manifest["version"], "2.1");
+        assert_eq!(manifest["authors"], serde_json::json!(["One", "Two, Three"]));
+        assert_eq!(manifest["description"], "Sharper.");
+        assert_eq!(manifest["homepage"], "https://example.com/crisp");
+        assert_eq!(manifest["icon"], "icon.png");
+        assert_eq!(fs::read(unpacked.join("icon.png")).unwrap(), b"\x89PNG\r\n\x1a\nrest");
     }
 
     #[test]

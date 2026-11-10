@@ -1,0 +1,62 @@
+{
+  "achievements": [
+    {
+      "description": "Collect a coin.",
+      "id": "first-coin",
+      "name": {
+        "default": "Pocket Change",
+        "ja": "はじめてのコイン"
+      },
+      "when": {
+        "event": "coin"
+      }
+    },
+    {
+      "description": "Collect a Power Star.",
+      "id": "first-star",
+      "name": "Starstruck",
+      "when": {
+        "event": "star_get"
+      }
+    },
+    {
+      "description": "Spin.",
+      "hidden": true,
+      "id": "first-spin",
+      "name": "Spin Cycle",
+      "when": {
+        "event": "player_spin"
+      }
+    },
+    {
+      "description": "Collect 50 coins in one sitting.",
+      "id": "fifty-coins",
+      "name": "Coin Purse"
+    }
+  ],
+  "authors": [
+    "Nebula examples"
+  ],
+  "description": "Four achievements of its own: three the game's events unlock, one its code does.",
+  "format": 1,
+  "game": "RMG",
+  "id": "achievements",
+  "layers": [],
+  "name": "Achievements",
+  "plugins": [
+    {
+      "api": 2,
+      "binaries": {
+        "android-arm64": "plugins/achievements-android-arm64.so",
+        "android-x64": "plugins/achievements-android-x64.so",
+        "linux-arm64": "plugins/achievements-linux-arm64.so",
+        "linux-x64": "plugins/achievements-linux-x64.so",
+        "macos-arm64": "plugins/achievements-macos-arm64.dylib",
+        "macos-x64": "plugins/achievements-macos-x64.dylib",
+        "windows-arm64": "plugins/achievements-windows-arm64.dll",
+        "windows-x64": "plugins/achievements-windows-x64.dll"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
