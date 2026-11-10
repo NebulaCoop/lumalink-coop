@@ -50,6 +50,14 @@ layers/base/merge/ObjectData/PlanetMapDataTable.arc/PlanetMapDataTable.bcsv.json
 
 The flags say it has other models of its own beside it (`MyPlanetBloom`, `MyPlanetWater`, ...). Its pull is a gravity in `planetobjinfo`: `GlobalPointGravity` at its middle pulls towards it, as far out as its `Range`.
 
+### A sky
+
+A galaxy without one floats in black. Place one of the game's skies in `objinfo`, anywhere: it stays round the camera. `VROrbit` is the Good Egg's; the rest are the rows of class `Sky` or `ProjectionMapSky` in [objects](../reference/objects.md). To change how one looks, bring a model in its place, `ObjectData/VROrbit.arc/VROrbit.bdl.glb` ([models](02-models.md)).
+
+```json
+{ "name": "VROrbit", "l_id": 3, "pos_x": 0, "pos_y": 0, "pos_z": 0 }
+```
+
 ### Missions
 
 `MyGalaxyScenario.arc` holds `ScenarioData.bcsv`, one row per mission, and `ZoneList.bcsv`, one row per zone. Either can be `.bcsv.json`:
