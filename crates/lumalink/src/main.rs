@@ -480,10 +480,19 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 bail!("{} holds no mods", folder.display());
             }
             let mut failed = 0;
+            // Two mods of one name (two versions, most often) are one .luma: the later replaces the earlier, and says so.
+            let mut written: std::collections::HashMap<PathBuf, &PathBuf> = std::collections::HashMap::new();
             for input in &inputs {
-                if let Err(error) = convert_one(input, &output, store.as_ref(), &game_id, accept_losses) {
-                    failed += 1;
-                    println!("  FAILED: {error:#}");
+                match convert_one(input, &output, store.as_ref(), &game_id, accept_losses) {
+                    Ok(outcome) => {
+                        if let Some(earlier) = written.insert(outcome.file.clone(), input) {
+                            println!("  replaced what {} made: the two have one name, so they are one mod", earlier.display());
+                        }
+                    }
+                    Err(error) => {
+                        failed += 1;
+                        println!("  FAILED: {error:#}");
+                    }
                 }
                 println!();
             }
