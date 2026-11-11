@@ -21,8 +21,9 @@ PARTS = [
         "18-first-person.md"]]),
     ("Reference", ["REFERENCE.md", "format.md", "plugins.md", "reference/plugin-api.md", "reference/events.md",
                    "reference/objects.md", "reference/settings.md", "reference/player-numbers.md",
-                   "reference/stage-rules.md"]),
-    ("The game's lists", ["nebula:EVENTS.md", "nebula:NERVES.md", "nebula:TABLES.md", "nebula:TUNABLES.md"]),
+                   "reference/stage-rules.md", "reference/lumascript.md"]),
+    ("The game's lists", ["nebula:EVENTS.md", "nebula:NERVES.md", "nebula:TABLES.md", "nebula:TUNABLES.md",
+                          "nebula:REGISTRIES.md"]),
 ]
 LINK = re.compile(r"(!?)\[([^\]]*)\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")

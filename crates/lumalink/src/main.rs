@@ -31,9 +31,10 @@ struct Game {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Say what a mod is and what would happen to it, without writing anything.
+    /// Say what a mod is and what would happen to it, without writing anything. A script (.lscript, or a compiled
+    /// .lumascript) prints its compiled steps instead.
     Inspect {
-        /// A mod folder, or a .zip, .7z or .rar file.
+        /// A mod folder, a .zip, .7z or .rar file, or a script.
         input: PathBuf,
         #[command(flatten)]
         game: Game,
@@ -283,6 +284,32 @@ fn convert_one(input: &Path, output: &Path, store: Option<&GameStore>, game_id: 
 fn run(cli: Cli) -> Result<ExitCode> {
     match cli.command {
         Command::Inspect { input, game, json } => {
+            let ext = input.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+            if ext == "lscript" || ext == "lumascript" {
+                let bytes = if ext == "lscript" {
+                    let text = std::fs::read_to_string(&input).with_context(|| format!("{} can't be read", input.display()))?;
+                    let toolkit = lumalink_core::lumascript::Toolkit::bundled();
+                    match lumalink_core::lumascript::compile(&text, &toolkit) {
+                        Ok(b) => b,
+                        Err(p) => {
+                            eprintln!("{}, line {}: {}", input.display(), p.line, p.text);
+                            return Ok(ExitCode::from(2));
+                        }
+                    }
+                } else {
+                    std::fs::read(&input).with_context(|| format!("{} can't be read", input.display()))?
+                };
+                return match lumalink_core::lumascript::listing(&bytes) {
+                    Ok(text) => {
+                        print!("{text}");
+                        Ok(ExitCode::SUCCESS)
+                    }
+                    Err(why) => {
+                        eprintln!("{}: {why}", input.display());
+                        Ok(ExitCode::from(2))
+                    }
+                };
+            }
             let (store, game_id) = open_store(&game)?;
             let work = tempfile::tempdir().context("no temporary folder")?;
             let root = source::open(&input, work.path())?;

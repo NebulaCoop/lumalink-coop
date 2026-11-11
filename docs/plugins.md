@@ -11,10 +11,11 @@ Most mods don't need one. Levels, models, textures, music and text are files. Wr
 | Level | What it gives you | Survives Nebula updates |
 |---|---|---|
 | Stable interface | `nebula_mod_api.h`: events, the player, objects, new object kinds | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
 | Function hooks | Run your code in place of any game function, and call the original | As long as the function exists |
 
-Start with the stable interface. Go further only for what it can't do.
+Start with the stable interface. Go further only for what it can't do. Every call of the interface is also a
+LumaScript call (`nebula.get_position(self)`), and scripts run on every device, iOS included, where no plugin can
+load; a hook works only where a device lets a plugin patch code.
 
 ## The smallest plugin
 
@@ -130,22 +131,6 @@ game->add_music("MyBossTheme", "AudioRes/Stream/MyBossTheme.wav");
 game->set_stage_music("MyGalaxy", 0, "MyBossTheme");
 ```
 
-## With the game's headers
-
-Include `nebula_game_sdk.h` first and use `NEBULA_GAME_PLUGIN_ENTRY`. You build with the flags the game is built with, and link against `smg_game.lib`.
-
-```cpp
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-The plugin names the exact headers it was built from. On a Nebula built from other headers it isn't started, and the log says it was built for another version of the game. Rebuild it for each Nebula update that changes them.
-
 ## Function hooks
 
 ```cpp
@@ -175,7 +160,7 @@ A plugin that can't start is left out, and the game's log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include. |
-| it was built for another version of the game | A game function it calls is gone, or the headers changed. |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only. |
 | it is not for this kind of computer | The wrong build for the device. |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start`. |
 | it needs a newer Nebula | It was built against a later interface. |
@@ -254,11 +239,7 @@ added after the oldest Nebula the mod names in `nebula`, as above.
 ## Building on Linux and Mac
 
 ```console
-# the stable interface: builds anywhere
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so source/plugin.c
-
-# with the game's headers on a Mac, whose linker wants to know where the game's functions will come from
-c++ -std=gnu++17 -O2 -shared -fPIC -undefined dynamic_lookup -o plugins/my.dylib source/plugin.cpp
 ```
 
-On Linux, a library's undefined functions are found when it's loaded, in the game. Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.
+Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.

@@ -22,7 +22,7 @@ extern "C" {
 /* Version 2 replaced setting() and setting_by_number() with get_tunable(), replaced object_arg(index) with
    placement_number(column) and placement_text(column), and added the nerve calls after state_frames. Plugins built
    for version 1 are not started. */
-#define NEBULA_MOD_API_VERSION 2u
+#define NEBULA_MOD_API_VERSION 3u
 
 #if defined(_WIN32)
 #define NEBULA_PLUGIN_EXPORT __declspec(dllexport)
@@ -147,6 +147,51 @@ typedef enum NebulaModValue {
     NEBULA_VALUE_LUIGI
 } NebulaModValue;
 
+/* LumaCore values: what scripts and plugins pass to the toolkit, fields and registries (docs/modding/TOOLKIT.md). */
+
+/* A value's kind. */
+typedef enum NebulaKind {
+    NEBULA_KIND_NONE = 0,
+    NEBULA_KIND_BOOL,
+    NEBULA_KIND_INT,
+    NEBULA_KIND_FLOAT,
+    NEBULA_KIND_VEC3,
+    NEBULA_KIND_MATRIX, /* a handle to 12 floats (3 rows of 4) */
+    NEBULA_KIND_TEXT,   /* UTF-8, owned by whoever made the value; valid for the call */
+    NEBULA_KIND_HANDLE, /* one of the game's things: an object, a sensor, a triangle... (NebulaValue.type) */
+    NEBULA_KIND_VEC4,
+    NEBULA_KIND_VEC2
+} NebulaKind;
+
+/* One value: 24 bytes on every platform. */
+typedef struct NebulaValue {
+    uint32_t kind; /* NebulaKind */
+    uint32_t type; /* handles: NEBULA_HANDLE_* in the low 16 bits; for objects, the class id in the upper 16 */
+    union {
+        int64_t i;  /* bool and int */
+        double f;   /* float */
+        float v[4]; /* vec2, vec3, vec4 */
+        const char* s;
+        struct {
+            void* p;
+            uint32_t generation; /* the scene it was made in; a later scene reads it as none */
+        } h;
+    } u;
+} NebulaValue;
+
+/* What a handle names. */
+typedef enum NebulaHandleType {
+    NEBULA_HANDLE_OBJECT = 1, /* an actor, area, layout or other scene object */
+    NEBULA_HANDLE_SENSOR,
+    NEBULA_HANDLE_TRIANGLE,
+    NEBULA_HANDLE_COLLISION,
+    NEBULA_HANDLE_JOINT,
+    NEBULA_HANDLE_PLACEMENT,
+    NEBULA_HANDLE_MATRIX,
+    NEBULA_HANDLE_TALK,
+    NEBULA_HANDLE_CAMERA_INFO
+} NebulaHandleType;
+
 /* Values that can be changed with set_value(). */
 typedef enum NebulaModSet {
     NEBULA_SET_LIFE = 0,
@@ -185,8 +230,7 @@ typedef enum NebulaModPlay {
     NEBULA_PLAY_MATERIAL_COLOUR  /* .bpk */
 } NebulaModPlay;
 
-/* An object class that levels place by `name` and spawn() creates. Its behaviour is these callbacks. A plugin built
-   with the game's headers can subclass LiveActor instead, through register_creator. */
+/* An object class that levels place by `name` and spawn() creates. Its behaviour is these callbacks. */
 typedef struct NebulaObjectClass {
     uint32_t size;
     const char* name;
@@ -207,7 +251,29 @@ typedef struct NebulaObjectClass {
     float clip_radius;    /* not updated or drawn when this far off screen; 0: always */
     void (*appeared)(NebulaActor* actor, void* user);
     void (*killed)(NebulaActor* actor, void* user);
+    /* Any message another object sends it (an attack, a push, a grab: docs/modding/EVENTS.md lists the numbers), from
+       `from` (null when it has no sender). Return 1 to take it; 0 leaves it to the game's own handling (attacked_by for
+       the player's attacks). */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
 } NebulaObjectClass;
+
+/* What runs on every actor levels place by a name: one of the game's classes ("Kuribo") or a mod's made like one
+   (set_object_class). Each hook may be null. The class's own behaviour runs as well unless a hook takes its place. */
+typedef struct NebulaClassHooks {
+    uint32_t size;
+    void* user;
+    /* After the class made and set up the actor. */
+    void (*start)(NebulaActor* actor, void* user);
+    /* Every frame before the class's own update. Return 1 to skip the class's update this frame. */
+    int32_t (*control)(NebulaActor* actor, void* user);
+    /* A message another object sends it (docs/modding/EVENTS.md lists the numbers), from `from` (null when it has no
+       sender). Return -1 to leave it to the class; 0 or 1 is the actor's answer and the class never sees it. */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+    /* One of its touch spheres touching another object's. Return 1 to skip the class's own reaction. */
+    int32_t (*touch)(NebulaActor* actor, NebulaActor* other, void* user);
+    void (*appeared)(NebulaActor* actor, void* user);
+    void (*killed)(NebulaActor* actor, void* user);
+} NebulaClassHooks;
 
 /* The kind of a plugin's object. */
 typedef enum NebulaObjectKind {
@@ -294,6 +360,9 @@ typedef struct NebulaPowerUpClass {
     /* The fields below may be missing from an older plugin's class; `size` tells. */
     const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the normal model */
     int32_t looks_like;   /* without a model: look like this power-up (NEBULA_POWER_UP_*) */
+    int32_t acts_like;    /* what the player can do in it: one of the game's power-ups (NEBULA_POWER_UP_*): Fire's throw,
+                             Ice's skate, Bee's flight... Its music and time too, where the class gives none (frames 0,
+                             music null). 0: the normal player. One the game can't give in this stage refuses the power-up. */
 } NebulaPowerUpClass;
 
 /* When a hook_nerve callback runs. */
@@ -308,11 +377,35 @@ typedef enum NebulaNervePhase {
    NEBULA_NERVE_FRAME; when several plugins hook one nerve they all run, and any 0 skips the game's code. */
 typedef int32_t (*NebulaNerveCallback)(NebulaActor* actor, const char* nerve, NebulaNervePhase phase, int32_t frames, void* user);
 
+/* A material's texture coordinate (list_materials): how it is made (the game's TexGen type, source and matrix), its
+   matrix's kind and projection (255: no matrix), and whether a stage of the material reads it. */
+typedef struct NebulaMaterialCoord {
+    /* How the coordinate is made: the game's TexGen type, its source and its matrix slot. */
+    uint32_t type, source, matrix;
+    /* Its matrix's kind and projection; 255 for both when it has no matrix. */
+    uint32_t matrix_kind, projection;
+    /* 1 when a stage of the material reads it, 0 when none does. */
+    uint32_t used;
+} NebulaMaterialCoord;
+/* A model's material (list_materials). Valid during the callback. */
+typedef struct NebulaMaterialInfo {
+    /* sizeof(NebulaMaterialInfo): fields are only added at the end. */
+    uint32_t size;
+    /* Its place in the model and its name. */
+    int32_t index;
+    const char* name;
+    /* Its texture coordinates: coord_count of them at coords. */
+    int32_t coord_count;
+    const NebulaMaterialCoord* coords;
+} NebulaMaterialInfo;
+/* list_materials calls it once for each material of the model, with list_materials' `user`. It returns nothing. */
+typedef void (*NebulaMaterialCallback)(const NebulaMaterialInfo* material, void* user);
+
 typedef struct NebulaModApi {
     uint32_t size;
     uint32_t version;
-    /* Identifies the game headers this build was made from; see nebula_game_sdk.h. */
-    uint64_t game_abi;
+    /* Always 0. */
+    uint64_t reserved0;
 
     /* Writes one line to the game's log. */
     void (*log)(const NebulaPlugin* self, const char* text);
@@ -324,16 +417,21 @@ typedef struct NebulaModApi {
     /* Adds an object class that levels can place by name, run by the plugin's callbacks (NebulaObjectClass).
        0: done; -1: no name, a name already taken, or a class too old to read. */
     int32_t (*register_object)(const NebulaObjectClass* object);
-    /* `create` builds the game's own object type (a NameObj) for a placed name; `archive` is loaded for it, or null. */
-    int32_t (*register_creator)(const char* name, void* (*create)(const char* name), const char* archive);
+
+    /* Always null. */
+    void* reserved1;
+
     /* Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the
        previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this
-       way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved. */
+       way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved.
+       A native plugin's route only: a device that loads no plugin code (iOS) has none, so a mod that must run
+       everywhere changes the game through events, rows and scripts instead. */
     int32_t (*hook)(void* target, void* replacement, void** original);
     /* A game function by its symbol (on Windows, as dumpbin /exports names it). Null: not found. */
     void* (*find_function)(const char* symbol);
 
-    /* The player. Null when no stage is running, or outside a stage frame. */
+    /* The player. Null when no stage is running, or outside its update, animation and drawing (a hook on
+       GameScene::draw is inside; "In a stage" calls below work there too). */
     NebulaActor* (*player)(void);
     /* Position: x, y, z in level units. */
     void (*get_position)(NebulaActor* actor, float* xyz);
@@ -762,6 +860,76 @@ typedef struct NebulaModApi {
        x, y and z axes in the world (scaled with the model), column 3 its position. Without the joint or a model: no
        turn, at the actor's position. */
     void (*get_joint_matrix)(NebulaActor* actor, const char* joint, float* matrix);
+
+    /* A star of the stage played won, as the player wins it: its result counted and its get demo (the Grand Star's with
+       `grand` 1) once the stage is in play (after its opening camera and starter). `galaxy`: null or the stage played.
+       0: refused (no galaxy is played, or another one is named); 1: done. */
+    int32_t (*give_star)(const char* galaxy, int32_t star, int32_t grand);
+    /* The save holds Grand Stars 1 to `count` (1-7), and the stage played starts again, so the Observatory's domes are
+       built with them. 0: refused; 1: done. */
+    int32_t (*give_grand_stars)(int32_t count);
+    /* The file is played as Luigi (1) or Mario (0) from the next stage. 0: refused; 1: done. */
+    int32_t (*set_player_character)(int32_t luigi);
+    /* The materials of the first living actor whose model is `model` (any case), each given to `callback`: how many. */
+    int32_t (*list_materials)(const char* model, NebulaMaterialCallback callback, void* user);
+    /* A point inside the stage's `index`-th body of water (its oceans first, then its water areas; the index wraps):
+       how many bodies of water the stage has (0: none, `xyz` untouched). */
+    int32_t (*water_point)(int32_t index, float* xyz);
+    /* The circle wipe closes (`open` 0) or opens (1) over `frames` frames. 0: refused (no stage); 1: done. */
+    int32_t (*circle_wipe)(int32_t open, int32_t frames);
+    /* The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a new file has not reached. 0:
+       refused (no stage); 1: done. */
+    int32_t (*grant_spin_and_pointer)(void);
+
+    /* Version 3: LumaCore. */
+    /* The toolkit: every game function scripts and plugins call (docs/modding/TOOLKIT.md). Its index by name
+       ("MR::startBck"; an overloaded name with its value letters after ':'), or -1. */
+    int32_t (*toolkit_find)(const char* name);
+    /* Calls it. `out` gets the result, then each value an in-out parameter gives back; returns how many values were
+       written, or -1 when the call was refused (a missing or stale handle, a wrong class, too few arguments: logged once
+       per reason). */
+    int32_t (*toolkit_call)(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count);
+    /* The value for an actor the API gave, and back (null for anything but a living object). */
+    NebulaValue (*actor_value)(NebulaActor* actor);
+    NebulaActor* (*value_actor)(const NebulaValue* value);
+    /* A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1
+       (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused. */
+    int32_t (*field_find)(const NebulaValue* object, const char* name);
+    int32_t (*field_get)(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out);
+    int32_t (*field_set)(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value);
+    /* A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one. */
+    const char* (*class_name)(uint32_t id, uint32_t* parent);
+    int32_t (*is_a)(const NebulaValue* object, const char* class_name);
+    /* The host's: the table it completed (log, store, format), once, before any mod row. Plugins never call it. */
+    void (*luma_start)(const struct NebulaModApi* api);
+    /* An object a script runs (luma.json "objects"): the mod's /LumaScripts/<mod id>/<script>.lumascript on `shape`,
+       whose callbacks the script's handlers take. 0: added; -1: refused (logged with the reason). */
+    int32_t (*add_script_object)(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script);
+    /* The host's: a mod-wide script (luma.json "scripts"), the mod's /LumaScripts/<mod id>/<script>.lumascript, one
+       instance for the whole run. 0: started; -1: refused (logged with the reason). */
+    int32_t (*add_mod_script)(const NebulaPlugin* mod, const char* script);
+    /* The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object",
+       "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state",
+       "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows).
+       registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null
+       past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's
+       number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row.
+       registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name
+       replaces an earlier one (the later mod wins, logged). */
+    int32_t (*registry_count)(const char* kind);
+    const char* (*registry_name)(const char* kind, int32_t index);
+    int32_t (*registry_find)(const char* kind, const char* name);
+    int32_t (*registry_value)(const char* kind, const char* name);
+    const char* (*registry_mod)(const char* kind, int32_t index);
+    /* Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the
+       mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch)
+       or hooks. Several mods may name one class; each runs, in load order. 0: done. */
+    int32_t (*set_class_script)(const NebulaPlugin* mod, const char* name, const char* script);
+    int32_t (*set_class_hooks)(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks);
+    /* Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and
+       a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame
+       every frame, end when he leaves it. The power-up's number, or -1. */
+    int32_t (*add_form)(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script);
 } NebulaModApi;
 
 /* True when this Nebula has `field` (fields are added at the end over time):

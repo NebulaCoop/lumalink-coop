@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "coin-rules",
+  "name": "Double Coins",
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": ["Nebula examples"],
+  "description": "Every coin counts twice, and every 50 coins say so. A mod-wide LumaScript, no code.",
+  "layers": [
+    {
+      "path": "layers/base",
+      "scripts": ["rules"]
+    }
+  ]
+}

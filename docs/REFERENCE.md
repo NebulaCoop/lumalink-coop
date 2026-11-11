@@ -16,7 +16,7 @@ Everything about making, converting, packaging and running mods for Nebula, in o
 10. [Galaxies and progression](#10-galaxies-and-progression)
 11. [Plugins: the interface](#11-plugins-the-interface)
 12. [Plugins: writing a whole boss](#12-plugins-writing-a-whole-boss)
-13. [Plugins: the game's headers and hooks](#13-plugins-the-games-headers-and-hooks)
+13. [Plugins: function hooks](#13-plugins-function-hooks)
 14. [Limits that are gone](#14-limits-that-are-gone)
 15. [Shaders](#15-shaders)
 16. [Devices](#16-devices)
@@ -196,7 +196,8 @@ My Mod.luma
 | `name` | yes | Text |
 | `version` | yes | Numbers with dots, compared number by number |
 | `game` | yes | `RMG`. `SB4` and `SB5` are refused as Galaxy 2, others as another game |
-| `versions` | no | The versions it works on: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
+| `regions` | no | `"any"` (every disc), or the discs it is for: `["US", "PAL"]` from `US`, `PAL`, `JP`, `KR`. Left out: any |
+| `versions` | no | The same by the disc's letter, from older files: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
 | `nebula` | no | The oldest Nebula it works on |
 | `requires` | no | Format features it can't work without, such as `custom-shaders` |
 | `authors`, `license`, `homepage` | no | Shown on its page |
@@ -230,7 +231,8 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](reference/settings.md)) |
 | `object_changes` | Objects changed or gone |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)) |
+| `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](reference/lumascript.md#forms)) |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)); a `script` runs on every object placed by the name, the game's own too ([class scripts](reference/lumascript.md#class-scripts)) |
 | `player_constants` | The numbers of how the player moves, by name ([player numbers](reference/player-numbers.md)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](tutorials/04-music-and-sound.md)) |
@@ -536,7 +538,7 @@ clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NO
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so my.c
 ```
 
-These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `register_creator`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
+These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
 
 ### Events
 
@@ -715,30 +717,19 @@ Being hit is `attacked_by`: refuse it outside the state where it's vulnerable, s
 - **Moving between points** is a rail from the level: `move_on_rail`, `rail_at_end`.
 - **Attacks that fly** are objects of your own, made with `spawn`.
 
-## 13. Plugins: the game's headers and hooks
+## 13. Plugins: function hooks
 
-The stable interface above survives Nebula updates. For anything beyond it:
+The stable interface above survives Nebula updates, and LumaScript reaches the same calls and every `MR::` function
+on every device. A hook goes one step further: a native plugin's code in place of any function of the game.
 
-| Level | What it gives you | Survives updates |
-|---|---|---|
-| Stable interface | This page | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
-| Hooks | Your code in place of any function, calling the original when you choose | While the function exists |
+| Route | What it gives you | Devices | Survives updates |
+|---|---|---|---|
+| Rows and LumaScript | Every table, tunable and object; any `MR::` function and field; the plugin interface as `nebula.*` | All, iOS included | Yes |
+| Stable interface | This page | Those that load plugins | Yes |
+| Hooks | Your code in place of any function, calling the original when you choose | Windows x64; Linux and Mac on x64 and arm64 | While the function exists |
 
-Every function of the game is reachable: the game's module exports all of them, so there is no list of what's allowed.
-
-```cpp
-#include <nebula_game_sdk.h>   /* first */
-
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-Build with the flags the game uses, linking `smg_game.lib`. The plugin names the exact headers it was built from; on a Nebula built from others it isn't started, and the log says so.
+A hook rewrites a function's first instructions, which a device that loads no plugin code (iOS) never allows: a mod
+that must run everywhere does the same with events, rows and scripts.
 
 ```cpp
 void (*original)(MarioActor*, u16);
@@ -758,7 +749,7 @@ When a plugin can't start it's left out and the log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include |
-| it was built for another version of the game | A function it calls is gone, or the headers changed |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only |
 | it is not for this kind of computer | The wrong build |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start` |
 | it needs a newer Nebula | Built against a later interface |
@@ -821,6 +812,7 @@ A mod that can't be used stays in the list, off, with one line:
 | THESE TEXTURES ARE FOR ANOTHER GAME | A texture pack none of whose textures this game has |
 | THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
 | MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
+| THIS MOD IS ONLY FOR: US, PAL | `regions` leaves out the disc being played |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off or unusable |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | |
@@ -877,7 +869,7 @@ A mod with its own code asks first, by name, as the Mods page shows: Allow keeps
 | `ID: the music NAME can't be added: its name is the game's` | |
 | `ID: the object / sound / player animation / row … can't be added` or `can't be set` | Past what the game holds, or a name it already uses |
 | `NAME started` | A plugin is running |
-| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or another version of the game |
+| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or with the game's headers |
 | `the last run crashed with mods' code on: it stays off for this run` | Windows; restart to try again |
 | `its shaders are for another build of Nebula: the ones it needs are built here` | A `.luma`'s shader cache is from another build; nothing is lost |
 | `the mods' files could not be cooked: the game runs without them: WHY` | The game's converter failed as a whole; the game runs as it is. Report WHY with the mods you have on |

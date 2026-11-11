@@ -40,8 +40,9 @@ From the simplest to the most powerful. Use the first one that does what you wan
 | **Rows** (`music`, `text`, `event_flags`, `stages`, `object_classes`, ...) | The game's tables: what plays where, what opens what | Yes, per row |
 | **Merge** (`merge/`) | Rows in levels and tables: add, change, remove | Yes, all kept |
 | **Files** (`files/`) | Anything that's a file: models, textures, levels, sounds | The higher replaces |
-| **Plugin, stable interface** | Anything, through 140 plain C calls and events. Survives Nebula updates | Yes |
-| **Plugin, game's headers and hooks** | Any function of the game | Yes, in a chain |
+| **Scripts** (`objects`, `scripts`) | New objects and rules in LumaScript: the game's events, messages, any `MR::` function and field, the plugin interface. Every device, iOS included | Yes |
+| **Plugin, stable interface** | Anything, through 196 plain C calls and events. Survives Nebula updates | Yes |
+| **Plugin, hooks** | Any function of the game, where a device lets plugins patch code | Yes, in a chain |
 
 ## Layers and options
 

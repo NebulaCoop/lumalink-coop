@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "id": "scripted-goomba",
+  "name": "Gumbo, a Friendly Goomba",
+  "version": "1.0.0",
+  "game": "RMG",
+  "authors": ["Nebula examples"],
+  "description": "Every Goomba becomes Gumbo: it walks to Mario, pays three coins when he touches it, naps for two seconds, then follows again. A LumaScript object, no code.",
+  "layers": [
+    {
+      "path": "layers/base",
+      "objects": [
+        {"name": "Gumbo", "script": "gumbo", "archive": "Kuribo", "kind": "npc", "radius": 80, "shadow_radius": 60, "clip_radius": 3000}
+      ],
+      "object_changes": [
+        {"object": "Kuribo", "becomes": "Gumbo"}
+      ]
+    }
+  ]
+}

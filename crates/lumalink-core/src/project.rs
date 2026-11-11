@@ -305,6 +305,7 @@ pub fn new_project(folder: &Path, name: &str) -> Result<()> {
         "name": name,
         "version": "1.0.0",
         "game": crate::plan::ANY_VERSION,
+        "regions": "any",
         "authors": [],
         "layers": [{ "path": "layers/base" }],
     });
@@ -329,6 +330,10 @@ fn layer_changes(folder: &Path, layer: &Value) -> Vec<Change> {
         .filter(|e| e.file_type().is_file())
         .filter_map(|e| {
             let relative = e.path().strip_prefix(&files).ok()?.to_string_lossy().replace('\\', "/");
+            // A system's or version control's hidden files (.DS_Store, .gitkeep) are not the mod's.
+            if relative.split('/').any(|part| part.starts_with('.')) {
+                return None;
+            }
             Some(Change { path: relative, source: e.path().to_path_buf(), merge: false })
         })
         .collect()
@@ -341,7 +346,24 @@ fn belongs_in_file(relative: &Path) -> bool {
     let packed = relative.components().count() == 1 && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma") || e.eq_ignore_ascii_case("writing"));
     let build_leftover = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("plugins"))
         && relative.extension().is_some_and(|e| ["lib", "exp", "pdb", "ilk", "obj", "o"].iter().any(|x| e.eq_ignore_ascii_case(x)));
-    !hidden && !packed && !build_leftover
+    let script_source = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("scripts"))
+        && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("lscript"));
+    !hidden && !packed && !build_leftover && !script_source
+}
+
+/// A script of the project (scripts/<name>.lscript) compiled for the game, or why it can't be.
+pub fn compile_script(folder: &Path, script: &str, toolkit: &crate::lumascript::Toolkit) -> std::result::Result<Vec<u8>, String> {
+    let ok_name = !script.is_empty()
+        && !script.starts_with('/')
+        && !script.ends_with('/')
+        && !script.contains("//")
+        && script.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'/');
+    if !ok_name {
+        return Err(format!("{script} is not a script's name (letters, digits, _ and -, in folders split by /)"));
+    }
+    let file = format!("scripts/{script}.lscript");
+    let text = fs::read_to_string(folder.join(&file)).map_err(|_| format!("{file} can't be read"))?;
+    crate::lumascript::compile(&text, toolkit).map_err(|p| format!("{file}, line {}: {}", p.line, p.text))
 }
 
 /// Packs a project folder into a `.luma`. A problem `check` calls serious stops it.
@@ -369,6 +391,31 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
         let (programs, failed, converted) = package::check_layers(&jobs, &game_id, store, &building)?;
         if let Some((path, why)) = failed.first() {
             bail!("{path}: {why}");
+        }
+        let id = manifest.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let toolkit = crate::lumascript::Toolkit::bundled();
+        for layer in &layers {
+            let Some(path) = layer.get("path").and_then(Value::as_str) else {
+                continue;
+            };
+            // The objects', classes' and forms' scripts and the mod-wide ones ("scripts"), each compiled once.
+            let mut scripts: Vec<&str> = ["objects", "object_classes", "forms"]
+                .iter()
+                .filter_map(|key| layer.get(*key).and_then(Value::as_array))
+                .flatten()
+                .filter_map(|r| r.get("script").and_then(Value::as_str))
+                .collect();
+            scripts.extend(layer.get("scripts").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str));
+            scripts.sort_unstable();
+            scripts.dedup();
+            for script in scripts {
+                let bytes = compile_script(folder, script, &toolkit).map_err(|why| anyhow::anyhow!(why))?;
+                let target = building.join(path).join("files").join("LumaScripts").join(&id).join(format!("{script}.lumascript"));
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&target, bytes)?;
+            }
         }
         for entry in walkdir::WalkDir::new(folder) {
             let entry = entry.with_context(|| format!("{} can't be read through", folder.display()))?;
@@ -515,6 +562,32 @@ fn string_list<'a>(value: &'a Value, field: &str, found: &mut Findings) -> Vec<&
         None => {
             found.problem(format!("{field} is a list"));
             Vec::new()
+        }
+    }
+}
+
+/// The discs a mod is for: "any" (region-free), or a list of US, PAL, JP and KR. Nebula refuses a luma.json with
+/// anything else, and blocks the mod on other discs, naming the ones it is for.
+const REGIONS: [&str; 4] = ["US", "PAL", "JP", "KR"];
+
+fn check_regions(manifest: &Value, found: &mut Findings) {
+    let Some(regions) = manifest.get("regions") else {
+        return;
+    };
+    if regions.as_str() == Some("any") {
+        return;
+    }
+    if regions.is_string() {
+        found.problem("regions is \"any\" or a list of the discs it is for, like [\"US\", \"PAL\"]");
+        return;
+    }
+    let list = string_list(regions, "regions", found);
+    if regions.as_array().is_some_and(Vec::is_empty) {
+        found.problem("regions lists no disc: write \"any\" for every disc");
+    }
+    for region in list {
+        if !REGIONS.contains(&region) {
+            found.problem(format!("regions: {region} isn't a region ({})", REGIONS.join(", ")));
         }
     }
 }
@@ -892,13 +965,103 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
             }
         }
     }
+    if let Some(rows) = layer.get("objects").and_then(Value::as_array) {
+        any |= !rows.is_empty();
+        let toolkit = crate::lumascript::Toolkit::bundled();
+        for row in rows {
+            let object = row.get("name").and_then(Value::as_str).unwrap_or_default();
+            let script = row.get("script").and_then(Value::as_str).unwrap_or_default();
+            if object.is_empty() || script.is_empty() {
+                found.problem(format!("{name}: a row of objects needs name and script"));
+                continue;
+            }
+            if let Some(kind) = row.get("kind").and_then(Value::as_str) {
+                if !["enemy", "map", "npc", "ride", "decoration"].contains(&kind) {
+                    found.problem(format!("{name}: {object}'s kind is enemy, map, npc, ride or decoration, not {kind}"));
+                }
+            }
+            match compile_script(folder, script, &toolkit) {
+                Ok(_) => {}
+                Err(why) => found.problem(format!("{name}: {object}: {why}")),
+            }
+        }
+    }
+    if let Some(scripts) = layer.get("scripts") {
+        // Mod-wide scripts: one instance each for the whole run (luma.cpp "scripts").
+        match scripts.as_array() {
+            None => found.problem(format!("{name}: scripts is a list of script names")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                let toolkit = crate::lumascript::Toolkit::bundled();
+                for row in rows {
+                    match row.as_str() {
+                        None => found.problem(format!("{name}: scripts is a list of script names, not {row}")),
+                        Some(script) => {
+                            if let Err(why) = compile_script(folder, script, &toolkit) {
+                                found.problem(format!("{name}: {why}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("forms") {
+        // Power-ups from data (luma.cpp "forms"): the game's forms by name, whole numbers, a script.
+        const FORMS: [&str; 9] = ["normal", "invincible", "fire", "ice", "bee", "spring", "boo", "flying", "tornado"];
+        match rows.as_array() {
+            None => found.problem(format!("{name}: forms is a list of rows")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                let toolkit = crate::lumascript::Toolkit::bundled();
+                for row in rows {
+                    let form = row.get("name").and_then(Value::as_str).unwrap_or_default();
+                    if form.is_empty() {
+                        found.problem(format!("{name}: a row of forms needs a name"));
+                        continue;
+                    }
+                    for key in ["acts_like", "looks_like"] {
+                        if let Some(value) = row.get(key) {
+                            if !value.as_str().is_some_and(|v| FORMS.contains(&v)) {
+                                found.problem(format!("{name}: {form}'s {key} is one of {}", FORMS.join(", ")));
+                            }
+                        }
+                    }
+                    for (key, most) in [("color_frame", 255u64), ("frames", 65535)] {
+                        if let Some(value) = row.get(key) {
+                            if !value.as_u64().is_some_and(|v| v <= most) {
+                                found.problem(format!("{name}: {form}'s {key} is a whole number from 0 to {most}"));
+                            }
+                        }
+                    }
+                    if let Some(script) = row.get("script").and_then(Value::as_str) {
+                        if let Err(why) = compile_script(folder, script, &toolkit) {
+                            found.problem(format!("{name}: {form}: {why}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
     if let Some(rows) = layer.get("object_classes").and_then(Value::as_array) {
         any |= !rows.is_empty();
+        let toolkit = crate::lumascript::Toolkit::bundled();
         for row in rows {
             let object = row.get("name").and_then(Value::as_str).unwrap_or_default();
             let like = row.get("like").and_then(Value::as_str).unwrap_or_default();
-            if object.is_empty() || like.is_empty() {
-                found.problem(format!("{name}: a row of object_classes needs name and like"));
+            let script = row.get("script").and_then(Value::as_str).unwrap_or_default();
+            // A class script runs on every actor placed by the name (a game class, or one made like it here).
+            if !script.is_empty() {
+                if let Err(why) = compile_script(folder, script, &toolkit) {
+                    found.problem(format!("{name}: {object}: {why}"));
+                }
+                if !object.is_empty() && like.is_empty() && !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(object)) {
+                    found.note(format!("{name}: {object} isn't an object of the game's; its script runs only where another mod or a stage places it"));
+                }
+            }
+            if object.is_empty() || (like.is_empty() && script.is_empty()) {
+                found.problem(format!("{name}: a row of object_classes needs name, and like or script"));
+            } else if like.is_empty() {
             } else if !crate::object_table::OBJECT_ROWS.iter().any(|(known, _, _)| known.eq_ignore_ascii_case(like)) {
                 found.note(format!("{name}: {like}, which {object} is made like, isn't an object of the game's. A plugin may add it"));
             } else if let Some(store) = store {
@@ -1658,6 +1821,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
             }
         }
     }
+    check_regions(&manifest, found);
     if let Some(nebula) = manifest.get("nebula") {
         if !nebula.as_str().is_some_and(valid_version) {
             found.problem("nebula has to be numbers with dots, like 2.1.0");
@@ -1913,6 +2077,62 @@ mod tests {
         let written = write_generated_shaders(&model, out.path()).unwrap();
         assert!(written.contains(&"Lantern_Paper.hlsl".to_string()), "{written:?}");
         assert!(out.path().join("program.hlsli").is_file());
+    }
+
+    #[test]
+    fn regions_are_checked() {
+        let problems = |regions: Value| {
+            let mut found = Findings::default();
+            check_regions(&json!({ "regions": regions }), &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!("any")), 0);
+        assert_eq!(problems(json!(["US", "PAL"])), 0);
+        assert_eq!(problems(json!(["KR"])), 0);
+        assert_eq!(problems(json!("US")), 1);
+        assert_eq!(problems(json!([])), 1);
+        assert_eq!(problems(json!(["EU"])), 1);
+        assert_eq!(problems(json!([1])), 1);
+        let mut found = Findings::default();
+        check_regions(&json!({}), &mut found);
+        assert!(found.0.is_empty());
+    }
+
+    #[test]
+    fn class_scripts_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("scripts")).unwrap();
+        fs::write(dir.path().join("scripts/angry.lscript"), "on control { return true }\non touch(other, sensor) { }\n").unwrap();
+        fs::write(dir.path().join("scripts/broken.lscript"), "on nothing_like_this { }\n").unwrap();
+        let problems = |row: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &json!({ "path": "layers/base", "object_classes": [row] }), "base", None, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "angry" })), 0);
+        assert_eq!(problems(json!({ "name": "Bramblet", "like": "Kuribo", "script": "angry" })), 0);
+        assert_eq!(problems(json!({ "name": "Bramblet", "like": "Kuribo" })), 0);
+        assert_eq!(problems(json!({ "name": "Kuribo" })), 1, "neither like nor script");
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "missing" })), 1);
+        assert_eq!(problems(json!({ "name": "Kuribo", "script": "broken" })), 1);
+    }
+
+    #[test]
+    fn forms_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("scripts")).unwrap();
+        fs::write(dir.path().join("scripts/gold.lscript"), "on start { }\non frame { }\non end { }\n").unwrap();
+        let problems = |row: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &json!({ "path": "layers/base", "forms": [row] }), "base", None, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        assert_eq!(problems(json!({ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "script": "gold" })), 0);
+        assert_eq!(problems(json!({ "name": "plain" })), 0);
+        assert_eq!(problems(json!({ "acts_like": "fire" })), 1);
+        assert_eq!(problems(json!({ "name": "x", "acts_like": "lava" })), 1);
+        assert_eq!(problems(json!({ "name": "x", "frames": 1.5 })), 1);
+        assert_eq!(problems(json!({ "name": "x", "script": "missing" })), 1);
     }
 
     #[test]
@@ -2375,6 +2595,20 @@ mod tests {
         assert!(calls > 150, "{calls} calls read from the header");
         let tutorial = include_str!("../../../docs/tutorials/10-first-plugin.md");
         assert!(tutorial.contains(&format!("lists all {calls} calls")), "docs/tutorials/10-first-plugin.md counts the calls: {calls}");
+    }
+
+    #[test]
+    fn hidden_files_are_not_a_layers() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = dir.path().join("layers/base/files");
+        fs::create_dir_all(files.join(".git")).unwrap();
+        fs::write(files.join(".gitkeep"), b"").unwrap();
+        fs::write(files.join(".DS_Store"), b"x").unwrap();
+        fs::write(files.join(".git/HEAD"), b"x").unwrap();
+        fs::create_dir_all(files.join("ObjectData")).unwrap();
+        fs::write(files.join("ObjectData/.DS_Store"), b"x").unwrap();
+        let changes = layer_changes(dir.path(), &serde_json::json!({"path": "layers/base"}));
+        assert!(changes.is_empty(), "{:?}", changes.iter().map(|c| &c.path).collect::<Vec<_>>());
     }
 
     #[test]

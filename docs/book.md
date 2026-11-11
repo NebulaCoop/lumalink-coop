@@ -39,11 +39,13 @@ Every page of LumaLink's docs and Nebula's generated lists, in reading order. Wr
   - [Game settings (tunables)](#p-reference-settings)
   - [Player numbers](#p-reference-player-numbers)
   - [Stage rules](#p-reference-stage-rules)
+  - [LumaScript](#p-reference-lumascript)
 - **The game's lists**
   - [Events](#p-nebula-events)
   - [Nerves](#p-nebula-nerves)
   - [The game's tables](#p-nebula-tables)
   - [Tunables](#p-nebula-tunables)
+  - [Registries](#p-nebula-registries)
 
 # Start
 
@@ -110,7 +112,8 @@ Each one starts from nothing and ends with something running in the game.
 | [Objects](#p-reference-objects) | Every object of the game |
 | [Stage rules](#p-reference-stage-rules) | The rules the game keeps by a stage's name |
 | [Plugin interface](#p-reference-plugin-api) | Every call, event and number |
-| [Hooks and the game's headers](#p-reference--13-plugins-the-games-headers-and-hooks) | Reaching any function of the game |
+| [LumaScript](#p-reference-lumascript) | Objects with their own logic, no code: the language |
+| [Function hooks](#p-reference--13-plugins-function-hooks) | A native plugin's code in place of any function of the game |
 | [Shaders](#p-reference--15-shaders) | Hand-written materials |
 | [LumaLink commands](#p-reference--3-lumalink) | The command line and the window |
 | [What conversion reads](#p-reference--4-what-conversion-does) | How each thing in a Wii mod becomes something in Nebula |
@@ -395,8 +398,9 @@ From the simplest to the most powerful. Use the first one that does what you wan
 | **Rows** (`music`, `text`, `event_flags`, `stages`, `object_classes`, ...) | The game's tables: what plays where, what opens what | Yes, per row |
 | **Merge** (`merge/`) | Rows in levels and tables: add, change, remove | Yes, all kept |
 | **Files** (`files/`) | Anything that's a file: models, textures, levels, sounds | The higher replaces |
-| **Plugin, stable interface** | Anything, through 140 plain C calls and events. Survives Nebula updates | Yes |
-| **Plugin, game's headers and hooks** | Any function of the game | Yes, in a chain |
+| **Scripts** (`objects`, `scripts`) | New objects and rules in LumaScript: the game's events, messages, any `MR::` function and field, the plugin interface. Every device, iOS included | Yes |
+| **Plugin, stable interface** | Anything, through 196 plain C calls and events. Survives Nebula updates | Yes |
+| **Plugin, hooks** | Any function of the game, where a device lets plugins patch code | Yes, in a chain |
 
 <a id="p-concepts--layers-and-options"></a>
 
@@ -745,7 +749,8 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 | [`coin-bank`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-bank) | Keeping numbers and words across plays (`store_get`, `store_set_text`), a message when the player has control |
 | [`goomba-tempo`](https://github.com/keepvaibin/lumalink/blob/main/examples/goomba-tempo) | Every object of a kind (`find_actor`), its animation's speed, an option |
 | [`first-person`](https://github.com/keepvaibin/lumalink/blob/main/examples/first-person) | A camera of the plugin's own every frame (`set_camera`, `set_camera_near`), the player's model hidden, the game's cameras back for cutscenes ([tutorial 18](#p-tutorials-18-first-person)) |
-| [`pulse`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/pulse) | A new object with the game's headers, and a hook |
+| [`scripted-goomba`](https://github.com/keepvaibin/lumalink/blob/main/examples/scripted-goomba) | A new object in LumaScript: it follows the player, pays coins, naps |
+| [`coin-rules`](https://github.com/keepvaibin/lumalink/blob/main/examples/coin-rules) | A rule for the whole game in LumaScript: every coin counts twice |
 | [`cube`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/cube) | A new object with the stable interface and a glTF model |
 
 A new object is one call, `register_object`, and then levels place it by its name. A new power-up is `add_power_up`. A new Mario move is the player's buttons and `jump_player` or `play`, or a hook on the player's functions. All of it is in [plugins.md](#p-plugins).
@@ -1360,6 +1365,21 @@ A plugin hears each line open (`NEBULA_MOD_EVENT_TALK_LINE`, with the line's id)
 ### Whole message files
 
 A mod can replace `Message.bmg` from a language's message archive, as Wii mods do. If a mod sets text in some language folders and not the one being played, the game shows the mod's text from the same language of another region, then English, then what it has.
+
+<a id="p-tutorials-05-text--a-language-from-another-release"></a>
+
+### A language from another release
+
+A US disc has English, French and Spanish. A European disc adds German, Italian and Dutch. A mod can bring any of these as a folder of its own:
+
+```
+files/EuGerman/MessageData/Message.arc
+files/EuGerman/LayoutData/...
+```
+
+With the mod on, German is in the game's language list in Nebula Settings. The game reads German from the mod's folder. Anything the folder doesn't have, a layout or a font, comes from the disc's English, so a pack can be just the message archive.
+
+Folder names: `UsEnglish`, `UsFrench`, `UsSpanish`, `EuEnglish`, `EuFrench`, `EuSpanish`, `EuGerman`, `EuItalian`, `EuDutch`, `JpJapanese`, `KrKorean`. German, Italian and Dutch are always read from the `Eu` folder and Japanese from `JpJapanese`, whatever the disc.
 
 <a id="p-tutorials-05-text--a-language-the-game-doesnt-have"></a>
 
@@ -2006,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 173 calls: animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, the [game's own headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks) reach any function.
+[The whole interface](#p-reference-plugin-api) lists all 199 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -2253,7 +2273,7 @@ static void touch_player(NebulaActor* actor, void* user) {
 static NebulaObjectClass item = { sizeof(NebulaObjectClass), "WingItem", "WingItem", 80.0f, 0, 0, 0, touch_player, 0, 0, NEBULA_OBJECT_MAP };
 ```
 
-Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](#p-reference--13-plugins-the-games-headers-and-hooks) the function, or read the buttons as this example does.
+Levels place `WingItem`; treasure boxes and plugins can give it. The player's own moves, such as what spin does, are the game's: for those, [hook](#p-reference--13-plugins-function-hooks) the function, or read the buttons as this example does.
 
 
 <a id="p-tutorials-13-screens"></a>
@@ -2833,7 +2853,7 @@ Everything about making, converting, packaging and running mods for Nebula, in o
 10. [Galaxies and progression](#p-reference--10-galaxies-and-progression)
 11. [Plugins: the interface](#p-reference--11-plugins-the-interface)
 12. [Plugins: writing a whole boss](#p-reference--12-plugins-writing-a-whole-boss)
-13. [Plugins: the game's headers and hooks](#p-reference--13-plugins-the-games-headers-and-hooks)
+13. [Plugins: function hooks](#p-reference--13-plugins-function-hooks)
 14. [Limits that are gone](#p-reference--14-limits-that-are-gone)
 15. [Shaders](#p-reference--15-shaders)
 16. [Devices](#p-reference--16-devices)
@@ -3037,7 +3057,8 @@ My Mod.luma
 | `name` | yes | Text |
 | `version` | yes | Numbers with dots, compared number by number |
 | `game` | yes | `RMG`. `SB4` and `SB5` are refused as Galaxy 2, others as another game |
-| `versions` | no | The versions it works on: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
+| `regions` | no | `"any"` (every disc), or the discs it is for: `["US", "PAL"]` from `US`, `PAL`, `JP`, `KR`. Left out: any |
+| `versions` | no | The same by the disc's letter, from older files: `E`, `P`, `J`, `K`, `W`, `C`. Left out: all |
 | `nebula` | no | The oldest Nebula it works on |
 | `requires` | no | Format features it can't work without, such as `custom-shaders` |
 | `authors`, `license`, `homepage` | no | Shown on its page |
@@ -3075,7 +3096,8 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `path` | Its folder: `files/`, `merge/`, `textures/`, `movies/`. May be left out for a layer of rows alone |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"`, with values ([settings](#p-reference-settings)) |
 | `object_changes` | Objects changed or gone |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)) |
+| `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](#p-reference-lumascript--forms)) |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)); a `script` runs on every object placed by the name, the game's own too ([class scripts](#p-reference-lumascript--class-scripts)) |
 | `player_constants` | The numbers of how the player moves, by name ([player numbers](#p-reference-player-numbers)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](#p-tutorials-04-music-and-sound)) |
@@ -3429,7 +3451,7 @@ clang --target=x86_64-pc-windows-msvc -O2 -shared -fuse-ld=lld -nostdlib -Wl,/NO
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so my.c
 ```
 
-These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `register_creator`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
+These calls work only in `nebula_plugin_start`: `subscribe`, `register_object`, `hook`, and the rows (`add_*`, `set_*_music`, `set_event_flag`, `set_comet_schedule`, `set_object_change`, `set_comet_time_limit`). Calls about the player do nothing, and return 0 or null, between stages and on the file select screen.
 
 <a id="p-reference--events"></a>
 
@@ -3616,32 +3638,21 @@ Being hit is `attacked_by`: refuse it outside the state where it's vulnerable, s
 - **Moving between points** is a rail from the level: `move_on_rail`, `rail_at_end`.
 - **Attacks that fly** are objects of your own, made with `spawn`.
 
-<a id="p-reference--13-plugins-the-games-headers-and-hooks"></a>
+<a id="p-reference--13-plugins-function-hooks"></a>
 
-### 13. Plugins: the game's headers and hooks
+### 13. Plugins: function hooks
 
-The stable interface above survives Nebula updates. For anything beyond it:
+The stable interface above survives Nebula updates, and LumaScript reaches the same calls and every `MR::` function
+on every device. A hook goes one step further: a native plugin's code in place of any function of the game.
 
-| Level | What it gives you | Survives updates |
-|---|---|---|
-| Stable interface | This page | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
-| Hooks | Your code in place of any function, calling the original when you choose | While the function exists |
+| Route | What it gives you | Devices | Survives updates |
+|---|---|---|---|
+| Rows and LumaScript | Every table, tunable and object; any `MR::` function and field; the plugin interface as `nebula.*` | All, iOS included | Yes |
+| Stable interface | This page | Those that load plugins | Yes |
+| Hooks | Your code in place of any function, calling the original when you choose | Windows x64; Linux and Mac on x64 and arm64 | While the function exists |
 
-Every function of the game is reachable: the game's module exports all of them, so there is no list of what's allowed.
-
-```cpp
-#include <nebula_game_sdk.h>   /* first */
-
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-Build with the flags the game uses, linking `smg_game.lib`. The plugin names the exact headers it was built from; on a Nebula built from others it isn't started, and the log says so.
+A hook rewrites a function's first instructions, which a device that loads no plugin code (iOS) never allows: a mod
+that must run everywhere does the same with events, rows and scripts.
 
 ```cpp
 void (*original)(MarioActor*, u16);
@@ -3661,7 +3672,7 @@ When a plugin can't start it's left out and the log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include |
-| it was built for another version of the game | A function it calls is gone, or the headers changed |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only |
 | it is not for this kind of computer | The wrong build |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start` |
 | it needs a newer Nebula | Built against a later interface |
@@ -3734,6 +3745,7 @@ A mod that can't be used stays in the list, off, with one line:
 | THESE TEXTURES ARE FOR ANOTHER GAME | A texture pack none of whose textures this game has |
 | THIS DOESN'T LOOK LIKE A MOD | No `luma.json`, patches, disc folders, textures or movies in it |
 | MOST OF THIS MOD WORKS. N CODE CHANGES NEED A NEBULA UPDATE OR A PLUGIN | A Riivolution mod's memory patches: its files apply; convert it with LumaLink |
+| THIS MOD IS ONLY FOR: US, PAL | `regions` leaves out the disc being played |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves it out |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off or unusable |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | |
@@ -3792,7 +3804,7 @@ A mod with its own code asks first, by name, as the Mods page shows: Allow keeps
 | `ID: the music NAME can't be added: its name is the game's` | |
 | `ID: the object / sound / player animation / row … can't be added` or `can't be set` | Past what the game holds, or a name it already uses |
 | `NAME started` | A plugin is running |
-| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or another version of the game |
+| `NAME not started: …` | Its code changed after it was allowed, can't be read, isn't a Nebula plugin, needs a newer Nebula, was built for another plugin interface or with the game's headers |
 | `the last run crashed with mods' code on: it stays off for this run` | Windows; restart to try again |
 | `its shaders are for another build of Nebula: the ones it needs are built here` | A `.luma`'s shader cache is from another build; nothing is lost |
 | `the mods' files could not be cooked: the game runs without them: WHY` | The game's converter failed as a whole; the game runs as it is. Report WHY with the mods you have on |
@@ -3905,7 +3917,8 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `name` | yes | Text, shown to players. |
 | `version` | yes | Numbers with dots: `2.1.0`. Compared number by number. |
 | `game` | yes | `RMG`: Super Mario Galaxy. Any other value is another game and the mod is refused by name. |
-| `versions` | no | The versions it works on, from `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Only for a mod that truly cannot work on the others. |
+| `regions` | no | `"any"`: every disc (`lumalink new` writes this). Or the discs it is for, from `US`, `PAL` (Europe and Australia), `JP`, `KR`: `["US", "PAL"]`. On another disc the mod is blocked, and its page names the discs it is for. Only for a mod that truly cannot work on the others, such as one that replaces one region's text or layouts. Any other value refuses the file. |
+| `versions` | no | The same by the disc's letter, from older files: `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Write `regions` instead. |
 | `nebula` | no | The oldest Nebula it works on: `2.1.0`. |
 | `requires` | no | Names of format features it cannot work without (see "Later additions"). |
 | `authors` | no | Names. |
@@ -3953,7 +3966,8 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](#p-reference-settings). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](#p-reference--object-changes). |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). |
+| `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](#p-reference-lumascript--forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](#p-reference-player-numbers). |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
@@ -4000,6 +4014,8 @@ An option needs `choices` or a `range`, or both.
 `files/` holds files at the paths the game knows them by, in any case: `files/StageData/RedBlueExGalaxy/RedBlueExGalaxyMap.arc`. New paths are new files. Files stay in the form mods use: `.arc`, `.szs`, `.bcsv`, `.bmd`, `.brstm` and the rest. Files can also be modern, turned into the game's forms when the player applies the mod: glTF models and solid ground (`.glb`, `.gltf`, `.kcl.glb`), PNG textures, WAV and Ogg music, and tables as JSON (`.bcsv.json`, a zone's `jmp` tables as `.json`). See [Modern files](#p-reference--modern-files). They need no `requires`.
 
 Text for languages the mod leaves out: if a mod sets files in some language folders and not the one being played, Nebula shows the mod's text anyway, from the same language of another region, then English, then what it has. A player can turn this off for a mod.
+
+A language folder the disc doesn't have (`files/EuGerman/` for a US disc) adds that language: it is listed with the game's languages, and files it lacks come from the disc's English. See [tutorial 5](#p-tutorials-05-text--a-language-from-another-release).
 
 <a id="p-format--saves"></a>
 
@@ -4283,6 +4299,7 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` name it lacks, or `nebula` above its version. |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5`. |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game`. |
+| THIS MOD IS ONLY FOR: {REGIONS} | `regions` leaves out the disc being played. The words are in the player's language; the region names stay as written. |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves out the version being played. |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off, or can't be used. |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | A mod in `needs` is older than it says. |
@@ -4347,10 +4364,11 @@ Most mods don't need one. Levels, models, textures, music and text are files. Wr
 | Level | What it gives you | Survives Nebula updates |
 |---|---|---|
 | Stable interface | `nebula_mod_api.h`: events, the player, objects, new object kinds | Yes |
-| The game's headers | Subclass `LiveActor`, call any `MR::` function, read any field | Until those headers change |
 | Function hooks | Run your code in place of any game function, and call the original | As long as the function exists |
 
-Start with the stable interface. Go further only for what it can't do.
+Start with the stable interface. Go further only for what it can't do. Every call of the interface is also a
+LumaScript call (`nebula.get_position(self)`), and scripts run on every device, iOS included, where no plugin can
+load; a hook works only where a device lets a plugin patch code.
 
 <a id="p-plugins--the-smallest-plugin"></a>
 
@@ -4476,24 +4494,6 @@ game->add_music("MyBossTheme", "AudioRes/Stream/MyBossTheme.wav");
 game->set_stage_music("MyGalaxy", 0, "MyBossTheme");
 ```
 
-<a id="p-plugins--with-the-games-headers"></a>
-
-### With the game's headers
-
-Include `nebula_game_sdk.h` first and use `NEBULA_GAME_PLUGIN_ENTRY`. You build with the flags the game is built with, and link against `smg_game.lib`.
-
-```cpp
-class Pulse : public LiveActor { /* written as the game's own objects are */ };
-
-void* createPulse(const char* name) { return new Pulse(name); }
-
-NEBULA_GAME_PLUGIN_ENTRY(api, self) {
-    api->register_creator("Pulse", createPulse, nullptr);
-}
-```
-
-The plugin names the exact headers it was built from. On a Nebula built from other headers it isn't started, and the log says it was built for another version of the game. Rebuild it for each Nebula update that changes them.
-
 <a id="p-plugins--function-hooks"></a>
 
 ### Function hooks
@@ -4527,7 +4527,7 @@ A plugin that can't start is left out, and the game's log says why:
 | In the log | Why |
 |---|---|
 | a library it needs isn't there | It depends on a `.dll` you didn't include. |
-| it was built for another version of the game | A game function it calls is gone, or the headers changed. |
+| it was built with the game's headers, which plugins no longer use | Made with an earlier kit's `nebula_game_sdk.h`: rebuild it with `nebula_mod_api.h` only. |
 | it is not for this kind of computer | The wrong build for the device. |
 | it is not a Nebula plugin | It doesn't export `nebula_plugin_start`. |
 | it needs a newer Nebula | It was built against a later interface. |
@@ -4620,14 +4620,10 @@ added after the oldest Nebula the mod names in `nebula`, as above.
 ### Building on Linux and Mac
 
 ```console
-# the stable interface: builds anywhere
 cc -O2 -shared -fPIC -fvisibility=hidden -o plugins/my.so source/plugin.c
-
-# with the game's headers on a Mac, whose linker wants to know where the game's functions will come from
-c++ -std=gnu++17 -O2 -shared -fPIC -undefined dynamic_lookup -o plugins/my.dylib source/plugin.cpp
 ```
 
-On Linux, a library's undefined functions are found when it's loaded, in the game. Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.
+Name each build in `binaries`: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`.
 
 
 <a id="p-reference-plugin-api"></a>
@@ -4646,7 +4642,6 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `option` | `const char* option(const NebulaPlugin* self, const char* id)` |
 | `subscribe` | `int32_t subscribe(NebulaModEvent event, NebulaModCallback callback, void* user)` |
 | `register_object` | `int32_t register_object(const NebulaObjectClass* object)` |
-| `register_creator` | `int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)` |
 | `hook` | `int32_t hook(void* target, void* replacement, void* * original)` |
 | `find_function` | `void* find_function(const char* symbol)` |
 | `player` | `NebulaActor* player(void)` |
@@ -4815,6 +4810,33 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `show_joint` | `void show_joint(NebulaActor* actor, const char* joint, int32_t on)` |
 | `joint_name` | `const char* joint_name(NebulaActor* actor, int32_t index)` |
 | `get_joint_matrix` | `void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)` |
+| `give_star` | `int32_t give_star(const char* galaxy, int32_t star, int32_t grand)` |
+| `give_grand_stars` | `int32_t give_grand_stars(int32_t count)` |
+| `set_player_character` | `int32_t set_player_character(int32_t luigi)` |
+| `list_materials` | `int32_t list_materials(const char* model, NebulaMaterialCallback callback, void* user)` |
+| `water_point` | `int32_t water_point(int32_t index, float* xyz)` |
+| `circle_wipe` | `int32_t circle_wipe(int32_t open, int32_t frames)` |
+| `grant_spin_and_pointer` | `int32_t grant_spin_and_pointer(void)` |
+| `toolkit_find` | `int32_t toolkit_find(const char* name)` |
+| `toolkit_call` | `int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)` |
+| `actor_value` | `NebulaValue actor_value(NebulaActor* actor)` |
+| `value_actor` | `NebulaActor* value_actor(const NebulaValue* value)` |
+| `field_find` | `int32_t field_find(const NebulaValue* object, const char* name)` |
+| `field_get` | `int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)` |
+| `field_set` | `int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)` |
+| `class_name` | `const char* class_name(uint32_t id, uint32_t* parent)` |
+| `is_a` | `int32_t is_a(const NebulaValue* object, const char* class_name)` |
+| `luma_start` | `void luma_start(const struct NebulaModApi* api)` |
+| `add_script_object` | `int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)` |
+| `add_mod_script` | `int32_t add_mod_script(const NebulaPlugin* mod, const char* script)` |
+| `registry_count` | `int32_t registry_count(const char* kind)` |
+| `registry_name` | `const char* registry_name(const char* kind, int32_t index)` |
+| `registry_find` | `int32_t registry_find(const char* kind, const char* name)` |
+| `registry_value` | `int32_t registry_value(const char* kind, const char* name)` |
+| `registry_mod` | `const char* registry_mod(const char* kind, int32_t index)` |
+| `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
+| `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
+| `add_form` | `int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -4860,16 +4882,6 @@ int32_t register_object(const NebulaObjectClass* object)
 
 Adds an object class that levels can place by name, run by the plugin's callbacks (NebulaObjectClass). 0: done; -1: no name, a name already taken, or a class too old to read.
 
-<a id="p-reference-plugin-api--registercreator"></a>
-
-#### `register_creator`
-
-```c
-int32_t register_creator(const char* name, void*(*create)(const char* name), const char* archive)
-```
-
-`create` builds the game's own object type (a NameObj) for a placed name; `archive` is loaded for it, or null.
-
 <a id="p-reference-plugin-api--hook"></a>
 
 #### `hook`
@@ -4878,7 +4890,7 @@ int32_t register_creator(const char* name, void*(*create)(const char* name), con
 int32_t hook(void* target, void* replacement, void* * original)
 ```
 
-Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved.
+Runs `replacement` instead of the game's function at `target`; `original` receives a function that runs the previous code (possibly another plugin's hook). Functions the compiler inlined everywhere can't be reached this way; use events. Works on Windows x64, and Linux and Mac on x64 and arm64. Returns -1 elsewhere, or when the function's first instructions can't be moved. A native plugin's route only: a device that loads no plugin code (iOS) has none, so a mod that must run everywhere changes the game through events, rows and scripts instead.
 
 <a id="p-reference-plugin-api--findfunction"></a>
 
@@ -4898,7 +4910,7 @@ A game function by its symbol (on Windows, as dumpbin /exports names it). Null: 
 NebulaActor* player(void)
 ```
 
-The player. Null when no stage is running, or outside a stage frame.
+The player. Null when no stage is running, or outside its update, animation and drawing (a hook on GameScene::draw is inside; "In a stage" calls below work there too).
 
 <a id="p-reference-plugin-api--getposition"></a>
 
@@ -6550,6 +6562,276 @@ void get_joint_matrix(NebulaActor* actor, const char* joint, float* matrix)
 
 A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Columns 0, 1 and 2 are the joint's own x, y and z axes in the world (scaled with the model), column 3 its position. Without the joint or a model: no turn, at the actor's position.
 
+<a id="p-reference-plugin-api--givestar"></a>
+
+#### `give_star`
+
+```c
+int32_t give_star(const char* galaxy, int32_t star, int32_t grand)
+```
+
+A star of the stage played won, as the player wins it: its result counted and its get demo (the Grand Star's with `grand` 1) once the stage is in play (after its opening camera and starter). `galaxy`: null or the stage played. 0: refused (no galaxy is played, or another one is named); 1: done.
+
+<a id="p-reference-plugin-api--givegrandstars"></a>
+
+#### `give_grand_stars`
+
+```c
+int32_t give_grand_stars(int32_t count)
+```
+
+The save holds Grand Stars 1 to `count` (1-7), and the stage played starts again, so the Observatory's domes are built with them. 0: refused; 1: done.
+
+<a id="p-reference-plugin-api--setplayercharacter"></a>
+
+#### `set_player_character`
+
+```c
+int32_t set_player_character(int32_t luigi)
+```
+
+The file is played as Luigi (1) or Mario (0) from the next stage. 0: refused; 1: done.
+
+<a id="p-reference-plugin-api--listmaterials"></a>
+
+#### `list_materials`
+
+```c
+int32_t list_materials(const char* model, NebulaMaterialCallback callback, void* user)
+```
+
+The materials of the first living actor whose model is `model` (any case), each given to `callback`: how many.
+
+<a id="p-reference-plugin-api--waterpoint"></a>
+
+#### `water_point`
+
+```c
+int32_t water_point(int32_t index, float* xyz)
+```
+
+A point inside the stage's `index`-th body of water (its oceans first, then its water areas; the index wraps): how many bodies of water the stage has (0: none, `xyz` untouched).
+
+<a id="p-reference-plugin-api--circlewipe"></a>
+
+#### `circle_wipe`
+
+```c
+int32_t circle_wipe(int32_t open, int32_t frames)
+```
+
+The circle wipe closes (`open` 0) or opens (1) over `frames` frames. 0: refused (no stage); 1: done.
+
+<a id="p-reference-plugin-api--grantspinandpointer"></a>
+
+#### `grant_spin_and_pointer`
+
+```c
+int32_t grant_spin_and_pointer(void)
+```
+
+The story's grant of the spin and the Star Pointer (the Gateway Luma's), which a new file has not reached. 0: refused (no stage); 1: done.
+
+<a id="p-reference-plugin-api--toolkitfind"></a>
+
+#### `toolkit_find`
+
+```c
+int32_t toolkit_find(const char* name)
+```
+
+The toolkit: every game function scripts and plugins call (docs/modding/TOOLKIT.md). Its index by name ("MR::startBck"; an overloaded name with its value letters after ':'), or -1.
+
+<a id="p-reference-plugin-api--toolkitcall"></a>
+
+#### `toolkit_call`
+
+```c
+int32_t toolkit_call(int32_t index, const NebulaValue* args, uint32_t count, NebulaValue* out, uint32_t out_count)
+```
+
+Calls it. `out` gets the result, then each value an in-out parameter gives back; returns how many values were written, or -1 when the call was refused (a missing or stale handle, a wrong class, too few arguments: logged once per reason).
+
+<a id="p-reference-plugin-api--actorvalue"></a>
+
+#### `actor_value`
+
+```c
+NebulaValue actor_value(NebulaActor* actor)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+<a id="p-reference-plugin-api--valueactor"></a>
+
+#### `value_actor`
+
+```c
+NebulaActor* value_actor(const NebulaValue* value)
+```
+
+The value for an actor the API gave, and back (null for anything but a living object).
+
+<a id="p-reference-plugin-api--fieldfind"></a>
+
+#### `field_find`
+
+```c
+int32_t field_find(const NebulaValue* object, const char* name)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--fieldget"></a>
+
+#### `field_get`
+
+```c
+int32_t field_get(const NebulaValue* object, int32_t field, uint32_t element, NebulaValue* out)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--fieldset"></a>
+
+#### `field_set`
+
+```c
+int32_t field_set(const NebulaValue* object, int32_t field, uint32_t element, const NebulaValue* value)
+```
+
+A field of an object's class (or a base's) by name ("mVelocity"): its index for field_get and field_set, or -1 (docs/modding/FIELDS.md). Handles, text and pointers are read-only. 1: done; 0: refused.
+
+<a id="p-reference-plugin-api--classname"></a>
+
+#### `class_name`
+
+```c
+const char* class_name(uint32_t id, uint32_t* parent)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+<a id="p-reference-plugin-api--isa"></a>
+
+#### `is_a`
+
+```c
+int32_t is_a(const NebulaValue* object, const char* class_name)
+```
+
+A class's name and its parent's id, by id (0 is NameObj; null past the last), and whether an object is one.
+
+<a id="p-reference-plugin-api--lumastart"></a>
+
+#### `luma_start`
+
+```c
+void luma_start(const struct NebulaModApi* api)
+```
+
+The host's: the table it completed (log, store, format), once, before any mod row. Plugins never call it.
+
+<a id="p-reference-plugin-api--addscriptobject"></a>
+
+#### `add_script_object`
+
+```c
+int32_t add_script_object(const NebulaPlugin* mod, const NebulaObjectClass* shape, const char* script)
+```
+
+An object a script runs (luma.json "objects"): the mod's /LumaScripts/<mod id>/<script>.lumascript on `shape`, whose callbacks the script's handlers take. 0: added; -1: refused (logged with the reason).
+
+<a id="p-reference-plugin-api--addmodscript"></a>
+
+#### `add_mod_script`
+
+```c
+int32_t add_mod_script(const NebulaPlugin* mod, const char* script)
+```
+
+The host's: a mod-wide script (luma.json "scripts"), the mod's /LumaScripts/<mod id>/<script>.lumascript, one instance for the whole run. 0: started; -1: refused (logged with the reason).
+
+<a id="p-reference-plugin-api--registrycount"></a>
+
+#### `registry_count`
+
+```c
+int32_t registry_count(const char* kind)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryname"></a>
+
+#### `registry_name`
+
+```c
+const char* registry_name(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryfind"></a>
+
+#### `registry_find`
+
+```c
+int32_t registry_find(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registryvalue"></a>
+
+#### `registry_value`
+
+```c
+int32_t registry_value(const char* kind, const char* name)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--registrymod"></a>
+
+#### `registry_mod`
+
+```c
+const char* registry_mod(const char* kind, int32_t index)
+```
+
+The registries: every kind of thing the game has, its own rows and the mods' by name. `kind` is "object", "form", "area", "camera", "gravity", "message", "floor", "comet", "hud", "character", "player_state", "attack", "star", "ride", "item" or "projectile" (docs/modding/REGISTRIES.md lists each kind's rows). registry_count: how many rows the kind has (0 for an unknown kind). registry_name: the i-th one's name (null past the last). registry_find: a name's place in the kind (0 to count - 1), or -1. registry_value: the game's number for a row (a form's id, a message's number, a floor code; a table's index), or -1 without a row. registry_mod: the mod that added the i-th row, or null for the game's own. A later row of the same name replaces an earlier one (the later mod wins, logged).
+
+<a id="p-reference-plugin-api--setclassscript"></a>
+
+#### `set_class_script`
+
+```c
+int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
+<a id="p-reference-plugin-api--setclasshooks"></a>
+
+#### `set_class_hooks`
+
+```c
+int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)
+```
+
+Only in nebula_plugin_start. What runs on every actor placed by `name` (the game's or a mod's object name): the mod's script (scripts/<script>.lumascript; its handlers start, frame, control, appear, kill, message and touch) or hooks. Several mods may name one class; each runs, in load order. 0: done.
+
+<a id="p-reference-plugin-api--addform"></a>
+
+#### `add_form`
+
+```c
+int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)
+```
+
+Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame every frame, end when he leaves it. The power-up's number, or -1.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -6675,6 +6957,58 @@ A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Column
     NEBULA_VALUE_LUIGI
 ```
 
+<a id="p-reference-plugin-api--nebulakind"></a>
+
+#### `NebulaKind`
+
+```c
+    NEBULA_KIND_NONE = 0,
+    NEBULA_KIND_BOOL,
+    NEBULA_KIND_INT,
+    NEBULA_KIND_FLOAT,
+    NEBULA_KIND_VEC3,
+    NEBULA_KIND_MATRIX, /* a handle to 12 floats (3 rows of 4) */
+    NEBULA_KIND_TEXT,   /* UTF-8, owned by whoever made the value; valid for the call */
+    NEBULA_KIND_HANDLE, /* one of the game's things: an object, a sensor, a triangle... (NebulaValue.type) */
+    NEBULA_KIND_VEC4,
+    NEBULA_KIND_VEC2
+```
+
+<a id="p-reference-plugin-api--nebulavalue"></a>
+
+#### `NebulaValue`
+
+```c
+    uint32_t kind; /* NebulaKind */
+    uint32_t type; /* handles: NEBULA_HANDLE_* in the low 16 bits; for objects, the class id in the upper 16 */
+    union {
+        int64_t i;  /* bool and int */
+        double f;   /* float */
+        float v[4]; /* vec2, vec3, vec4 */
+        const char* s;
+        struct {
+            void* p;
+            uint32_t generation; /* the scene it was made in; a later scene reads it as none */
+        } h;
+    } u;
+```
+
+<a id="p-reference-plugin-api--nebulahandletype"></a>
+
+#### `NebulaHandleType`
+
+```c
+    NEBULA_HANDLE_OBJECT = 1, /* an actor, area, layout or other scene object */
+    NEBULA_HANDLE_SENSOR,
+    NEBULA_HANDLE_TRIANGLE,
+    NEBULA_HANDLE_COLLISION,
+    NEBULA_HANDLE_JOINT,
+    NEBULA_HANDLE_PLACEMENT,
+    NEBULA_HANDLE_MATRIX,
+    NEBULA_HANDLE_TALK,
+    NEBULA_HANDLE_CAMERA_INFO
+```
+
 <a id="p-reference-plugin-api--nebulamodset"></a>
 
 #### `NebulaModSet`
@@ -6744,6 +7078,30 @@ A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Column
     int32_t collision;    /* 1: the archive's collision model is solid and moves with the object */
     float shadow_radius;  /* round shadow underneath; 0: none */
     float clip_radius;    /* not updated or drawn when this far off screen; 0: always */
+    void (*appeared)(NebulaActor* actor, void* user);
+    void (*killed)(NebulaActor* actor, void* user);
+    /* Any message another object sends it (an attack, a push, a grab: docs/modding/EVENTS.md lists the numbers), from
+       `from` (null when it has no sender). Return 1 to take it; 0 leaves it to the game's own handling (attacked_by for
+       the player's attacks). */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+```
+
+<a id="p-reference-plugin-api--nebulaclasshooks"></a>
+
+#### `NebulaClassHooks`
+
+```c
+    uint32_t size;
+    void* user;
+    /* After the class made and set up the actor. */
+    void (*start)(NebulaActor* actor, void* user);
+    /* Every frame before the class's own update. Return 1 to skip the class's update this frame. */
+    int32_t (*control)(NebulaActor* actor, void* user);
+    /* A message another object sends it (docs/modding/EVENTS.md lists the numbers), from `from` (null when it has no
+       sender). Return -1 to leave it to the class; 0 or 1 is the actor's answer and the class never sees it. */
+    int32_t (*message)(NebulaActor* actor, int32_t message, NebulaActor* from, void* user);
+    /* One of its touch spheres touching another object's. Return 1 to skip the class's own reaction. */
+    int32_t (*touch)(NebulaActor* actor, NebulaActor* other, void* user);
     void (*appeared)(NebulaActor* actor, void* user);
     void (*killed)(NebulaActor* actor, void* user);
 ```
@@ -6854,6 +7212,9 @@ A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Column
     /* The fields below may be missing from an older plugin's class; `size` tells. */
     const char* model;    /* a whole-body model, ObjectData/<model>.arc, on the player's skeleton. Null: the normal model */
     int32_t looks_like;   /* without a model: look like this power-up (NEBULA_POWER_UP_*) */
+    int32_t acts_like;    /* what the player can do in it: one of the game's power-ups (NEBULA_POWER_UP_*): Fire's throw,
+                             Ice's skate, Bee's flight... Its music and time too, where the class gives none (frames 0,
+                             music null). 0: the normal player. One the game can't give in this stage refuses the power-up. */
 ```
 
 <a id="p-reference-plugin-api--nebulanervephase"></a>
@@ -6864,6 +7225,34 @@ A joint's place and turn this frame: 12 floats, the rows of a 3x4 matrix. Column
     NEBULA_NERVE_ENTER = 0, /* frames is 0 */
     NEBULA_NERVE_FRAME,     /* before the game's code for this frame; return 0 to skip the game's code */
     NEBULA_NERVE_LEAVE      /* another nerve was set; the game's exit code for this one has run */
+```
+
+<a id="p-reference-plugin-api--nebulamaterialcoord"></a>
+
+#### `NebulaMaterialCoord`
+
+```c
+    /* How the coordinate is made: the game's TexGen type, its source and its matrix slot. */
+    uint32_t type, source, matrix;
+    /* Its matrix's kind and projection; 255 for both when it has no matrix. */
+    uint32_t matrix_kind, projection;
+    /* 1 when a stage of the material reads it, 0 when none does. */
+    uint32_t used;
+```
+
+<a id="p-reference-plugin-api--nebulamaterialinfo"></a>
+
+#### `NebulaMaterialInfo`
+
+```c
+    /* sizeof(NebulaMaterialInfo): fields are only added at the end. */
+    uint32_t size;
+    /* Its place in the model and its name. */
+    int32_t index;
+    const char* name;
+    /* Its texture coordinates: coord_count of them at coords. */
+    int32_t coord_count;
+    const NebulaMaterialCoord* coords;
 ```
 
 <a id="p-reference-plugin-api--nebulahudpart"></a>
@@ -8396,6 +8785,8 @@ after the game's source file:
 | `"<file stem>.<name>"` | A named number: `GameRules.cPlayerHealth`, how many hits Mario takes |
 | `"<file stem>.<function>.<k>"` | The k-th step count (frames) in a function: `Kuribo.exeFlatDown.1`, how long a flattened Goomba stays |
 | `"<file stem>.<function>.<call>.<k>"` | The k-th number a function gives a motion, animation or reach call: `Kuribo.tryActive.isNearPlayerAnyTime.1`, how near the player a Goomba wakes |
+| `"<file stem>.<function>.f<k>"` | The k-th other number written in a function: `Kuribo.exeAppearFromBox.f2`, how fast a Goomba jumps out of a box |
+| `"<file stem>.<name>"` (a list) | A record of numbers, set as a list in order: `BossBegoman.hWaitParam`, `[speed, gravity, damping, turn]` |
 
 A layer's `tunables` sets them, and the mod
 says `"requires": ["tunables"]`. A value is a number, `true` or `false`, a list for a list of numbers (`null` keeps a
@@ -9046,6 +9437,341 @@ These are what each name brings. `lumalink list rules` prints this.
 | `FishTunnelGalaxy` | Toad as here |
 | `SurfingLv1Galaxy` | The surfing race's restart |
 | `SurfingLv2Galaxy` | The same, harder |
+
+
+<a id="p-reference-lumascript"></a>
+
+<a id="p-reference-lumascript--lumascript"></a>
+
+## LumaScript
+
+A mod's logic as text. `lumalink pack` compiles each script to a `.lumascript` file the game runs the same way on
+Windows, Linux, Android, macOS and iOS: no native code, no compiler on the player's side.
+
+```text
+// scripts/gumbo.lscript
+var home: vec3
+var paid: int
+
+on start {
+    home = self.mPosition
+    goto walk
+}
+
+state walk {
+    on frame {
+        let away = MR::getPlayerPos() - self.mPosition
+        if length(away) < 1200.0 {
+            self.mPosition = self.mPosition + normalize(away) * 4.0
+        }
+    }
+}
+
+on touch_player {
+    if paid < 3 {
+        paid = paid + 1
+        MR::incCoin(3)
+        goto rest
+    }
+}
+
+state rest {
+    on enter { wait 120; goto walk }
+}
+```
+
+The whole sample is `examples/scripted-goomba`.
+
+<a id="p-reference-lumascript--using-a-script"></a>
+
+### Using a script
+
+A layer's `objects` rows name new objects and their scripts:
+
+```json
+"objects": [
+  {"name": "Gumbo", "script": "gumbo", "archive": "Kuribo", "kind": "npc",
+   "radius": 80, "shadow_radius": 60, "clip_radius": 3000}
+]
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | The object's name: what a stage places, or what an `object_changes` row turns a placed object into. |
+| `script` | `scripts/<script>.lscript` in the project. Folders are allowed (`enemies/gumbo`). |
+| `archive` | The model archive it shows (`ObjectData/<archive>.arc`, the game's or the mod's). |
+| `kind` | `enemy`, `map`, `npc`, `ride` or `decoration`: how the game groups it (clipping, sensors). |
+| `radius` | Its body's sensor radius. |
+| `shadow_radius` | Its drop shadow; 0 for none. |
+| `clip_radius` | Past this distance from the camera it is clipped: not drawn, and its `frame` handler does not run. |
+
+A layer's `scripts` list runs scripts for the whole mod, not tied to an object (see Mod-wide scripts):
+
+```json
+"scripts": ["rules"]
+```
+
+`lumalink check` compiles every script and reports problems with their lines. `lumalink inspect file.lscript` prints
+the compiled steps.
+
+<a id="p-reference-lumascript--values"></a>
+
+### Values
+
+| Kind | Written | Notes |
+|---|---|---|
+| `int` | `3`, `-12` | 64-bit; overflow wraps. |
+| `float` | `2.5`, `1.0` | 64-bit. A number with a `.` is a float. |
+| `bool` | `true`, `false` | |
+| `vec3` | `vec(1.0, 0.0, 0.0)` | Three floats. `.x` `.y` `.z` read a component. |
+| `text` | `"Run"` | |
+| object | `self`, a toolkit result | One of the game's things: an actor, a sensor. Read as none after its scene ends. |
+| none | `none` | Nothing. |
+
+`int` and `float` mix: the result is a float. Two ints give an int (`7 / 2` is `3`). `vec3 * float` and
+`vec3 / float` scale; `vec3 + vec3`, `vec3 - vec3` add and subtract. Dividing by zero, or arithmetic on values that do
+not mix (text, none), gives none.
+
+<a id="p-reference-lumascript--variables"></a>
+
+### Variables
+
+```text
+var speed: float = 2.5   // each object's own
+global hits: int         // the mod's, shared by all its objects in the scene
+saved best: int          // kept in the save file, per mod
+let d = length(a - b)    // inside a handler or function, until the end of its block
+let ok, ground = MR::calcGravity(self, none)   // a call that gives several values
+```
+
+Kinds: `int`, `float`, `bool`, `text`, `vec3`, `any`. A declared variable starts at its kind's zero (`0`, `0.0`,
+`false`, `""`, `(0, 0, 0)`); `any` starts as none. A starting value (`= 2.5`) is set before `on start` runs.
+
+<a id="p-reference-lumascript--handlers"></a>
+
+### Handlers
+
+```text
+on start { }                 // once, when the object is made
+on frame { }                 // every frame the object is not clipped
+on touch_player { }          // the player touched it
+on attacked(how) { }         // the player attacked it; return true to take the hit
+on appear { }                // it appeared (after being hidden)
+on kill { }                  // it was killed
+on message(number, from) { }     // any message another object sends it; return true to take it
+on message ACTMES_PUSH(from) { } // one message, by its name or number
+on event gumbo_paid(value) { }   // another script's `emit gumbo_paid value`
+on coin(value, name, actor) { }  // one of the game's events (below)
+```
+
+A name the game has no handler for is refused when the script compiles.
+
+Messages are the game's way for objects to act on each other: a punch, a stomp, a push, a grab. `from` is the object
+that sent it (none when nothing did). Returning `true` takes the message: the game's own handling does not run. Any
+other result leaves it to the game (for the player's attacks, `on attacked`). A message's name is one of the game's
+`ACTMES_` names; the SDK's `messages.tsv` lists all 183 with their numbers.
+
+A handler outside a state runs in every state. Inside a state it runs only in that state:
+
+```text
+state chase {
+    on enter { }   // on goto chase
+    on frame { }
+    on leave { }   // on goto elsewhere
+}
+```
+
+`goto <state>` switches at the start of the next frame: `leave` of the old state, then `enter` of the new. A `goto`
+to the state it is already in does nothing.
+
+<a id="p-reference-lumascript--game-events"></a>
+
+### Game events
+
+Any script, an object's or a mod-wide one, answers the game's events by name. Each handler gets three values:
+`value`, `name` (text or none) and `actor` (an object or none). Where the event uses a returned number, a handler that
+returns a number (or a bool: 1 or 0) changes it, and the next script gets the changed value. Returning nothing keeps
+it.
+
+| Event | When | value, name, actor | A returned number |
+|---|---|---|---|
+| `stage_frame` | every frame of a stage, before objects move | | |
+| `stage_start` | a stage started | the mission, the stage | |
+| `stage_end` | the stage is ending (its objects go after this) | name: the stage | |
+| `player_damage` | the player is about to lose one health | | 0 cancels the hit |
+| `player_miss` | the player is about to die | the cause (0: fell out) | -1 cancels: move the player and restore health yourself |
+| `power_up` | the player's form is about to change | the new form | the form used |
+| `coin` | coins are about to be added | how many | added instead |
+| `star_bit` | star bits are about to be added | how many | added instead |
+| `star_get` | a star was collected | the star, the galaxy | |
+| `power_star_appear` | a power star appeared | its number | |
+| `cutscene_start`, `cutscene_end` | a cutscene started, ended | name: the cutscene | |
+| `cutscene_part` | a part of a cutscene started | its index, its name | |
+| `actor_appear`, `actor_kill` | an object appeared, was killed | its name, the object | |
+| `actor_message` | an object received a message | the message, its name, the receiver | -1 cancels it |
+| `player_spin`, `player_jump`, `player_land` | the player spun, jumped, landed | | |
+| `player_action` | the player started an action (swimming, hanging, sliding) | the action | |
+| `pause` | the pause menu opened (1) or closed (0) | 1 or 0 | |
+| `game_save` | the game is about to write the save | | |
+| `talk_line` | a line of dialogue opened | its message id, the speaker | |
+| `talk_choice` | the player answered a yes/no question | 1 yes, 0 no; the question's id; who asked | |
+| `camera_change` | the camera changed | 0 area, 1 event camera; its id | |
+| `sound_start` | a sound effect is about to play | its number, its name | the sound played instead (-1: silence) |
+| `effect_start` | an object started an effect | its name, the object | |
+| `screen` | a screen layout was shown (1) or removed (0) | 1 or 0, its name | |
+
+Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
+
+<a id="p-reference-lumascript--mod-wide-scripts"></a>
+
+### Mod-wide scripts
+
+A script named in a layer's `scripts` runs once for the whole run, from the game's start: `self` is none, its `var`s
+last the whole run, and `on frame` runs every frame. It answers the game's events and other scripts' `emit`s, and
+calls the toolkit and the plugin API like any script. Rules that are not about one object belong here:
+
+```text
+// Every coin counts twice.
+on coin(value, name, actor) { return value * 2 }
+```
+
+<a id="p-reference-lumascript--class-scripts"></a>
+
+### Class scripts
+
+A row of `object_classes` with a `script` runs that script on every object the stages place by the name: one of the
+game's classes (`{ "name": "Kuribo", "script": "angry" }`, every Goomba) or a name the row makes `like` one. The game's
+class still runs; the script rides along and can take its place. `self` is the object; each object has its own `var`s.
+A name made `like` a class runs the class's scripts first, then its own.
+
+```text
+on start { }                   // the object was made and set up by its class
+on control { return false }    // every frame before the class's nerve and control; true: both skipped this frame
+on touch(other, sensor) { }    // one of its sensors touches another object's; true: the class's reaction is skipped
+on message(number, from) { }   // as for scripted objects; true or false answers in place of the class
+on appear { }
+on kill { }
+```
+
+`on frame`, states and `wait` work as in a scripted object (`frame` runs just before `control`). While `control`
+takes the class's place, collision still moves the object by `self.mVelocity`: set it to stop the object. Several mods may name
+one class: each script runs, in the order the mods load; the first `message` answer wins. A plugin does the same from
+C with `set_class_hooks` (see the plugin API).
+
+<a id="p-reference-lumascript--forms"></a>
+
+### Forms
+
+A row of `forms` with a `script` runs it on the player while he is in that power-up: `self` is the player, its `var`s
+start over each time he gets it.
+
+```text
+on start { }   // he got it
+on frame { }   // every frame he plays in it (paused while a cutscene holds him, as the game's form timers are)
+on end { }     // he left it (time up, damage, another power-up)
+```
+
+He can do what the row's `acts_like` form does (Fire's throw, Ice's skate, Bee's flight); `self.mPlayerMode` is that
+form, `self.mModForm` the power-up's number (`registry("form/<name>")`), and `nebula.value(2)` reads it too.
+
+<a id="p-reference-lumascript--statements"></a>
+
+### Statements
+
+| Statement | Meaning |
+|---|---|
+| `x = expr` | Set a variable. |
+| `self.mField = expr` | Set an object's field (see Fields). |
+| `if c { } else if c { } else { }` | |
+| `while c { }`, `break` | |
+| `return [expr]` | |
+| `wait n` | In a handler: continue after `n` frames. The object keeps running its other handlers meanwhile. |
+| `goto state` | |
+| `emit name [expr]` | Runs `on event name` in every script of the scene with the value. |
+| `f(a, b)` | A call whose result is not used. |
+
+`;` separates statements on one line.
+
+<a id="p-reference-lumascript--operators"></a>
+
+### Operators
+
+From lowest to highest: `or` (`||`), `and` (`&&`), `==` `!=`, `<` `<=` `>` `>=`, `+` `-`, `*` `/` `%`, then unary `-`
+`!` (`not`). `and` and `or` stop early. Numbers compare by value (`1 == 1.0` is true); other values are equal when
+they are the same kind and the same value.
+
+<a id="p-reference-lumascript--built-in-functions"></a>
+
+### Built-in functions
+
+| Function | Gives |
+|---|---|
+| `vec(x, y, z)` | vec3 |
+| `length(v)`, `normalize(v)`, `dot(a, b)`, `cross(a, b)` | |
+| `lerp(a, b, t)` | numbers or vec3 |
+| `min(a, b)`, `max(a, b)`, `abs(x)`, `floor(x)`, `sqrt(x)` | |
+| `sin(x)`, `cos(x)`, `atan2(y, x)` | radians |
+| `random(lo, hi)` | from `lo` up to, not including, `hi`: an int when both are ints, else a float |
+| `int(x)`, `float(x)` | conversions |
+| `format("{} of {}", a, b)` | text |
+| `registry("form/Gold Flower")` | the row's number: a form's id, a message's number, a floor code, or its place in the game's table; -1 for no such row (resolved at load). The game's lists: Nebula's `docs/modding/REGISTRIES.md` |
+
+<a id="p-reference-lumascript--registries"></a>
+
+### Registries
+
+Every kind of thing the game has is a registry, by name: `object`, `form`, `area`, `camera`, `gravity`, `message`,
+`floor`, `comet`, `hud`, `character`, and `player_state`, `attack`, `star`, `ride`, `item`, `projectile` as those parts
+of the game become moddable. A kind holds the game's own rows and the ones mods add (`add_power_up` adds a `form`,
+`register_object` an `object`); a later row of the same name replaces an earlier one, and the log says which mod won.
+
+```
+let fire = registry("form/fire")               // 2: compare with a power_up event's value
+let kinds = nebula.registry_count("object")    // the game's objects and every mod's
+let first = nebula.registry_name("object", 0)
+let place = nebula.registry_find("area", "SwitchArea")
+let code = nebula.registry_value("floor", "Slip")
+let by = nebula.registry_mod("form", nebula.registry_find("form", "Gold Flower"))   // the mod that added it
+```
+
+<a id="p-reference-lumascript--the-games-functions-toolkit"></a>
+
+### The game's functions (toolkit)
+
+Any row of the toolkit is called by name: `MR::startBck(self, "Run", "")`, `MR::getPlayerPos()`. LumaLink's SDK holds
+the list (`crates/lumalink-core/sdk/toolkit.tsv`); Nebula's `docs/modding/TOOLKIT.md` explains every row. A name with
+overloads picks by argument count, or by its letters: `MR::isBindedGround:hh(self, other)`.
+
+Letters: `a` none, `b` bool, `c` int, `d` float, `e` vec3, `g` text, `h` object. An upper-case letter is a value the
+function also gives back: `let ok, out = f(self, none)`.
+
+<a id="p-reference-lumascript--the-plugin-api-nebula"></a>
+
+### The plugin API (nebula.*)
+
+The calls plugins make are rows of the toolkit too, named `nebula.<call>`: `nebula.player()`,
+`nebula.get_position(actor)`, `nebula.show_message("Hello", 1)`, `nebula.play_music("MyTrack")`. A call that takes a
+mod (`log`, `option`, `store_get`, `unlock_achievement`) gets the script's own. A call that writes into a vector or
+a number gives it back: `let position = nebula.get_position(self)`; `let found, value = nebula.get_tunable("key")`.
+Calls that only work while plugins start (adding music, galaxies, story rows) are luma.json rows instead. The plugin
+reference (plugin-api.md) explains every call.
+
+<a id="p-reference-lumascript--fields"></a>
+
+### Fields
+
+`self.mPosition`, `self.mVelocity`, `obj.mScale`: an object's own fields by the game's names, read and set. Nested
+members one level down: `self.mFlag.mIsDead`. Arrays: `self.mArray[i]` (read). A vector's components are read only:
+to change one, set the whole vector (`self.mPosition = vec(p.x, 0.0, p.z)`). Nebula's `docs/modding/FIELDS.md` lists
+every class's fields.
+
+<a id="p-reference-lumascript--limits"></a>
+
+### Limits
+
+255 values live at once per function. A script that runs too many steps in one frame stops there for that frame (the
+log names it once). A script the game would refuse never leaves `lumalink pack`: the compiler checks its own output
+the way the game's loader does.
 
 
 # The game's lists
@@ -19021,11 +19747,22 @@ for each one's own table of that name.
 
 ## Tunables
 
-Generated by tools/modding/tunables_list.py from the game's source: 4877 numbers and lists, by the game's folders.
+Generated by tools/modding/tunables_list.py from the game's source: 12355 numbers and lists, by the game's folders.
 
 A mod sets one by its key in a luma.json layer's `"tunables"` (with `"requires": ["tunables"]`), or from a
 plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. Values are the game's, as written.
-`<file>.<function>.<k>` is the k-th step count (frames) in that function; `<file>.<function>.<call>.<k>` the k-th number it gives that call.
+`<file>.<function>.<k>` is the k-th step count (frames) in that function; `<file>.<function>.<call>.<k>` the k-th number it gives that call;
+`<file>.<function>.f<k>` the k-th other number written in that function. A record (a position, a move's speed, gravity,
+damping and turn) is a list of its numbers in order.
+
+<a id="p-nebula-tunables--gameanimation"></a>
+
+### Game/Animation
+
+| Key | Type | Game's value |
+|---|---|---|
+| `XanimePlayer.getMainAnimationTrans.f1` | f32 | `0.01f` |
+| `XanimePlayer.getMainAnimationTrans.f2` | f32 | `0.01f` |
 
 <a id="p-nebula-tunables--gameareaobj"></a>
 
@@ -19033,12 +19770,69 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `AreaForm.calcCenterPos.f1` | f32 | `0.5f` |
+| `AreaForm.getBaseSize.f1` | f32 | `1000.0f` |
+| `AreaForm.init.f1` | f32 | `500.0f` |
+| `AreaForm.init.f2` | f32 | `500.0f` |
+| `AreaForm.init.f3` | f32 | `500.0f` |
+| `AreaForm.init.f4` | f32 | `500.0f` |
+| `AreaForm.updateBoxParam.f1` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f2` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f3` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f4` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f5` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f6` | f32 | `0.5f` |
+| `AreaForm.updateBoxParam.f7` | f32 | `0.5f` |
 | `AstroChangeStageCube.cChangeStageWaitFrame` | s32 | `5` |
 | `AstroChangeStageCube.cHeavensDoorScenarioNo` | s32 | `2` |
 | `AstroChangeStageCube.cWipeFrame` | s32 | `110` |
+| `BgmProhibitArea.movement.f1` | f32 | `10000.0f` |
+| `BigBubbleGoalArea.draw.f1` | f32 | `150.0f` |
+| `BigBubbleGoalArea.draw.f2` | f32 | `150.0f` |
 | `BigBubbleGoalArea.sMeterUpSpeed` | f32 | `0.05f` |
+| `CameraRepulsiveArea.getRepulsion.f1` | f32 | `2.0f` |
+| `CollisionArea.hitCheck.f1` | f32 | `0.5f` |
+| `CollisionArea.hitCheck.f2` | f32 | `0.5f` |
+| `CollisionArea.hitCheck.f3` | f32 | `0.5f` |
+| `CollisionArea.movement.f1` | f32 | `5.0f` |
+| `CollisionArea.setSurface.f1` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f10` | f32 | `10.0f` |
+| `CollisionArea.setSurface.f11` | f32 | `10.0f` |
+| `CollisionArea.setSurface.f12` | f32 | `10.0f` |
+| `CollisionArea.setSurface.f2` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f3` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f4` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f5` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f6` | f32 | `0.5f` |
+| `CollisionArea.setSurface.f7` | f32 | `10.0f` |
+| `CollisionArea.setSurface.f8` | f32 | `10.0f` |
+| `CollisionArea.setSurface.f9` | f32 | `10.0f` |
+| `DepthOfFieldArea.getIntensity.f1` | f32 | `255.0f` |
+| `FollowCollisionArea.hitCheck.f1` | f32 | `0.5f` |
+| `FollowCollisionArea.hitCheck.f2` | f32 | `0.5f` |
+| `FollowCollisionArea.hitCheck.f3` | f32 | `0.5f` |
+| `FollowCollisionArea.movement.f1` | f32 | `5.0f` |
 | `HazeCube.sDefaultDistance` | f32 | `1000.0f` |
 | `LightAreaHolder.cLeaveSteps` | s32 | `8` |
+| `MercatorTransformCube.calcNearestRailPosForMercator.f1` | f32 | `3.4028234663852886e38f` |
+| `MercatorTransformCube.calcRailClippingInfoForMercator.f1` | f32 | `0.5f` |
+| `MercatorTransformCube.calcUV.f1` | f32 | `0.5f` |
+| `MercatorTransformCube.convertMercatorPlaneToSphereTransAndRotate.f1` | f32 | `57.29577951308232f` |
+| `MercatorTransformCube.convertMercatorPlaneToSphereTransAndRotate.f2` | f32 | `57.29577951308232f` |
+| `MercatorTransformCube.convertMercatorPlaneToSphereTransAndRotate.f3` | f32 | `57.29577951308232f` |
+| `MercatorTransformCube.convertTransAndRotate.f1` | f32 | `0.01f` |
+| `MercatorTransformCube.getDivideMercatorRailPosition.f1` | f32 | `100.0f` |
+| `MercatorTransformCube.getDivideMercatorRailPosition.f2` | f32 | `2.0f` |
+| `MercatorTransformCube.getDivideMercatorRailPosition.f3` | f32 | `2.0f` |
+| `MercatorTransformCube.getDivideMercatorRailPosition.f4` | f32 | `0.5f` |
+| `MercatorTransformCube.getDivideMercatorRailPosition.f5` | f32 | `0.5f` |
+| `MercatorTransformCube.getSphereRadius.f1` | f32 | `3000.0f` |
+| `MercatorTransformCube.initDefaultPosForMercator.f1` | f32 | `57.29577951308232f` |
+| `MercatorTransformCube.initDefaultPosForMercator.f2` | f32 | `57.29577951308232f` |
+| `MercatorTransformCube.initDefaultPosForMercator.f3` | f32 | `57.29577951308232f` |
+| `WarpCube.draw.f1` | f32 | `120.0f` |
+| `WarpCube.draw.f2` | f32 | `120.0f` |
+| `WarpCube.movement.f1` | f32 | `300.0f` |
 
 <a id="p-nebula-tunables--gameaudiolib"></a>
 
@@ -19096,6 +19890,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | Key | Type | Game's value |
 |---|---|---|
 | `BossBegoman.control.1` | s32 | `1` |
+| `BossBegoman.hAwareParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
 | `BossBegoman.hBinderOffsetY` | f32 | `160.0f` |
 | `BossBegoman.hBinderRadius` | f32 | `160.0f` |
 | `BossBegoman.hBlowVel` | f32 | `40.0f` |
@@ -19103,8 +19898,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossBegoman.hBodyRadius` | f32 | `190.0f` |
 | `BossBegoman.hBodyRadiusOnWeak` | f32 | `160.0f` |
 | `BossBegoman.hEdgeSparkOffset` | f32 | `180.0f` |
+| `BossBegoman.hElectricReturnParam` | f32[4] | `0.0f, 3.0f, 0.8f, 0.0f` |
 | `BossBegoman.hElectricReturnSpeed` | f32 | `25.0f` |
 | `BossBegoman.hEnemyPushSpeed` | f32 | `6.0f` |
+| `BossBegoman.hHitReactionParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
 | `BossBegoman.hInitPosDrop` | f32 | `10.0f` |
 | `BossBegoman.hJumpToInitPosHeight` | f32 | `700.0f` |
 | `BossBegoman.hKeepDistFar` | f32 | `800.0f` |
@@ -19114,7 +19911,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossBegoman.hNeedleSoundVolumeMin` | f32 | `70.0f` |
 | `BossBegoman.hNoCalcWaitTolerance` | f32 | `0.005f` |
 | `BossBegoman.hOnWeakEscapeDist` | f32 | `600.0f` |
+| `BossBegoman.hOnWeakNoMoveParam` | f32[4] | `0.0f, 3.0f, 0.95f, 3.0f` |
+| `BossBegoman.hOnWeakParam` | f32[4] | `-0.5f, 3.0f, 0.95f, 3.0f` |
 | `BossBegoman.hOnWeakSideVel` | f32 | `0.35f` |
+| `BossBegoman.hPursueParam` | f32[4] | `1.3f, 3.0f, 0.97f, 3.0f` |
 | `BossBegoman.hPursueSpeedRateMax` | f32 | `1.0f` |
 | `BossBegoman.hPursueSpeedRateMin` | f32 | `0.2f` |
 | `BossBegoman.hPursueSpeedRateStep` | f32 | `0.001f` |
@@ -19128,6 +19928,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossBegoman.hShadowRadius` | f32 | `200.0f` |
 | `BossBegoman.hSideCheckDot` | f32 | `0.25f` |
 | `BossBegoman.hSideCheckOffsetY` | f32 | `80.0f` |
+| `BossBegoman.hSignAttackParam` | f32[4] | `0.0f, 3.0f, 0.8f, 3.0f` |
 | `BossBegoman.hSignFastRate` | f32 | `2.0f` |
 | `BossBegoman.hSignSlowRate` | f32 | `0.5f` |
 | `BossBegoman.hSpikeLaunchVelH` | f32 | `10.0f` |
@@ -19136,7 +19937,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossBegoman.hStarPieceSpeedMax` | f32 | `40.0f` |
 | `BossBegoman.hStarPieceSpeedMin` | f32 | `20.0f` |
 | `BossBegoman.hTrampleRadius` | f32 | `180.0f` |
+| `BossBegoman.hTrampleReactionParam` | f32[4] | `0.0f, 3.0f, 0.95f, 3.0f` |
 | `BossBegoman.hTrampleSlideSpeed` | f32 | `25.0f` |
+| `BossBegoman.hTurnParam` | f32[4] | `0.4f, 3.0f, 0.95f, 0.0f` |
+| `BossBegoman.hWaitParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
 | `BossBegoman.sAwareRotate` | f32 | `0.1f` |
 | `BossBegoman.sBabyFollowerNum` | s32 | `3` |
 | `BossBegoman.sBabyLaunchVelH` | f32 | `10.0f` |
@@ -19167,8 +19971,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossBegoman.sWaitRotate` | f32 | `0.15f` |
 | `BossBegomanHead.hSpikeRotate` | f32 | `0.23f` |
 | `BossBegomanHead.hSpikeRotateTurn` | f32 | `0.2f` |
+| `BossKameck.appearStarPieceToPlayer.f1` | f32 | `30.0f` |
+| `BossKameck.appearStarPieceToPlayer.f2` | f32 | `65.0f` |
+| `BossKameck.appearStarPieceToUp.f1` | f32 | `30.0f` |
+| `BossKameck.appearStarPieceToUp.f2` | f32 | `40.0f` |
+| `BossKameck.init.f1` | f32 | `300.0f` |
+| `BossKameck.init.f2` | f32 | `240.0f` |
 | `BossKameck.sFrontVecBlendRate` | f32 | `0.2f` |
 | `BossKameck.sUpVecBlendRate` | f32 | `0.04f` |
+| `BossKameck.updatePose.f1` | f32 | `3.0f` |
+| `BossKameck.updatePose.f2` | f32 | `4.0f` |
 | `BossKameckBarrier.cOffsetY` | f32 | `0.0f` |
 | `BossKameckBattleDemo.sAfterBossBgmTiming` | s32 | `285` |
 | `BossKameckBattleDemo.sAppearPowerStarSeTiming` | s32 | `345` |
@@ -19184,17 +19996,31 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossKameckStateBattle.exeAttackWait.addVelocityMoveToTarget.4` | f32 | `0.0f` |
 | `BossKameckStateBattle.exeAttackWait.addVelocityMoveToTarget.5` | f32 | `400.0f` |
 | `BossKameckStateBattle.exeAttackWait.attenuateVelocity.1` | f32 | `0.9f` |
+| `BossKameckStateBattle.exeAttackWait.f1` | f32 | `0.2f` |
+| `BossKameckStateBattle.exeAttackWait.f2` | f32 | `50.0f` |
 | `BossKameckStateBattle.exeGuard.attenuateVelocity.1` | f32 | `0.96f` |
+| `BossKameckStateBattle.exeGuard.f1` | f32 | `0.3f` |
 | `BossKameckStateBattle.exeHideMove.addVelocityMoveToTarget.1` | f32 | `0.1f` |
 | `BossKameckStateBattle.exeHideMove.addVelocityMoveToTarget.2` | f32 | `0.0f` |
 | `BossKameckStateBattle.exeHideMove.addVelocityMoveToTarget.3` | f32 | `400.0f` |
 | `BossKameckStateBattle.exeHideMove.attenuateVelocity.1` | f32 | `0.9f` |
+| `BossKameckStateBattle.exeHideMove.f1` | f32 | `20.0f` |
+| `BossKameckStateBattle.exeHideMove.f2` | f32 | `15.0f` |
+| `BossKameckStateBattle.exeHideMove.f3` | f32 | `0.5f` |
+| `BossKameckStateBattle.exeHideMove.f4` | f32 | `50.0f` |
+| `BossKameckStateBattle.exeHideMove.f5` | f32 | `100.0f` |
 | `BossKameckStateBattle.exeMove.addVelocityMoveToTarget.1` | f32 | `0.1f` |
 | `BossKameckStateBattle.exeMove.addVelocityMoveToTarget.2` | f32 | `0.9f` |
 | `BossKameckStateBattle.exeMove.addVelocityMoveToTarget.3` | f32 | `0.9f` |
 | `BossKameckStateBattle.exeMove.addVelocityMoveToTarget.4` | f32 | `0.0f` |
 | `BossKameckStateBattle.exeMove.addVelocityMoveToTarget.5` | f32 | `400.0f` |
 | `BossKameckStateBattle.exeMove.attenuateVelocity.1` | f32 | `0.96f` |
+| `BossKameckStateBattle.exeMove.f1` | f32 | `100.0f` |
+| `BossKameckStateBattle.exeMove.f2` | f32 | `100.0f` |
+| `BossKameckStateBattle.exeMove.f3` | f32 | `1.5f` |
+| `BossKameckStateBattle.exeMove.f4` | f32 | `500.0f` |
+| `BossKameckStateBattle.exeMove.f5` | f32 | `0.5f` |
+| `BossKameckStateBattle.exeMove.f6` | f32 | `50.0f` |
 | `BossKameckStateBattle.exeMove.isNearPlayer.1` | f32 | `400.0f` |
 | `BossKameckStateBattle.exeRecover.addVelocityMoveToTarget.1` | f32 | `0.1f` |
 | `BossKameckStateBattle.exeRecover.addVelocityMoveToTarget.2` | f32 | `0.9f` |
@@ -19202,21 +20028,104 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossKameckStateBattle.exeRecover.addVelocityMoveToTarget.4` | f32 | `0.0f` |
 | `BossKameckStateBattle.exeRecover.addVelocityMoveToTarget.5` | f32 | `400.0f` |
 | `BossKameckStateBattle.exeRecover.attenuateVelocity.1` | f32 | `0.96f` |
+| `BossKameckStateBattle.exeRecover.f1` | f32 | `0.5f` |
+| `BossKameckStateBattle.exeRecover.f2` | f32 | `50.0f` |
+| `BossKameckStateBattle.exeRecover.f3` | f32 | `100.0f` |
 | `BossKameckStateBattle.exeWait.attenuateVelocity.1` | f32 | `0.96f` |
 | `BossKameckStateBattle.sBeamSpeed` | f32 | `20.0f` |
 | `BossKameckStateBattle.sFinalMoveTime` | s32 | `40` |
 | `BossKameckStateBattle.sShootTiming` | s32 | `23` |
 | `BossKameckStateBattle.sSwingSeTiming` | s32 | `12` |
 | `BossKameckStateBattle.sTurnPlayerDegree` | f32 | `6.0f` |
+| `BossKameckStateBattle.tryAttackWait.f1` | f32 | `100.0f` |
+| `BossStinkBug.appearStarPiece.f1` | f32 | `30.0f` |
+| `BossStinkBug.appearStarPiece.f2` | f32 | `40.0f` |
+| `BossStinkBug.BossStinkBug.f1` | f32 | `30.0f` |
+| `BossStinkBug.init.f1` | f32 | `300.0f` |
+| `BossStinkBug.init.f2` | f32 | `300.0f` |
+| `BossStinkBug.initSensor.f1` | f32 | `1000.0f` |
+| `BossStinkBug.initSensor.f2` | f32 | `200.0f` |
+| `BossStinkBug.initSensor.f3` | f32 | `120.0f` |
+| `BossStinkBug.initSensor.f4` | f32 | `50.0f` |
+| `BossStinkBug.initSensor.f5` | f32 | `300.0f` |
+| `BossStinkBug.initSensor.f6` | f32 | `200.0f` |
+| `BossStinkBug.initSensor.f7` | f32 | `120.0f` |
+| `BossStinkBug.initSensor.f8` | f32 | `50.0f` |
+| `BossStinkBug.initSensor.f9` | f32 | `300.0f` |
+| `BossStinkBug.updateJointControl.f1` | f32 | `0.2f` |
+| `BossStinkBug.updateJointControl.f2` | f32 | `0.08f` |
+| `BossStinkBug.updateJointControl.f3` | f32 | `0.1f` |
+| `BossStinkBug.updateJointControl.f4` | f32 | `0.05f` |
+| `BossStinkBug.updatePose.f1` | f32 | `0.2f` |
+| `BossStinkBug.updatePose.f2` | f32 | `0.2f` |
+| `BossStinkBugActionBase.BossStinkBugActionBase.f1` | f32 | `0.02f` |
+| `BossStinkBugActionBase.BossStinkBugActionBase.f2` | f32 | `0.95f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f1` | f32 | `1500.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f2` | f32 | `12.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f3` | f32 | `1500.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f4` | f32 | `2500.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f5` | f32 | `1000.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f6` | f32 | `550.0f` |
+| `BossStinkBugActionBase.calcFlySoundVol.f7` | f32 | `12.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f1` | f32 | `2000.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f2` | f32 | `4500.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f3` | f32 | `2000.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f4` | f32 | `4500.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f5` | f32 | `126.0f` |
+| `BossStinkBugActionBase.calcIIRCutOff.f6` | f32 | `20.0f` |
+| `BossStinkBugActionBase.calcKeepRollTime.f1` | f32 | `2.0f` |
+| `BossStinkBugActionBase.calcKeepRollTime.f2` | f32 | `3.0f` |
+| `BossStinkBugActionBase.calcShakeOffEndSpeed.f1` | f32 | `35.0f` |
 | `BossStinkBugActionBase.calcShakeOffSignSpeed.1` | s32 | `10` |
+| `BossStinkBugActionBase.calcShakeOffSignSpeed.f1` | f32 | `3.0f` |
+| `BossStinkBugActionBase.calcShakeOffSignSpeed.f2` | f32 | `3.0f` |
+| `BossStinkBugActionBase.calcShakeOffSpeed.f1` | f32 | `3.0f` |
+| `BossStinkBugActionBase.updateFall.f1` | f32 | `0.3f` |
+| `BossStinkBugActionBase.updateFall.f2` | f32 | `1100.0f` |
 | `BossStinkBugActionBase.updateFallDamage.1` | s32 | `9` |
 | `BossStinkBugActionBase.updateFlyDash.1` | s32 | `100` |
+| `BossStinkBugActionBase.updateFlyDash.f1` | f32 | `40.0f` |
+| `BossStinkBugActionBase.updateFlyDash.f2` | f32 | `40.0f` |
 | `BossStinkBugActionBase.updateFlyRollSign.1` | s32 | `10` |
+| `BossStinkBugActionBase.updateFlyShakeOffSign.f1` | f32 | `15.0f` |
+| `BossStinkBugActionBase.updateFlyShakeOffWait.f1` | f32 | `35.0f` |
 | `BossStinkBugActionBase.updateGroundAttackSuccess.1` | s32 | `12` |
+| `BossStinkBugActionBase.updateGroundAttackSuccess.f1` | f32 | `0.75f` |
+| `BossStinkBugActionBase.updateGroundCoolDown.f1` | f32 | `0.95f` |
 | `BossStinkBugActionBase.updateGroundDamage.1` | s32 | `9` |
+| `BossStinkBugActionBase.updateGroundShakeOff.f1` | f32 | `0.95f` |
 | `BossStinkBugActionBase.updateGroundTurn.1` | s32 | `160` |
 | `BossStinkBugActionBase.updateLand.1` | s32 | `20` |
+| `BossStinkBugActionBase.updateLand.f1` | f32 | `0.99f` |
+| `BossStinkBugActionBase.updateToFly.f1` | f32 | `40.0f` |
+| `BossStinkBugActionBase.updateToFly.f2` | f32 | `40.0f` |
 | `BossStinkBugActionBase.updateToGround.1` | s32 | `40` |
+| `BossStinkBugActionBase.updateToGround.f1` | f32 | `1.2f` |
+| `BossStinkBugActionBase.updateToGround.f2` | f32 | `0.99f` |
+| `BossStinkBugActionBase.updateToGround.f3` | f32 | `180.0f` |
+| `BossStinkBugActionBase.updateToGround.f4` | f32 | `0.9f` |
+| `BossStinkBugActionFlyHigh.BossStinkBugActionFlyHigh.f1` | f32 | `20.0f` |
+| `BossStinkBugActionFlyHigh.BossStinkBugActionFlyHigh.f2` | f32 | `1000.0f` |
+| `BossStinkBugActionFlyHigh.BossStinkBugActionFlyHigh.f3` | f32 | `400.0f` |
+| `BossStinkBugActionFlyHigh.exeFly.f1` | f32 | `1500.0f` |
+| `BossStinkBugActionFlyHigh.exeFlyDash.f1` | f32 | `15.0f` |
+| `BossStinkBugActionFlyHigh.exeGroundRun.f1` | f32 | `25.0f` |
+| `BossStinkBugActionFlyHigh.receiveOtherMsg.f1` | f32 | `45.0f` |
+| `BossStinkBugActionFlyHigh.receiveOtherMsg.f2` | f32 | `50.0f` |
+| `BossStinkBugActionFlyLow.appear.f1` | f32 | `900.0f` |
+| `BossStinkBugActionFlyLow.BossStinkBugActionFlyLow.f1` | f32 | `14.0f` |
+| `BossStinkBugActionFlyLow.BossStinkBugActionFlyLow.f2` | f32 | `900.0f` |
+| `BossStinkBugActionFlyLow.BossStinkBugActionFlyLow.f3` | f32 | `400.0f` |
+| `BossStinkBugActionFlyLow.exeDash.f1` | f32 | `15.0f` |
+| `BossStinkBugActionFlyLow.exeFly.f1` | f32 | `0.05235988f` |
+| `BossStinkBugActionFlyLow.exeFly.f2` | f32 | `900.0f` |
+| `BossStinkBugActionFlyLow.exeFly.f3` | f32 | `100.0f` |
+| `BossStinkBugActionFlyLow.exeFly.f4` | f32 | `2000.0f` |
+| `BossStinkBugActionGround.control.f1` | f32 | `1000.0f` |
+| `BossStinkBugActionGround.control.f2` | f32 | `200.0f` |
+| `BossStinkBugActionGround.exeCoolDown.f1` | f32 | `90.0f` |
+| `BossStinkBugActionGround.receiveOtherMsg.f1` | f32 | `45.0f` |
+| `BossStinkBugActionGround.receiveOtherMsg.f2` | f32 | `2000.0f` |
 | `BossStinkBugActionGround.sFindDegreeH` | f32 | `45.0f` |
 | `BossStinkBugActionGround.sFindDegreeV` | f32 | `15.0f` |
 | `BossStinkBugActionGround.sFindMaxDistance` | f32 | `1900.0f` |
@@ -19227,11 +20136,27 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossStinkBugAngryDemo.sFlySoundStartStep1` | s32 | `155` |
 | `BossStinkBugAngryDemo.sFlySoundStartStep2` | s32 | `200` |
 | `BossStinkBugBomb.exeExplosion.1` | s32 | `20` |
+| `BossStinkBugBomb.exeExplosion.f1` | f32 | `800.0f` |
+| `BossStinkBugBomb.exeExplosion.f2` | f32 | `1200.0f` |
+| `BossStinkBugBomb.exeExplosion.f3` | f32 | `2000.0f` |
+| `BossStinkBugBomb.exeExplosion.f4` | f32 | `280.0f` |
 | `BossStinkBugBomb.exeWait.1` | s32 | `112` |
 | `BossStinkBugBomb.exeWait.addVelocityToGravity.1` | f32 | `1.2f` |
+| `BossStinkBugBomb.exeWait.f1` | f32 | `9.5f` |
+| `BossStinkBugBomb.exeWait.f2` | f32 | `10.5f` |
+| `BossStinkBugBomb.exeWait.f3` | f32 | `30.0f` |
+| `BossStinkBugBomb.exeWait.f4` | f32 | `0.3f` |
+| `BossStinkBugBomb.exeWait.f5` | f32 | `100.0f` |
+| `BossStinkBugBomb.exeWait.f6` | f32 | `100.0f` |
+| `BossStinkBugBomb.exeWait.f7` | f32 | `0.9f` |
+| `BossStinkBugBomb.exeWait.f8` | f32 | `0.98f` |
 | `BossStinkBugBomb.exeWait.reboundVelocityFromCollision.1` | f32 | `0.8f` |
 | `BossStinkBugBomb.exeWait.reboundVelocityFromCollision.2` | f32 | `5.0f` |
 | `BossStinkBugBomb.exeWait.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `BossStinkBugBomb.init.f1` | f32 | `60.0f` |
+| `BossStinkBugBomb.init.f2` | f32 | `280.0f` |
+| `BossStinkBugBomb.init.f3` | f32 | `60.0f` |
+| `BossStinkBugBomb.init.f4` | f32 | `60.0f` |
 | `BossStinkBugBombHolder.sMaxBossStinkBugBomb` | s32 | `16` |
 | `BossStinkBugFlyDemo.sCloseFeetSoundStartStep` | s32 | `230` |
 | `BossStinkBugFlyDemo.sFlySoundStartStep1` | s32 | `113` |
@@ -19239,14 +20164,52 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BossStinkBugFlyDemo.sFlyStartSoundEndStep` | s32 | `263` |
 | `BossStinkBugFlyDemo.sFlyStartSoundStartStep` | s32 | `110` |
 | `BossStinkBugFlyDemo.sShakeSoundStartStep` | s32 | `48` |
+| `BossStinkBugFunction.moveRail.f1` | f32 | `10.0f` |
+| `BossStinkBugFunction.regainToRail.f1` | f32 | `0.9f` |
+| `BossStinkBugFunction.regainToRail.f2` | f32 | `2.0f` |
+| `BossStinkBugFunction.regainToRail.f3` | f32 | `10.0f` |
+| `BossStinkBugFunction.throwBomb.f1` | f32 | `20.0f` |
+| `BossStinkBugFunction.throwBomb.f2` | f32 | `10.0f` |
+| `BossStinkBugFunction.turnRail.f1` | f32 | `0.5f` |
+| `BossStinkBugFunction.turnRail.f2` | f32 | `0.5f` |
+| `BossStinkBugFunction.turnRail.f3` | f32 | `0.5f` |
+| `BossStinkBugFunction.turnRail.f4` | f32 | `4.0f` |
+| `BossStinkBugFunction.turnRail.f5` | f32 | `90.0f` |
+| `BossStinkBugFunction.turnRail.f6` | f32 | `180.0f` |
+| `BossStinkBugFunction.turnRail.f7` | f32 | `360.0f` |
+| `BossStinkBugFunction.turnRail.f8` | f32 | `180.0f` |
+| `BossStinkBugFunction.turnRailGround.f1` | f32 | `180.0f` |
+| `DinoPackun.addDinoFootPrint.f1` | f32 | `200.0f` |
+| `DinoPackun.appearStarPiece.f1` | f32 | `50.0f` |
+| `DinoPackun.appearStarPiece.f2` | f32 | `60.0f` |
+| `DinoPackun.init.f1` | f32 | `270.0f` |
+| `DinoPackun.init.f2` | f32 | `200.f` |
+| `DinoPackun.init.f3` | f32 | `400.0f` |
+| `DinoPackun.init.f4` | f32 | `150.0f` |
+| `DinoPackun.init.f5` | f32 | `150.0f` |
+| `DinoPackun.initFootPrint.f1` | f32 | `100.0f` |
+| `DinoPackun.initFootPrint.f2` | f32 | `100.0f` |
+| `DinoPackun.initFootPrint.f3` | f32 | `10.0f` |
+| `DinoPackun.initTail.f1` | f32 | `120.0f` |
 | `DinoPackun.sJointRadius` | f32[7] | `80.0f, 70.0f, 60.0f, 55.0f, 50.0f, 45.0f, 50.0f` |
 | `DinoPackun.sKeepBendPower` | f32[7] | `30.0f, 25.0f, 20.0f, 15.0f, 10.0f, 10.0f, 10.0f` |
+| `DinoPackun.updateCameraInfo.f1` | f32 | `300.0f` |
+| `DinoPackun.updateCameraInfo.f2` | f32 | `0.60f` |
+| `DinoPackun.updateFootPrintNerve.f1` | f32 | `100.0f` |
+| `DinoPackun.updateFootPrintNerve.f2` | f32 | `100.0f` |
+| `DinoPackun.updateFootPrintNerve.f3` | f32 | `100.0f` |
+| `DinoPackun.updateFootPrintNerve.f4` | f32 | `100.0f` |
 | `DinoPackun.updateNormalVelocity.addVelocityToGravity.1` | f32 | `1.0f` |
 | `DinoPackun.updateNormalVelocity.attenuateVelocity.1` | f32 | `0.9f` |
 | `DinoPackun.updateNormalVelocity.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `DinoPackun.updateNormalVelocity.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `DinoPackun.updateNormalVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `DinoPackun.updatePose.f1` | f32 | `0.1f` |
+| `DinoPackun.updatePose.f2` | f32 | `0.2f` |
 | `DinoPackunAction.cRunSpeedMin` | f32 | `1.2f` |
+| `DinoPackunBall.addDodgeTargetVelocity.f1` | f32 | `2.0f` |
+| `DinoPackunBall.attackSensor.f1` | f32 | `5.0f` |
+| `DinoPackunBall.attackSensor.f2` | f32 | `0.3f` |
 | `DinoPackunBall.exeCharge.1` | s32 | `35` |
 | `DinoPackunBall.exeCharge.attenuateVelocity.1` | f32 | `0.88f` |
 | `DinoPackunBall.exeCharge.reboundVelocityFromCollision.1` | f32 | `0.0f` |
@@ -19258,6 +20221,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunBall.exeRebound.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `DinoPackunBall.exeRebound.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `DinoPackunBall.exeReverse.attenuateVelocity.1` | f32 | `0.98f` |
+| `DinoPackunBall.exeReverse.f1` | f32 | `8.0f` |
 | `DinoPackunBall.exeReverse.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `DinoPackunBall.exeReverse.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `DinoPackunBall.exeReverse.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -19266,6 +20230,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunBall.exeShoot.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `DinoPackunBall.exeWait.addVelocityToGravity.1` | f32 | `1.0f` |
 | `DinoPackunBall.exeWait.attenuateVelocity.1` | f32 | `0.9f` |
+| `DinoPackunBall.exeWait.f1` | f32 | `5.0f` |
 | `DinoPackunBall.exeWait.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `DinoPackunBall.exeWait.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `DinoPackunBall.exeWait.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -19275,6 +20240,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunBall.sDodgeNearDistance` | f32 | `500.0f` |
 | `DinoPackunBall.sDragSoundSteps` | s32 | `10` |
 | `DinoPackunBall.sRadius` | f32 | `135.0f` |
+| `DinoPackunBall.tryRebound.f1` | f32 | `40.0f` |
 | `DinoPackunBattleEgg.cTurnDegree` | f32 | `0.3f` |
 | `DinoPackunBattleEgg.cWalkFootPrintPeriod` | s32 | `91` |
 | `DinoPackunBattleEgg.cWalkSpeed` | f32 | `0.5f` |
@@ -19312,12 +20278,30 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunBattleVs1Lv2.cWalkFootPrintPeriod` | s32 | `50` |
 | `DinoPackunBattleVs1Lv2.cWalkSpeed` | f32 | `1.3f` |
 | `DinoPackunBattleVs2Lv1.emitFireMouth.addVelocityJump.1` | f32 | `30.0f` |
+| `DinoPackunBattleVs2Lv1.emitFireMouth.f1` | f32 | `50.0f` |
+| `DinoPackunBattleVs2Lv1.exeChase.f1` | f32 | `60.0f` |
+| `DinoPackunBattleVs2Lv1.exeChase.f2` | f32 | `2.0f` |
+| `DinoPackunBattleVs2Lv1.exeChase.f3` | f32 | `1.8f` |
+| `DinoPackunBattleVs2Lv1.exeChase.f4` | f32 | `60.0f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f1` | f32 | `45.0f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f2` | f32 | `1.2f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f3` | f32 | `1.4f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f4` | f32 | `1.9f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f5` | f32 | `1600.0f` |
+| `DinoPackunBattleVs2Lv1.exeCrazy.f6` | f32 | `45.0f` |
+| `DinoPackunBattleVs2Lv1.exeFindCrazy.f1` | f32 | `3.0f` |
+| `DinoPackunBattleVs2Lv1.exeTurn.f1` | f32 | `3.0f` |
+| `DinoPackunBattleVs2Lv1.exeTurn.f2` | f32 | `40.0f` |
+| `DinoPackunBattleVs2Lv1.exeTurn.f3` | f32 | `80.0f` |
+| `DinoPackunBattleVs2Lv1.exeWalk.f1` | f32 | `1.1f` |
+| `DinoPackunBattleVs2Lv1.exeWalk.f2` | f32 | `1.2f` |
 | `DinoPackunBattleVs2Lv1.sChaseSightDistance` | f32 | `2000.0f` |
 | `DinoPackunBattleVs2Lv1.sMouthFireFrame0` | f32 | `32.0f` |
 | `DinoPackunBattleVs2Lv1.sMouthFireFrame1` | f32 | `132.0f` |
 | `DinoPackunBattleVs2Lv1.sMovingBendRate` | f32 | `1.5f` |
 | `DinoPackunBattleVs2Lv1.sSightDistance` | f32 | `1050.0f` |
 | `DinoPackunBattleVs2Lv1.sTailFireSpacing` | f32 | `120.0f` |
+| `DinoPackunBattleVs2Lv1.tryAwake.f1` | f32 | `60.0f` |
 | `DinoPackunDemo.exeAngryDemo.1` | s32 | `205` |
 | `DinoPackunDemo.exeDownDemo.1` | s32 | `319` |
 | `DinoPackunDemo.exeOpeningDemo.1` | s32 | `28` |
@@ -19349,9 +20333,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunFire.exeGround.1` | s32 | `20` |
 | `DinoPackunFire.exeShot.addVelocityToGravity.1` | f32 | `2.0f` |
 | `DinoPackunFire.exeShot.attenuateVelocity.1` | f32 | `0.98f` |
+| `DinoPackunFire.exeShot.f1` | f32 | `150.0f` |
 | `DinoPackunFire.exeShot.reboundVelocityFromCollision.1` | f32 | `0.80f` |
 | `DinoPackunFire.exeShot.reboundVelocityFromCollision.2` | f32 | `15.0f` |
 | `DinoPackunFire.exeShot.reboundVelocityFromCollision.3` | f32 | `0.40f` |
+| `DinoPackunFire.init.f1` | f32 | `150.0f` |
+| `DinoPackunFire.init.f2` | f32 | `150.0f` |
+| `DinoPackunFire.init.f3` | f32 | `150.0f` |
+| `DinoPackunFire.init.f4` | f32 | `150.0f` |
+| `DinoPackunStateAwake.exeFind.f1` | f32 | `0.015f` |
+| `DinoPackunStateAwake.exeFind.f2` | f32 | `4.0f` |
 | `DinoPackunStateDamage.cDamageHitStopFrames` | s32 | `15` |
 | `DinoPackunStateDamage.cEggHitStopFrames` | s32 | `5` |
 | `DinoPackunStateDamage.cPullTurnDegree` | f32 | `6.0f` |
@@ -19359,15 +20350,33 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DinoPackunStateDamage.cPullTurnNode` | s32 | `3` |
 | `DinoPackunStateDamage.cTailRootAdjustRate` | f32 | `0.1f` |
 | `DinoPackunStateDamage.cTailTopCos` | f32 | `0.7f` |
+| `DinoPackunTail.addAccelKeepBend.f1` | f32 | `1.1f` |
+| `DinoPackunTail.addAccelKeepBend.f2` | f32 | `1.1f` |
+| `DinoPackunTail.addAccelKeepDistance.f1` | f32 | `0.1f` |
+| `DinoPackunTail.addAccelKeepDistance.f2` | f32 | `0.9f` |
+| `DinoPackunTail.addAccelKeepDistance.f3` | f32 | `2.0f` |
+| `DinoPackunTailNode.calcJointScale.f1` | f32 | `0.2f` |
+| `DinoPackunTailNode.calcJointScale.f2` | f32 | `5.0f` |
+| `DinoPackunTailPart.attackSensor.f1` | f32 | `3.0f` |
+| `DinoPackunTailPart.DinoPackunTailPart.f1` | f32 | `50.0f` |
 | `DinoPackunTailPart.exeWait.addVelocityToGravity.1` | f32 | `0.7f` |
 | `DinoPackunTailPart.exeWait.attenuateVelocity.1` | f32 | `0.88f` |
 | `DinoPackunTailPart.exeWait.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `DinoPackunTailPart.exeWait.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `DinoPackunTailPart.exeWait.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `DinoPackunTailPart.init.f1` | f32 | `1.25f` |
 | `DinoPackunTrackFire.exeGround.1` | s32 | `75` |
 | `DinoPackunTrackFire.exeWait.addVelocityToGravity.1` | f32 | `2.0f` |
 | `DinoPackunTrackFire.exeWait.attenuateVelocity.1` | f32 | `0.992f` |
+| `DinoPackunTrackFire.init.f1` | f32 | `60.0f` |
+| `DinoPackunTrackFire.init.f2` | f32 | `60.0f` |
+| `DinoPackunTrackFire.init.f3` | f32 | `60.0f` |
+| `Dodoryu.DodoryuRabbit.f1` | f32 | `100.0f` |
+| `Dodoryu.DodoryuRabbit.f2` | f32 | `150.0f` |
+| `Dodoryu.DodoryuRabbit.f3` | f32 | `100.0f` |
+| `Dodoryu.sArmOffset` | f32[3] | `0.0f, 0.0f, 0.0f` |
 | `Dodoryu.sArmRadius` | f32 | `50.0f` |
+| `Dodoryu.sBodyOffset` | f32[3] | `0.0f, 0.0f, 30.0f` |
 | `Dodoryu.sBodyRadius` | f32 | `250.0f` |
 | `Dodoryu.sCameraHipWeight` | f32 | `0.7f` |
 | `Dodoryu.sCameraPlayerWeight` | f32 | `0.3f` |
@@ -19376,11 +20385,13 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Dodoryu.sGroundProbeLength` | f32 | `1200.0f` |
 | `Dodoryu.sGroundProbeRise` | f32 | `200.0f` |
 | `Dodoryu.sHeadNeedleReach` | f32 | `105.0f` |
+| `Dodoryu.sHeadOffset` | f32[3] | `50.0f, 30.0f, 0.0f` |
 | `Dodoryu.sHeadRadius` | f32 | `210.0f` |
 | `Dodoryu.sHillMaxSpare` | s32 | `10` |
 | `Dodoryu.sHillStartPieces` | s32 | `5` |
 | `Dodoryu.sJumpOutStopSceneFrame` | s32 | `8` |
 | `Dodoryu.sLeadHillSpinSpeed` | f32 | `0.07f` |
+| `Dodoryu.sLegOffset` | f32[3] | `40.0f, 0.0f, 0.0f` |
 | `Dodoryu.sLegRadius` | f32 | `110.0f` |
 | `Dodoryu.sMapObjSensorGroupSize` | u16 | `16` |
 | `Dodoryu.sMapObjSensorRadius` | f32 | `100.0f` |
@@ -19403,12 +20414,21 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Dodoryu.sSensorCount` | s32 | `9` |
 | `Dodoryu.sSoundCount` | s32 | `8` |
 | `Dodoryu.sStarPieceCount` | s32 | `24` |
+| `Dodoryu.sStarPieceSensorOffset` | f32[3] | `-150.0f, 0.0f, 0.0f` |
 | `Dodoryu.sStarPieceSensorRadius` | f32 | `400.0f` |
 | `Dodoryu.sStateStartBlur` | f32 | `0.75f` |
+| `Dodoryu.sTailOffset` | f32[3] | `50.0f, 0.0f, 0.0f` |
 | `Dodoryu.sTailRadius` | f32 | `120.0f` |
+| `DodoryuDemo.exeDemoWait.f1` | f32 | `10.0f` |
+| `DodoryuDemo.exePlay.f1` | f32 | `20.0f` |
+| `DodoryuDemo.exePlay.f2` | f32 | `40.0f` |
+| `DodoryuDemo.exePlay.f3` | f32 | `15.0f` |
+| `DodoryuDemo.exePlay.f4` | f32 | `20.0f` |
+| `DodoryuDemo.exePlay.f5` | f32 | `40.0f` |
 | `DodoryuDemo.sDieSoundStep` | s32 | `242` |
 | `DodoryuDemo.sOpeningAppearSmileSoundStep` | s32 | `55` |
 | `DodoryuDemo.sOpeningHideFrame` | s32 | `60` |
+| `DodoryuMove.execute.f1` | f32 | `1.8f` |
 | `DodoryuMove.sEscapeAccel` | f32 | `0.05f` |
 | `DodoryuMove.sRailAccel` | f32 | `0.05f` |
 | `DodoryuStateLv1.exeHide.shakeCameraInfinity.1` | f32 | `0.2f` |
@@ -19428,11 +20448,25 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DodoryuStateLv1.sSpinOutEndFrame` | s32 | `80` |
 | `DodoryuStateLv1.sStopSceneFrame` | s32 | `10` |
 | `DodoryuStateLv1.sSwoonTerm` | s32 | `180` |
+| `DodoryuStateLv1.start.f1` | f32 | `10.0f` |
+| `DodoryuStateLv1.startPop.f1` | f32 | `30.0f` |
+| `DodoryuStateLv1.updatePop.f1` | f32 | `2.5f` |
+| `DodoryuStateLv2.calcLimitedRotateMtx.f1` | f32 | `180.0f` |
+| `DodoryuStateLv2.calcRandomVelocity.f1` | f32 | `2.0f` |
+| `DodoryuStateLv2.catchPlayerAttack.f1` | f32 | `180.0f` |
 | `DodoryuStateLv2.exeChaseMore.shakeCameraInfinity.1` | f32 | `0.2f` |
 | `DodoryuStateLv2.exeChaseMore.shakeCameraInfinity.2` | f32 | `2.0f` |
+| `DodoryuStateLv2.exeChaseMoreStart.f1` | f32 | `1000.0f` |
+| `DodoryuStateLv2.exeChaseMoreStart.f2` | f32 | `180.0f` |
 | `DodoryuStateLv2.exeEscapeJump.1` | s32 | `49` |
+| `DodoryuStateLv2.exeEscapeJump.f1` | f32 | `30.0f` |
+| `DodoryuStateLv2.exeEscapeJump.f2` | f32 | `1.2f` |
 | `DodoryuStateLv2.exeFindPos.1` | s32 | `1` |
 | `DodoryuStateLv2.exeFindPos.2` | s32 | `1` |
+| `DodoryuStateLv2.exeFindPos.f1` | f32 | `150.0f` |
+| `DodoryuStateLv2.exeFindPos.f2` | f32 | `180.0f` |
+| `DodoryuStateLv2.exeHideAttack.f1` | f32 | `1000.0f` |
+| `DodoryuStateLv2.exeJumpOut.f1` | f32 | `3.0f` |
 | `DodoryuStateLv2.exeReadyAppear.shakeCameraInfinity.1` | f32 | `0.2f` |
 | `DodoryuStateLv2.exeReadyAppear.shakeCameraInfinity.2` | f32 | `2.0f` |
 | `DodoryuStateLv2.sAppearSignEffectFrame` | s32 | `15` |
@@ -19455,10 +20489,20 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DodoryuStateLv2.updateHideShake.shakeCameraInfinity.2` | f32 | `2.2f` |
 | `DodoryuStateLv2.updateReadyChaseShake.shakeCameraInfinity.1` | f32 | `0.2f` |
 | `DodoryuStateLv2.updateReadyChaseShake.shakeCameraInfinity.2` | f32 | `2.0f` |
+| `DodoryuStateWait.exeWait.f1` | f32 | `8.0f` |
+| `DodoryuUtil.calcEscapeDir.f1` | f32 | `2.0f` |
+| `DodoryuUtil.calcEscapeDir.f2` | f32 | `0.5f` |
+| `DodoryuUtil.calcEscapeDir.f3` | f32 | `180.0f` |
+| `DodoryuUtil.turnToward.f1` | f32 | `180.0f` |
+| `Koopa.init.f1` | f32 | `200.0f` |
+| `Koopa.init.f2` | f32 | `200.0f` |
 | `KoopaBattleBase.sChasePlayerJumpSpeed` | f32 | `15.0f` |
 | `KoopaBattleBase.sFindJumpSpeed` | f32 | `10.0f` |
 | `KoopaBattleBase.sSearchTurnSpeed` | f32 | `2.4f` |
 | `KoopaBattleBase.sWalkAnimRate` | f32 | `0.18f` |
+| `KoopaBattleBase.updateFind.f1` | f32 | `800.0f` |
+| `KoopaBattleBase.updateFind.f2` | f32 | `1200.0f` |
+| `KoopaBattleBase.updateFind.f3` | f32 | `2000.0f` |
 | `KoopaBattleMain.sChasePlayerDistanceNearAttack` | f32 | `500.0f` |
 | `KoopaBattleMain.sDistanceMaxToJumpAway` | f32 | `1500.0f` |
 | `KoopaBattleMain.sSearchDistance` | f32 | `2000.0f` |
@@ -19472,29 +20516,102 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaBattleStairsVs1.cJumpHeight` | f32 | `1000.0f` |
 | `KoopaBattleStairsVs1.cStepToEmitFire` | s32 | `15` |
 | `KoopaBattleStairsVs1.cTurnSpeed` | f32 | `2.0f` |
+| `KoopaBattleStairsVs1.exeJumpToNextPosLoop.f1` | f32 | `180.0f` |
 | `KoopaBattleStairsVs3.cFireSpeed` | f32 | `30.0f` |
 | `KoopaDemoFallToPlanetVs3Lv3.sFallDownSeStep2` | s32 | `214` |
 | `KoopaDemoFallToPlanetVs3Lv3.sFallDownSeStep3` | s32 | `328` |
 | `KoopaDemoFallToPlanetVs3Lv3.sFallOutsideChangeSun` | s32 | `266` |
 | `KoopaDemoFallToPlanetVs3Lv3.sFinalBgmStartStepSub` | s32 | `250` |
+| `KoopaDemoPowerUp.exeDemo.f1` | f32 | `15.0f` |
+| `KoopaDemoPowerUp.exeDemo.f2` | f32 | `50.0f` |
+| `KoopaDemoPowerUp.exeDemo.f3` | f32 | `60.0f` |
 | `KoopaDemoPowerUp.sScreenBlurStep` | s32 | `135` |
 | `KoopaDemoPowerUp.sScreenBlurStepFinal` | s32 | `140` |
 | `KoopaDemoPowerUp.sStepToScreenBlur` | s32 | `65` |
 | `KoopaDemoPowerUp.sStepToScreenBlurFinal` | s32 | `50` |
+| `KoopaFigureBall.control.f1` | f32 | `180.0f` |
 | `KoopaFigureBall.sWallJumpSpeed` | f32 | `15.0f` |
+| `KoopaFireShort.appear.f1` | f32 | `80.0f` |
 | `KoopaFireShort.exeErase2P.setBckRate.1` | f32 | `3.0f` |
 | `KoopaFireShort.exeFly.1` | s32 | `50` |
+| `KoopaFireShort.exeFly.f1` | f32 | `80.0f` |
+| `KoopaFireShort.exeFly.f2` | f32 | `4.0f` |
+| `KoopaFireShort.init.f1` | f32 | `130.0f` |
+| `KoopaFireShort.init.f2` | f32 | `50.0f` |
+| `KoopaFireShort.init.f3` | f32 | `100.0f` |
+| `KoopaFireShort.init.f4` | f32 | `200.0f` |
 | `KoopaFireShort.sCurveRotateSpeed` | f32 | `0.1f` |
 | `KoopaFireShort.sFlySpeedFast` | f32 | `30.0f` |
 | `KoopaFireShort.sFlySpeedNormal` | f32 | `15.0f` |
+| `KoopaFireStairs.exeFly.f1` | f32 | `180.0f` |
+| `KoopaFireStairs.init.f1` | f32 | `100.0f` |
+| `KoopaFireStairs.init.f2` | f32 | `2.0f` |
+| `KoopaFireStairs.init.f3` | f32 | `60.0f` |
 | `KoopaFireStairs.sArcHeight` | f32 | `1500.0f` |
 | `KoopaFireStairs.sFlyUpDirDegreeMax` | f32 | `45.0f` |
 | `KoopaFireStairs.sHitEffectAhead` | f32 | `100.0f` |
 | `KoopaFireStairs.sRotateSpeed` | f32 | `15.0f` |
+| `KoopaFunction.sDemoFallParam` | f32[4] | `0.0f, 1.0f, 0.98f, 0.0f` |
+| `KoopaFunction.sDemoWaitParam` | f32[4] | `0.0f, 1.0f, 0.9f, 1.0f` |
 | `KoopaFunction.sKoopaHitBlowStopSceneStep` | s32 | `10` |
+| `KoopaParts.initVs3.f1` | f32 | `40000.0f` |
 | `KoopaParts.sFireShortNum` | s32 | `32` |
 | `KoopaParts.sFireStairsNum` | s32 | `16` |
 | `KoopaParts.sShockWaveNum` | s32 | `8` |
+| `KoopaSensorCtrl.initSensor.f1` | f32 | `150.0f` |
+| `KoopaSensorCtrl.initSensor.f10` | f32 | `60.0f` |
+| `KoopaSensorCtrl.initSensor.f11` | f32 | `60.0f` |
+| `KoopaSensorCtrl.initSensor.f12` | f32 | `80.0f` |
+| `KoopaSensorCtrl.initSensor.f13` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f14` | f32 | `80.0f` |
+| `KoopaSensorCtrl.initSensor.f15` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f16` | f32 | `70.0f` |
+| `KoopaSensorCtrl.initSensor.f17` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f18` | f32 | `70.0f` |
+| `KoopaSensorCtrl.initSensor.f19` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f2` | f32 | `70.0f` |
+| `KoopaSensorCtrl.initSensor.f20` | f32 | `60.0f` |
+| `KoopaSensorCtrl.initSensor.f21` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f22` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f23` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f24` | f32 | `130.0f` |
+| `KoopaSensorCtrl.initSensor.f25` | f32 | `150.0f` |
+| `KoopaSensorCtrl.initSensor.f26` | f32 | `180.0f` |
+| `KoopaSensorCtrl.initSensor.f27` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f28` | f32 | `100.0f` |
+| `KoopaSensorCtrl.initSensor.f29` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f3` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f30` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f31` | f32 | `40.0f` |
+| `KoopaSensorCtrl.initSensor.f32` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f33` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f34` | f32 | `40.0f` |
+| `KoopaSensorCtrl.initSensor.f35` | f32 | `200.0f` |
+| `KoopaSensorCtrl.initSensor.f36` | f32 | `250.0f` |
+| `KoopaSensorCtrl.initSensor.f37` | f32 | `260.0f` |
+| `KoopaSensorCtrl.initSensor.f38` | f32 | `200.0f` |
+| `KoopaSensorCtrl.initSensor.f39` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f4` | f32 | `110.0f` |
+| `KoopaSensorCtrl.initSensor.f40` | f32 | `280.0f` |
+| `KoopaSensorCtrl.initSensor.f41` | f32 | `180.0f` |
+| `KoopaSensorCtrl.initSensor.f42` | f32 | `200.0f` |
+| `KoopaSensorCtrl.initSensor.f43` | f32 | `200.0f` |
+| `KoopaSensorCtrl.initSensor.f44` | f32 | `180.0f` |
+| `KoopaSensorCtrl.initSensor.f45` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f46` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f47` | f32 | `150.0f` |
+| `KoopaSensorCtrl.initSensor.f48` | f32 | `100.0f` |
+| `KoopaSensorCtrl.initSensor.f49` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f5` | f32 | `80.0f` |
+| `KoopaSensorCtrl.initSensor.f50` | f32 | `250.0f` |
+| `KoopaSensorCtrl.initSensor.f51` | f32 | `50.0f` |
+| `KoopaSensorCtrl.initSensor.f52` | f32 | `180.0f` |
+| `KoopaSensorCtrl.initSensor.f53` | f32 | `70.0f` |
+| `KoopaSensorCtrl.initSensor.f54` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f6` | f32 | `60.0f` |
+| `KoopaSensorCtrl.initSensor.f7` | f32 | `30.0f` |
+| `KoopaSensorCtrl.initSensor.f8` | f32 | `60.0f` |
+| `KoopaSensorCtrl.initSensor.f9` | f32 | `30.0f` |
 | `KoopaSequencer.sKoopaFallVoiceStep` | s32 | `20` |
 | `KoopaSequencerVs3.sDownCameraCoverStep` | s32 | `640` |
 | `KoopaSequencerVs3.sFallAmbientSeStartStep` | s32 | `544` |
@@ -19502,16 +20619,41 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaSequencerVs3.sFallSeStartStep` | s32 | `471` |
 | `KoopaSequencerVs3.sLastImpactSeStep` | s32 | `70` |
 | `KoopaShockWave.exeWaveAttack.1` | s32 | `350` |
+| `KoopaShockWave.exeWaveAttack.f1` | f32 | `180.0f` |
+| `KoopaShockWave.exeWaveAttack.f2` | f32 | `1300.0f` |
+| `KoopaShockWave.exeWaveAttack.f3` | f32 | `1260.0f` |
+| `KoopaShockWave.exeWaveAttack.f4` | f32 | `10.0f` |
+| `KoopaShockWave.exeWaveAttack.f5` | f32 | `90.0f` |
+| `KoopaShockWave.exeWaveAttack.f6` | f32 | `90.0f` |
+| `KoopaShockWave.exeWaveAttack.f7` | f32 | `90.0f` |
+| `KoopaShockWave.exeWaveAttack.f8` | f32 | `90.0f` |
+| `KoopaShockWave.exeWaveAttack.f9` | f32 | `100.0f` |
 | `KoopaShockWave.exeWaveAttack.setBrkRate.1` | f32 | `0.0f` |
 | `KoopaShockWave.exeWaveAttack.setBrkRate.2` | f32 | `0.0f` |
 | `KoopaShockWave.exeWaveAttack.setBrkRate.3` | f32 | `0.0f` |
+| `KoopaShockWave.init.f1` | f32 | `15.0f` |
+| `KoopaShockWave.updateHitSensor.f1` | f32 | `180.0f` |
 | `KoopaStateAttackFireLong.sEmitNumMax` | s32 | `16` |
+| `KoopaStateAttackFireLong.sFallParam` | f32[4] | `0.0f, 1.0f, 1.0f, 0.0f` |
 | `KoopaStateAttackFireLong.sStepEmit` | s32 | `15` |
 | `KoopaStateAttackFireLong.sTurnSpeed` | f32 | `3.0f` |
 | `KoopaStateAttackFireShort.sStepToEmitFire` | s32 | `1` |
 | `KoopaStateAttackFireShort.sStepToNextAttack` | s32 | `45` |
 | `KoopaStateAttackFireShort.sStepToNextAttackVs3Angry` | s32 | `15` |
 | `KoopaStateAttackFireShort.sTurnSpeed` | f32 | `2.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f1` | f32 | `35.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f10` | f32 | `2000.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f11` | f32 | `1500.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f12` | f32 | `3000.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f13` | f32 | `2000.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f2` | f32 | `35.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f3` | f32 | `35.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f4` | f32 | `35.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f5` | f32 | `1500.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f6` | f32 | `3000.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f7` | f32 | `2000.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f8` | f32 | `1500.0f` |
+| `KoopaStateAttackHipDrop.exeJumpAttackDown.f9` | f32 | `3000.0f` |
 | `KoopaStateAttackHipDrop.sDistanceToJump` | f32 | `1000.0f` |
 | `KoopaStateAttackHipDrop.sDistanceToJumpVs3` | f32 | `2000.0f` |
 | `KoopaStateAttackHipDrop.sJumpUpGravity` | f32 | `1.0f` |
@@ -19522,6 +20664,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaStateAttackHipDrop.sJumpWaitAirStepVs3` | s32 | `15` |
 | `KoopaStateAttackHipDrop.sJumpWaitAirTurnSpeed` | f32 | `2.0f` |
 | `KoopaStateAttackHipDrop.sRunWallJumpSpeed` | f32 | `10.0f` |
+| `KoopaStateAttackRoll.init.f1` | f32 | `230.0f` |
 | `KoopaStateAttackRoll.sEndJumpSpeed` | f32 | `30.0f` |
 | `KoopaStateAttackRoll.sRollGroundStepVs3Lv3` | s32 | `280` |
 | `KoopaStateAttackRoll.sRollGroundStepVs3Lv3Angry` | s32 | `320` |
@@ -19529,6 +20672,9 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaStateAttackRoll.sStartJumpSpeed` | f32 | `20.0f` |
 | `KoopaStateAttackRoll.sStartStepToJump` | s32 | `24` |
 | `KoopaStateAttackRoll.sWaitToStartStepVs3Angry` | s32 | `75` |
+| `KoopaStateAttackShockWave.exeJump.f1` | f32 | `1500.0f` |
+| `KoopaStateAttackShockWave.exeJump.f2` | f32 | `2500.0f` |
+| `KoopaStateAttackShockWave.exeJump.f3` | f32 | `2000.0f` |
 | `KoopaStateAttackShockWave.sJumpGravity` | f32 | `1.5f` |
 | `KoopaStateAttackShockWave.sJumpGravityVs3` | f32 | `2.0f` |
 | `KoopaStateAttackShockWave.sJumpSpeed` | f32 | `40.0f` |
@@ -19539,17 +20685,40 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaStateAttackShockWave.sLandStepVs2` | s32 | `10` |
 | `KoopaStateAttackShockWave.sLandStepVs3` | s32 | `10` |
 | `KoopaStateAttackShockWave.sLandStepVs3Angry` | s32 | `5` |
+| `KoopaStateAttackSpin.exeEven.f1` | f32 | `30.0f` |
+| `KoopaStateAttackSpin.init.f1` | f32 | `250.0f` |
+| `KoopaStateAttackSpin.init.f2` | f32 | `250.0f` |
 | `KoopaStateAttackSpin.sDistanceToJump` | f32 | `1000.0f` |
+| `KoopaStateAttackSpin.sEndParam` | f32[4] | `0.0f, 1.0f, 0.9f, 0.0f` |
+| `KoopaStateAttackSpin.sEvenParam` | f32[4] | `0.0f, 1.0f, 0.95f, 0.5f` |
 | `KoopaStateAttackSpin.sEvenStopSceneStep` | s32 | `15` |
+| `KoopaStateAttackSpin.sParamAttackSpin1st` | f32[4] | `2.0f, 1.0f, 0.9f, 0.0f` |
+| `KoopaStateAttackSpin.sParamAttackSpin2nd` | f32[4] | `3.0f, 1.0f, 0.9f, 0.5f` |
+| `KoopaStateAttackSpin.sParamAttackSpinBrake` | f32[4] | `1.0f, 1.0f, 0.9f, 0.0f` |
+| `KoopaStateAttackSpin.sRunParam` | f32[4] | `3.0f, 1.0f, 0.9f, 3.0f` |
 | `KoopaStateAttackSpin.sRunWallJumpSpeed` | f32 | `10.0f` |
 | `KoopaStateAttackSpin.sSpinAttackStepMax` | s32 | `65` |
 | `KoopaStateAttackSpin.sSpinAttackStepMin` | s32 | `5` |
 | `KoopaStateAttackSpin.sStartTurnSpeed` | f32 | `5.0f` |
 | `KoopaStateAttackSpin.sWallJumpSpeed` | f32 | `15.0f` |
+| `KoopaStateChaseRoll.init.f1` | f32 | `260.0f` |
+| `KoopaStateChaseRoll.sChaseRollParam` | f32[4] | `1.1f, 2.0f, 0.95f, 1.5f` |
+| `KoopaStateChaseRoll.sChaseRollParamFast` | f32[4] | `1.5f, 2.0f, 0.95f, 1.5f` |
 | `KoopaStateChaseRoll.sEndJumpSpeed` | f32 | `30.0f` |
+| `KoopaStateChaseRoll.sEndParam` | f32[4] | `0.0f, 1.0f, 0.98f, 1.0f` |
 | `KoopaStateChaseRoll.sRotateSpeed` | f32 | `5.0f` |
 | `KoopaStateChaseRoll.sStartJumpSpeed` | f32 | `30.0f` |
+| `KoopaStateChaseRoll.sStartParam` | f32[4] | `0.0f, 0.5f, 1.0f, 3.0f` |
 | `KoopaStateChaseRoll.sStartStepToJump` | s32 | `24` |
+| `KoopaStateDamageEscape.exeDown.f1` | f32 | `35.0f` |
+| `KoopaStateDamageEscape.exeDown.f2` | f32 | `1500.0f` |
+| `KoopaStateDamageEscape.exeDown.f3` | f32 | `2000.0f` |
+| `KoopaStateDamageEscape.exeDown.f4` | f32 | `2000.0f` |
+| `KoopaStateDamageEscape.exeDownLand.f1` | f32 | `50.0f` |
+| `KoopaStateDamageEscape.exeDownLand.f2` | f32 | `60.0f` |
+| `KoopaStateDamageEscape.exeEscapeStartLoop.f1` | f32 | `800.0f` |
+| `KoopaStateDamageEscape.exeEscapeStartLoop.f2` | f32 | `1200.0f` |
+| `KoopaStateDamageEscape.exeEscapeStartLoop.f3` | f32 | `2000.0f` |
 | `KoopaStateDamageEscape.isDownEnd.1` | s32 | `45` |
 | `KoopaStateDamageEscape.isDownEnd.2` | s32 | `45` |
 | `KoopaStateDamageEscape.isDownEnd.3` | s32 | `20` |
@@ -19564,11 +20733,18 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaStateDamageEscape.sDownStopSceneStep` | s32 | `5` |
 | `KoopaStateDamageEscape.sEscapeRunWallJumpSpeed` | f32 | `15.0f` |
 | `KoopaStateDamageEscape.sEscapeStartJumpSpeed` | f32 | `80.0f` |
+| `KoopaStateGuard.sGuardFallParam` | f32[4] | `0.0f, 1.0f, 0.98f, 0.0f` |
+| `KoopaStateJumpAway.exeJump.f1` | f32 | `1500.0f` |
+| `KoopaStateJumpAway.exeJump.f2` | f32 | `2000.0f` |
+| `KoopaStateJumpAway.exeJump.f3` | f32 | `2000.0f` |
 | `KoopaStateJumpAway.sJumpFlyUpSpeed` | f32 | `35.0f` |
 | `KoopaStateJumpAway.sJumpFrontSpeed` | f32 | `20.0f` |
 | `KoopaStateJumpAway.sJumpGravity` | f32 | `1.0f` |
+| `OtaKing.appearBubble.f1` | f32 | `0.5f` |
+| `OtaKing.appearBubble.f2` | f32 | `60.0f` |
 | `OtaKing.cAppearDemoRippleStepL` | s32 | `190` |
 | `OtaKing.cAppearDemoRippleStepS` | s32 | `40` |
+| `OtaKing.cAppearDemoRotate` | f32[3] | `0.0f, 30.0f, 0.0f` |
 | `OtaKing.cAppearDemoRumblePad01` | s32 | `50` |
 | `OtaKing.cAppearDemoRumblePad02` | s32 | `130` |
 | `OtaKing.cAppearDemoRumblePad03` | s32 | `160` |
@@ -19585,11 +20761,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OtaKing.cBubbleAppearNum` | s32 | `6` |
 | `OtaKing.cBubbleAppearRandomAngle` | f32 | `30.0f` |
 | `OtaKing.cBubbleAppearStep` | s32 | `100` |
+| `OtaKing.cBubbleAppearVelocity` | f32[3] | `0.0f, 37.5f, 15.0f` |
 | `OtaKing.cBubbleAttackRippleStep` | s32 | `85` |
 | `OtaKing.cDamageCrownFallFrame` | s32 | `73` |
 | `OtaKing.cDamageFrontFootClipingHeight` | f32 | `-600.0f` |
+| `OtaKing.cDownDemoCocoNutPos` | f32[3] | `0.0f, 630.0f, 250.0f` |
 | `OtaKing.cDownDemoCocoNutScale` | f32 | `1.5f` |
 | `OtaKing.cDownDemoFrame` | s32 | `300` |
+| `OtaKing.cDownDemoRotate` | f32[3] | `0.0f, 43.0f, 0.0f` |
 | `OtaKing.cDownDemoRumbleFrame1` | s32 | `105` |
 | `OtaKing.cDownDemoRumbleFrame2` | s32 | `150` |
 | `OtaKing.cDownSinkStartStep` | s32 | `80` |
@@ -19599,9 +20778,11 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OtaKing.cFireBallThrowSpeed` | f32 | `15.0f` |
 | `OtaKing.cHP` | s32 | `3` |
 | `OtaKing.cLongFootDemoBckStep` | u32[4] | `3, 8, 14, 18` |
+| `OtaKing.cLongFootScale` | f32[3] | `1.0f, 0.9f, 0.8f` |
 | `OtaKing.cNearAttackRippleStep` | s32 | `20` |
 | `OtaKing.cPowerStarAppearOffsetY` | f32 | `100.0f` |
 | `OtaKing.cPowerStarExistBgmStartStep` | s32 | `200` |
+| `OtaKing.cSensorOffset` | f32[3] | `0.0f, 150.0f, 0.0f` |
 | `OtaKing.cStarPieceAppearNum` | s32 | `8` |
 | `OtaKing.cStarPieceAppearOffsetY` | f32 | `300.0f` |
 | `OtaKing.cStarPieceAppearRange` | f32 | `60.0f` |
@@ -19616,7 +20797,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OtaKing.cTurnSpeedMax` | f32 | `1.0f` |
 | `OtaKing.cValidThrowCocoNutDistance` | f32 | `500.0f` |
 | `OtaKing.cWaitFrame` | s32 | `75` |
+| `OtaKing.dirToPlayer.f1` | f32 | `180.0f` |
+| `OtaKing.dirToPlayer.f2` | f32 | `360.0f` |
 | `OtaKing.exeAppearDemo.1` | s32 | `1` |
+| `OtaKing.exeAppearStar.f1` | f32 | `0.001f` |
 | `OtaKing.exeDamage.1` | s32 | `2` |
 | `OtaKing.exeDamage.2` | s32 | `3` |
 | `OtaKing.exeDown.1` | s32 | `2` |
@@ -19628,18 +20812,66 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OtaKing.exePowerUp.4` | s32 | `195` |
 | `OtaKing.exePowerUp.5` | s32 | `215` |
 | `OtaKing.exePowerUp.6` | s32 | `215` |
+| `OtaKing.exePowerUp.f1` | f32 | `15.0f` |
+| `OtaKing.exeWaitOnSwitch.f1` | f32 | `0.001f` |
+| `OtaKing.init.f1` | f32 | `3000.0f` |
+| `OtaKing.initLongFoot.f1` | f32 | `735.0f` |
+| `OtaKing.initLongFoot.f10` | f32 | `43.0f` |
+| `OtaKing.initLongFoot.f11` | f32 | `884.0f` |
+| `OtaKing.initLongFoot.f12` | f32 | `8.0f` |
+| `OtaKing.initLongFoot.f13` | f32 | `159.0f` |
+| `OtaKing.initLongFoot.f14` | f32 | `55.0f` |
+| `OtaKing.initLongFoot.f15` | f32 | `55.0f` |
+| `OtaKing.initLongFoot.f16` | f32 | `896.0f` |
+| `OtaKing.initLongFoot.f17` | f32 | `9.0f` |
+| `OtaKing.initLongFoot.f18` | f32 | `14.0f` |
+| `OtaKing.initLongFoot.f2` | f32 | `80.0f` |
+| `OtaKing.initLongFoot.f3` | f32 | `55.0f` |
+| `OtaKing.initLongFoot.f4` | f32 | `9.0f` |
+| `OtaKing.initLongFoot.f5` | f32 | `266.0f` |
+| `OtaKing.initLongFoot.f6` | f32 | `959.0f` |
+| `OtaKing.initLongFoot.f7` | f32 | `130.0f` |
+| `OtaKing.initLongFoot.f8` | f32 | `107.0f` |
+| `OtaKing.initLongFoot.f9` | f32 | `14.0f` |
+| `OtaKing.initModel.f1` | f32 | `5000.0f` |
+| `OtaKing.initModel.f2` | f32 | `50.0f` |
+| `OtaKing.initModel.f3` | f32 | `10.0f` |
+| `OtaKing.initModel.f4` | f32 | `500.0f` |
+| `OtaKing.throwCocoNut.f1` | f32 | `180.0f` |
+| `OtaKing.throwCocoNut.f2` | f32 | `360.0f` |
+| `OtaKing.throwFireBall.f1` | f32 | `180.0f` |
+| `OtaKing.throwFireBall.f2` | f32 | `360.0f` |
+| `OtaKingLongFoot.cFoot05SensorOffset` | f32[3] | `80.0f, 0.0f, -40.0f` |
 | `OtaKingLongFoot.cFoot05SensorRadius` | f32 | `150.0f` |
+| `OtaKingLongFoot.cFoot06SensorOffset` | f32[3] | `100.0f, 0.0f, -30.0f` |
 | `OtaKingLongFoot.cFoot06SensorRadius` | f32 | `150.0f` |
+| `OtaKingLongFoot.cFoot08SensorOffset` | f32[3] | `125.0f, 0.0f, -40.0f` |
 | `OtaKingLongFoot.cFoot08SensorRadius` | f32 | `150.0f` |
+| `OtaKingLongFoot.cFoot10SensorOffset` | f32[3] | `125.0f, 0.0f, 0.0f` |
 | `OtaKingLongFoot.cFoot10SensorRadius` | f32 | `110.0f` |
+| `OtaKingLongFoot.cFoot12SensorOffset` | f32[3] | `75.0f, 0.0f, 20.0f` |
 | `OtaKingLongFoot.cFoot12SensorRadius` | f32 | `90.0f` |
+| `OtaKingLongFoot.cFoot14SensorOffset` | f32[3] | `50.0f, 0.0f, 20.0f` |
 | `OtaKingLongFoot.cFoot14SensorRadius` | f32 | `50.0f` |
 | `OtaKingLongFoot.exeAppearDemo.setBckRate.1` | f32 | `1.0f` |
+| `OtaKingMagma.cBloomModelOffset` | f32[3] | `0.0, 10.0f, 0.0f` |
+| `Polta.appearStarPiece.f1` | f32 | `50.0f` |
+| `Polta.appearStarPiece.f2` | f32 | `60.0f` |
+| `Polta.calcToPlayerRotateSpeed.f1` | f32 | `10.0f` |
 | `Polta.sBombTeresaBufferSize` | s32 | `6` |
 | `Polta.sTurnAccel` | f32 | `0.1f` |
 | `Polta.sTurnBreakFric` | f32 | `0.99f` |
 | `Polta.sTurnFric` | f32 | `0.998f` |
 | `Polta.sTurnMaxSpeed` | f32 | `1.1f` |
+| `PoltaActionBase.updateScreamSensor.f1` | f32 | `3200.0f` |
+| `PoltaArm.exeDamage.f1` | f32 | `2.0f` |
+| `PoltaBattleLv1.control.f1` | f32 | `0.2f` |
+| `PoltaBattleLv1.control.f2` | f32 | `0.4f` |
+| `PoltaBattleLv2.control.f1` | f32 | `0.2f` |
+| `PoltaBattleLv2.control.f2` | f32 | `0.4f` |
+| `PoltaBattleLv2.tryAttackGround.f1` | f32 | `45.0f` |
+| `PoltaBattleLv2.tryAttackGround.f2` | f32 | `1500.0f` |
+| `PoltaBattleLv2.tryAttackGround.f3` | f32 | `3000.0f` |
 | `PoltaDemo.sOpeningBlurAlpha` | u8 | `80` |
 | `PoltaDemo.sOpeningBlurFadeIn` | s32 | `5` |
 | `PoltaDemo.sOpeningBlurFadeOut` | s32 | `30` |
@@ -19655,7 +20887,18 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PoltaFunction.cBombTeresaRootHeight` | f32 | `120.0f` |
 | `PoltaFunction.cRockCircleAngleStep` | f32 | `7.0f` |
 | `PoltaFunction.cRockCircleBaseAngle` | f32 | `15.0f` |
+| `PoltaFunction.setBodyHP.f1` | f32 | `3.0f` |
+| `PoltaGroundRock.exeBreak.f1` | f32 | `800.0f` |
+| `PoltaGroundRock.exeBreak.f2` | f32 | `1200.0f` |
+| `PoltaGroundRock.exeBreak.f3` | f32 | `2000.0f` |
 | `PoltaGroundRock.exeJut.1` | s32 | `20` |
+| `PoltaGroundRock.exeJut.f1` | f32 | `500.0f` |
+| `PoltaGroundRock.exeJut.f2` | f32 | `800.0f` |
+| `PoltaGroundRock.exeJut.f3` | f32 | `1200.0f` |
+| `PoltaGroundRock.exeJut.f4` | f32 | `2000.0f` |
+| `PoltaGroundRock.init.f1` | f32 | `170.0f` |
+| `PoltaGroundRock.init.f2` | f32 | `260.0f` |
+| `PoltaGroundRock.start.f1` | f32 | `500.0f` |
 | `PoltaGroundRockHolder.sMaxPoltaGroundRock` | s32 | `16` |
 | `PoltaRock.cFloatFriction` | f32 | `0.92f` |
 | `PoltaRock.cFloatHeight` | f32 | `800.0f` |
@@ -19670,31 +20913,104 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PoltaRock.cRadius` | f32 | `120.0f` |
 | `PoltaRock.cThrowAccel` | f32 | `3.0f` |
 | `PoltaRockHolder.sMaxPoltaRock` | s32 | `16` |
+| `PoltaSensorCtrl.initSensor.f1` | f32 | `200.0f` |
+| `PoltaSensorCtrl.initSensor.f2` | f32 | `50.0f` |
 | `PoltaStateGenerateRock.cPatternDrawMax` | s32 | `9` |
 | `PoltaStateGenerateRock.cRockCircleRadius` | f32 | `600.0f` |
 | `PoltaStateGenerateRock.cYellowRockRate` | f32 | `0.08f` |
 | `PoltaStateGroundRockAttack.exeGenerate.1` | s32 | `15` |
+| `PoltaStateGroundRockAttack.exeGenerate.f1` | f32 | `850.0f` |
+| `PoltaStateGroundRockAttack.exeGenerate.f2` | f32 | `400.0f` |
+| `PoltaStateGroundRockAttack.exeGenerate.f3` | f32 | `20.0f` |
+| `PoltaStateGroundRockAttack.exeGenerate.f4` | f32 | `20.0f` |
 | `PoltaStatePunch.exeToWait.1` | s32 | `70` |
+| `PoltaStateStagger.exeWait.f1` | f32 | `1800.0f` |
+| `PoltaStateStagger.exeWait.f2` | f32 | `1800.0f` |
+| `PoltaStateStagger.exeWait.f3` | f32 | `1500.0f` |
+| `PoltaStateStagger.exeWait.f4` | f32 | `0.7f` |
+| `PoltaStateStagger.exeWait.f5` | f32 | `0.8f` |
+| `PoltaStateStagger.exeWait.f6` | f32 | `0.8f` |
+| `PoltaStateStagger.exeWait.f7` | f32 | `0.9f` |
+| `PoltaStateStagger.exeWait.f8` | f32 | `0.5f` |
+| `PoltaStateStagger.exeWait.f9` | f32 | `50.0f` |
 | `SkeletalFishBaby.cBreakAirBubble` | bool | `true` |
+| `SkeletalFishBaby.exeDead.f1` | f32 | `10.0f` |
+| `SkeletalFishBaby.exeDead.f2` | f32 | `40.0f` |
+| `SkeletalFishBaby.init.f1` | f32 | `500.0f` |
+| `SkeletalFishBaby.initSensor.f1` | f32 | `20.0f` |
+| `SkeletalFishBaby.initSensor.f2` | f32 | `100.0f` |
+| `SkeletalFishBaby.initSensor.f3` | f32 | `30.0f` |
+| `SkeletalFishBaby.initSensor.f4` | f32 | `20.0f` |
 | `SkeletalFishBaby.sAccel` | f32 | `0.1f` |
 | `SkeletalFishBaby.sBustSensorRadius` | f32 | `120.0f` |
 | `SkeletalFishBaby.sSensorRadius` | f32 | `190.0f` |
 | `SkeletalFishBaby.sSpeed` | f32 | `20.0f` |
 | `SkeletalFishBaby.sStarPieceNum` | s32 | `10` |
+| `SkeletalFishBaby.sStarPointerTargetOffset` | f32[12] | `0.0f, 0.0f, 150.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f` |
 | `SkeletalFishBaby.sStarPointerTargetSize` | f32[4] | `220.0f, 150.0f, 120.0f, 120.0f` |
 | `SkeletalFishBaby.sTailSensorRadius` | f32 | `100.0f` |
 | `SkeletalFishBaby.sWaistSensorRadius` | f32 | `120.0f` |
+| `SkeletalFishBoss.calcAnim.f1` | f32 | `1.8325958f` |
+| `SkeletalFishBoss.calcGravityCenter.f1` | f32 | `0.001f` |
+| `SkeletalFishBoss.damage.f1` | f32 | `10.0f` |
+| `SkeletalFishBoss.damage.f2` | f32 | `40.0f` |
+| `SkeletalFishBoss.endBreakDemo.f1` | f32 | `1573.0f` |
 | `SkeletalFishBoss.exeAppearDemo.1` | s32 | `280` |
 | `SkeletalFishBoss.exeBreakDemo.1` | s32 | `204` |
 | `SkeletalFishBoss.exeBreakDemo.2` | s32 | `206` |
 | `SkeletalFishBoss.exeBreakDemo.3` | s32 | `200` |
+| `SkeletalFishBoss.exeBreakDemo.f1` | f32 | `5.0f` |
+| `SkeletalFishBoss.exeBreakDemo.f2` | f32 | `80.0f` |
+| `SkeletalFishBoss.exeDamage.f1` | f32 | `10.0f` |
+| `SkeletalFishBoss.exeDamage.f2` | f32 | `40.0f` |
 | `SkeletalFishBoss.exeDeadDemo.1` | s32 | `218` |
+| `SkeletalFishBoss.exeOpenWait.f1` | f32 | `7000.0f` |
+| `SkeletalFishBoss.exeOpenWait.f2` | f32 | `7000.0f` |
+| `SkeletalFishBoss.exePowerUpDemo.f1` | f32 | `60.0f` |
+| `SkeletalFishBoss.exeSwim.f1` | f32 | `5000.0f` |
+| `SkeletalFishBoss.exeSwim.f2` | f32 | `5000.0f` |
+| `SkeletalFishBoss.getBodyThickness.f1` | f32 | `400.0f` |
+| `SkeletalFishBoss.init.f1` | f32 | `1000.0f` |
+| `SkeletalFishBoss.initShadow.f1` | f32 | `4000.0f` |
+| `SkeletalFishBoss.resetCamera.f1` | f32 | `1200.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f1` | f32 | `400.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f2` | f32 | `120.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f3` | f32 | `320.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f4` | f32 | `9.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f5` | f32 | `10.0f` |
+| `SkeletalFishBoss.SkeletalFishBossHead.f6` | f32 | `270.0f` |
+| `SkeletalFishBoss.updateBgm.f1` | f32 | `4200.0f` |
+| `SkeletalFishBossFunc.getNearestGuardPosID.f1` | f32 | `100000.0f` |
+| `SkeletalFishBossInfo.createLevelStatus.f1` | f32 | `20.0f` |
+| `SkeletalFishBossInfo.createLevelStatus.f2` | f32 | `2000.0f` |
 | `SkeletalFishGuard.cAccel` | f32 | `0.8f` |
 | `SkeletalFishGuard.cApartSteps` | s32 | `80` |
 | `SkeletalFishGuard.cAppearJoinSteps` | s32 | `201` |
 | `SkeletalFishGuard.cAppearRiseSteps` | s32 | `99` |
 | `SkeletalFishGuard.cMaxSpeed` | f32 | `22.0f` |
+| `SkeletalFishGuard.exeApart.f1` | f32 | `0.3f` |
+| `SkeletalFishGuard.exeApart.f2` | f32 | `0.3f` |
+| `SkeletalFishGuard.exeApart.f3` | f32 | `180.0f` |
+| `SkeletalFishGuard.exeAppear.f1` | f32 | `1000.0f` |
+| `SkeletalFishGuard.exeAppear.f2` | f32 | `500.0f` |
+| `SkeletalFishGuard.exeAppear.f3` | f32 | `10.0f` |
+| `SkeletalFishGuard.exeAppear.f4` | f32 | `10.0f` |
+| `SkeletalFishGuard.exeFollow.f1` | f32 | `1000.0f` |
+| `SkeletalFishGuard.exeFollow.f2` | f32 | `500.0f` |
+| `SkeletalFishGuard.exeFollow.f3` | f32 | `1.5f` |
+| `SkeletalFishGuard.exeFollow.f4` | f32 | `180.0f` |
+| `SkeletalFishGuard.exeFollow.f5` | f32 | `180.0f` |
+| `SkeletalFishGuard.exeNumb.f1` | f32 | `1.5f` |
+| `SkeletalFishGuard.init.f1` | f32 | `120.0f` |
+| `SkeletalFishGuard.init.f2` | f32 | `170.0f` |
+| `SkeletalFishGuard.initSensor.f1` | f32 | `120.0f` |
+| `SkeletalFishGuard.initSensor.f2` | f32 | `120.0f` |
+| `SkeletalFishGuard.isPlayerInAttackRange.f1` | f32 | `5000.0f` |
+| `SkeletalFishGuard.isPlayerInAttackRange.f2` | f32 | `180.0f` |
+| `SkeletalFishGuard.receiveMsgPlayerAttack.f1` | f32 | `10.0f` |
+| `SkeletalFishGuard.receiveMsgPlayerAttack.f2` | f32 | `40.0f` |
 | `SkeletalFishRailControl.cDefaultSpeed` | f32 | `20.0f` |
+| `TombSpider.exeWaitPlayer.f1` | f32 | `18000.0f` |
 | `TombSpiderAcid.sDistanceCheckMap` | f32 | `2500.0f` |
 | `TombSpiderActionBase.cChanceEndSignAnimRate1` | f32 | `1.0f` |
 | `TombSpiderActionBase.cChanceEndSignAnimRate2` | f32 | `2.0f` |
@@ -19704,6 +21020,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TombSpiderActionBase.cStepChanceEndSign1` | s32 | `-480` |
 | `TombSpiderActionBase.cStepChanceEndSign2` | s32 | `-240` |
 | `TombSpiderActionBase.cVitalSpotNum` | s32 | `3` |
+| `TombSpiderActionBase.updateAttackLoop.f1` | f32 | `360.0f` |
 | `TombSpiderActionBattle.sChanceDamageLastStep` | s32 | `5` |
 | `TombSpiderActionCocoon.sBreakStep` | s32 | `3` |
 | `TombSpiderDemo.sBattle2ndStartStarPieceNum` | s32 | `25` |
@@ -19717,14 +21034,93 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TombSpiderDemo.sStepGateBreak` | s32 | `75` |
 | `TombSpiderDemo.sStepJumpRotateToPlayerEnd` | s32 | `70` |
 | `TombSpiderDemo.sStepJumpRotateToPlayerStart` | s32 | `20` |
+| `TombSpiderDemo.updateBattle2ndStart.f1` | f32 | `360.0f` |
+| `TombSpiderDemo.updateBattle2ndStart.f2` | f32 | `40.0f` |
+| `TombSpiderDemo.updateGateOpen.f1` | f32 | `270.0f` |
+| `TombSpiderDemo.updateGateOpen.f2` | f32 | `180.0f` |
+| `TombSpiderDemo.updateGateOpen.f3` | f32 | `50.0f` |
+| `TombSpiderFunction.calcRotateSpeedToPlayer.f1` | f32 | `90.0f` |
+| `TombSpiderFunction.calcRotateSpeedToPlayer.f2` | f32 | `360.0f` |
+| `TombSpiderFunction.calcRotateSpeedToPlayer.f3` | f32 | `360.0f` |
+| `TombSpiderFunction.isRotateLeftToPlayer.f1` | f32 | `90.0f` |
+| `TombSpiderFunction.resetPlayerPosTombSpider.f1` | f32 | `200.0f` |
 | `TombSpiderFunction.sPlanetInsideRadius` | f32 | `1800.0f` |
+| `TombSpiderParts.initParts.f1` | f32 | `30.0f` |
+| `TombSpiderParts.initParts.f10` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f11` | f32 | `33.0f` |
+| `TombSpiderParts.initParts.f12` | f32 | `5.0f` |
+| `TombSpiderParts.initParts.f13` | f32 | `30.0f` |
+| `TombSpiderParts.initParts.f14` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f15` | f32 | `33.0f` |
+| `TombSpiderParts.initParts.f16` | f32 | `5.0f` |
+| `TombSpiderParts.initParts.f17` | f32 | `320.0f` |
+| `TombSpiderParts.initParts.f18` | f32 | `180.0f` |
+| `TombSpiderParts.initParts.f19` | f32 | `130.0f` |
+| `TombSpiderParts.initParts.f2` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f20` | f32 | `280.0f` |
+| `TombSpiderParts.initParts.f21` | f32 | `200.0f` |
+| `TombSpiderParts.initParts.f22` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f23` | f32 | `167.0f` |
+| `TombSpiderParts.initParts.f24` | f32 | `130.0f` |
+| `TombSpiderParts.initParts.f25` | f32 | `280.0f` |
+| `TombSpiderParts.initParts.f26` | f32 | `200.0f` |
+| `TombSpiderParts.initParts.f27` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f28` | f32 | `167.0f` |
+| `TombSpiderParts.initParts.f3` | f32 | `35.0f` |
+| `TombSpiderParts.initParts.f4` | f32 | `5.0f` |
+| `TombSpiderParts.initParts.f5` | f32 | `30.0f` |
+| `TombSpiderParts.initParts.f6` | f32 | `10.0f` |
+| `TombSpiderParts.initParts.f7` | f32 | `35.0f` |
+| `TombSpiderParts.initParts.f8` | f32 | `5.0f` |
+| `TombSpiderParts.initParts.f9` | f32 | `30.0f` |
 | `TombSpiderParts.sAttachBodyBackOffset` | f32 | `100.0f` |
 | `TombSpiderParts.sAttachBodyBackRadius` | f32 | `500.0f` |
 | `TombSpiderParts.sAttachFootOffset` | f32 | `100.0f` |
 | `TombSpiderParts.sAttachFootRadius` | f32 | `300.0f` |
+| `TombSpiderSensorCtrl.initSensor.f1` | f32 | `600.0f` |
+| `TombSpiderSensorCtrl.initSensor.f10` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f11` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f12` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f13` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f14` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f15` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f16` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f17` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f18` | f32 | `750.0f` |
+| `TombSpiderSensorCtrl.initSensor.f19` | f32 | `50.0f` |
+| `TombSpiderSensorCtrl.initSensor.f2` | f32 | `100.0f` |
+| `TombSpiderSensorCtrl.initSensor.f3` | f32 | `280.0f` |
+| `TombSpiderSensorCtrl.initSensor.f4` | f32 | `600.0f` |
+| `TombSpiderSensorCtrl.initSensor.f5` | f32 | `150.0f` |
+| `TombSpiderSensorCtrl.initSensor.f6` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f7` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f8` | f32 | `200.0f` |
+| `TombSpiderSensorCtrl.initSensor.f9` | f32 | `200.0f` |
 | `TombSpiderSensorCtrl.sAttackSensorDistanceOffset` | f32 | `100.0f` |
 | `TombSpiderSensorCtrl.sEyeSensorPosOffset` | f32 | `-100.0f` |
 | `TombSpiderSensorCtrl.sHipSensorPosOffset` | f32 | `-400.0f` |
+| `TombSpiderSensorCtrl.updateAttackSensor.f1` | f32 | `90.0f` |
+| `TripodBoss.addAccelToWeightPosition.f1` | f32 | `0.5f` |
+| `TripodBoss.addAccelToWeightPosition.f2` | f32 | `0.5f` |
+| `TripodBoss.addAccelToWeightPosition.f3` | f32 | `0.3f` |
+| `TripodBoss.addAccelToWeightPosition.f4` | f32 | `500.0f` |
+| `TripodBoss.addAccelToWeightPosition.f5` | f32 | `500.0f` |
+| `TripodBoss.addAccelToWeightPosition.f6` | f32 | `0.8f` |
+| `TripodBoss.calcBodyMovement.f1` | f32 | `0.95f` |
+| `TripodBoss.calcBodyMovement.f2` | f32 | `0.95f` |
+| `TripodBoss.calcBodyMovement.f3` | f32 | `0.95f` |
+| `TripodBoss.calcClippingSphere.f1` | f32 | `0.5f` |
+| `TripodBoss.calcDemoMovement.f1` | f32 | `1.5f` |
+| `TripodBoss.exeDamage.f1` | f32 | `79.5f` |
+| `TripodBoss.exeDamage.f2` | f32 | `80.0f` |
+| `TripodBoss.exePainDemo.f1` | f32 | `5.0f` |
+| `TripodBoss.exePainDemo.f2` | f32 | `3200.0f` |
+| `TripodBoss.exePainDemo.f3` | f32 | `3400.0f` |
+| `TripodBoss.exePainDemo.f4` | f32 | `3400.0f` |
+| `TripodBoss.exePainDemo.f5` | f32 | `5000.0f` |
+| `TripodBoss.initLegIKPlacement.f1` | f32 | `0.5f` |
+| `TripodBoss.requestEndDamageDemo.f1` | f32 | `50.0f` |
+| `TripodBoss.requestEndDamageDemo.f2` | f32 | `60.0f` |
 | `TripodBoss.sBgmStateNormal` | s32 | `1` |
 | `TripodBoss.sBgmStateRide` | s32 | `3` |
 | `TripodBoss.sDamageTime` | s32 | `129` |
@@ -19732,20 +21128,45 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TripodBoss.sKillerGeneraterIncreaseSeTiming` | s32 | `90` |
 | `TripodBoss.sLegAngleStep` | f32 | `2.0943952f` |
 | `TripodBossBreakMovement.sBreakRandamaize` | f32 | `1.0f` |
+| `TripodBossBreakMovement.setBreakDownLevel.f1` | f32 | `50.0f` |
+| `TripodBossBreakMovement.setBreakDownLevel.f2` | f32 | `90.0f` |
+| `TripodBossBreakMovement.setBreakDownLevel.f3` | f32 | `50.0f` |
 | `TripodBossBreakMovement.sGravityAccel` | f32 | `0.2f` |
 | `TripodBossBreakMovement.sMaxStartMoment` | f32 | `0.04f` |
 | `TripodBossBreakMovement.sMinStartMoment` | f32 | `0.01f` |
+| `TripodBossBreakMovement.start.f1` | f32 | `0.995f` |
+| `TripodBossBreakMovement.start.f2` | f32 | `0.997f` |
+| `TripodBossBreakMovement.start.f3` | f32 | `20.0f` |
+| `TripodBossBreakMovement.start.f4` | f32 | `25.0f` |
+| `TripodBossBreakMovement.TripodBossBreakMovement.f1` | f32 | `0.2f` |
+| `TripodBossBreakMovement.TripodBossBreakMovement.f2` | f32 | `0.9f` |
 | `TripodBossCore.sBreakStopFrame` | s32 | `16` |
 | `TripodBossCore.sBreakStopStep` | s32 | `2` |
 | `TripodBossCore.sHitSensorRadius` | f32 | `300.0f` |
+| `TripodBossFixParts.init.f1` | f32 | `250.0f` |
+| `TripodBossFixParts.init.f2` | f32 | `1000.0f` |
+| `TripodBossFixParts.init.f3` | f32 | `3750.0f` |
+| `TripodBossFixPartsBase.initClippingSphere.f1` | f32 | `0.5f` |
 | `TripodBossGuardWall.sMoveSeLength` | s32 | `58` |
 | `TripodBossGuardWall.sRotateSpeed` | f32 | `-0.2f` |
 | `TripodBossGuardWall.sStartCameraBlendTime` | s32 | `20` |
 | `TripodBossGuardWallPart.exeBreak.1` | s32 | `5` |
+| `TripodBossGuardWallPart.init.f1` | f32 | `1000.0f` |
 | `TripodBossGuardWallPart.sMoveStopSeTiming` | s32 | `38` |
 | `TripodBossGuardWallPart.sRepairPlayerDistance` | f32 | `1000.0f` |
 | `TripodBossGuardWallPart.sRepairTiming` | s32 | `600` |
 | `TripodBossKillerGenerater.sCanRestartPlayerDistance` | f32 | `230.0f` |
+| `TripodBossKillerGeneraterCircle.sBottomHorizonAngleTable` | f32[3] | `0.0f, 120.0f, 240.0f` |
+| `TripodBossKillerGeneraterCircle.sUnderHorizonAngleTable` | f32[6] | `78.0f, 120.0f, 160.0f, -160.0f, -120.0f, -78.0f` |
+| `TripodBossKillerGeneraterCircle.sUpperHorizonAngleTable` | f32[7] | `42.0f, 96.0f, 140.0f, 180.0f, -140.0f, -96.0f, -42.0f` |
+| `TripodBossLeg.addIKLimitPower.f1` | f32 | `0.5f` |
+| `TripodBossLeg.addIKLimitPower.f2` | f32 | `0.5f` |
+| `TripodBossLeg.addIKLimitPower.f3` | f32 | `0.9f` |
+| `TripodBossLeg.addIKLimitPower.f4` | f32 | `5.0f` |
+| `TripodBossLeg.addToTargetPower.f1` | f32 | `0.1f` |
+| `TripodBossLeg.init.f1` | f32 | `1000.0f` |
+| `TripodBossLeg.init.f2` | f32 | `500.0f` |
+| `TripodBossLeg.init.f3` | f32 | `200.0f` |
 | `TripodBossLeg.sAnkleLandingStartRate` | f32 | `0.15f` |
 | `TripodBossLeg.sAnkleShadowOffset` | f32 | `630.0f` |
 | `TripodBossLeg.sAnkleSlerpRate` | f32 | `0.2f` |
@@ -19753,6 +21174,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TripodBossLeg.sDamageVibrationAmplitude` | f32 | `40.0f` |
 | `TripodBossLeg.sDamageVibrationCycle` | f32 | `0.25f` |
 | `TripodBossLeg.sDamageVibrationTime` | s32 | `27` |
+| `TripodBossLeg.separateMatrixRotateYZX.f1` | f32 | `0.000001f` |
 | `TripodBossLeg.sFallAccel` | f32 | `1.0f` |
 | `TripodBossLeg.sFallDamping` | f32 | `0.98f` |
 | `TripodBossLeg.sLandShakeMiddleDistance` | f32 | `3500.0f` |
@@ -19767,6 +21189,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TripodBossLeg.sStampSignVibrationTime` | s32 | `20` |
 | `TripodBossLeg.sTargetBrakeDistance` | f32 | `300.0f` |
 | `TripodBossLeg.sUpAccel` | f32 | `1.5f` |
+| `TripodBossShell.init.f1` | f32 | `300.0f` |
 | `TripodBossShell.sBreakStopDistance` | f32 | `1000.0f` |
 | `TripodBossShell.sBreakStopFrame` | s32 | `30` |
 | `TripodBossShell.sBreakStopStep` | s32 | `4` |
@@ -19779,47 +21202,259 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `CameraAnim.calc.f1` | f32 | `180.0f` |
+| `CameraAnim.calc.f2` | f32 | `180.0f` |
 | `CameraAnim.cKeySlopeUnit` | f32 | `30.0f` |
+| `CameraBehind.setParamFromChunk.f1` | f32 | `180.0f` |
+| `CameraBehind.setParamFromChunk.f2` | f32 | `180.0f` |
+| `CameraBlackHole.calc.f1` | f32 | `0.002f` |
+| `CameraBlackHole.reset.f1` | f32 | `0.7f` |
+| `CameraCalc.diffRadian.f1` | f32 | `2.0f` |
+| `CameraCalc.diffRadian.f2` | f32 | `2.0f` |
+| `CameraCharmedFix.calc.f1` | f32 | `0.1f` |
+| `CameraCharmedFix.calc.f2` | f32 | `15.0f` |
+| `CameraCharmedTripodBoss.calc.f1` | f32 | `0.1f` |
+| `CameraCharmedTripodBoss.calc.f2` | f32 | `15.0f` |
+| `CameraCharmedVecReg.calc.f1` | f32 | `0.1f` |
+| `CameraCharmedVecReg.calc.f2` | f32 | `15.0f` |
 | `CameraCharmedVecReg.sRate` | f32 | `0.02f` |
+| `CameraCharmedVecRegTower.calc.f1` | f32 | `0.1f` |
+| `CameraCharmedVecRegTower.calc.f2` | f32 | `15.0f` |
+| `CameraCharmedVecRegTower.calc.f3` | f32 | `200.0f` |
+| `CameraContext.getRenderFovy.f1` | f32 | `4.0f` |
+| `CameraContext.getRenderFovy.f2` | f32 | `3.0f` |
+| `CameraContext.getRenderFovy.f3` | f32 | `0.5f` |
+| `CameraContext.getRenderFovy.f4` | f32 | `180.0f` |
+| `CameraContext.getRenderFovy.f5` | f32 | `4.0f` |
+| `CameraContext.getRenderFovy.f6` | f32 | `3.0f` |
+| `CameraContext.getRenderFovy.f7` | f32 | `2.0f` |
+| `CameraContext.getRenderFovy.f8` | f32 | `180.0f` |
+| `CameraContext.initParams.f1` | f32 | `3000.0f` |
+| `CameraContext.initParams.f2` | f32 | `45.0f` |
+| `CameraContext.initParams.f3` | f32 | `100.0f` |
+| `CameraContext.initParams.f4` | f32 | `800000.0f` |
+| `CameraDead.calc.f1` | f32 | `180.0f` |
+| `CameraDirector.calcSubjective.f1` | f32 | `100.0f` |
+| `CameraDirector.calcSubjective.f2` | f32 | `0.5f` |
+| `CameraDirector.calcSubjective.f3` | f32 | `0.5f` |
+| `CameraDirector.calcSubjective.f4` | f32 | `0.5f` |
+| `CameraDirector.calcSubjective.f5` | f32 | `0.5f` |
+| `CameraDirector.CameraDirector.f1` | f32 | `100.0f` |
+| `CameraDirector.endSubjectiveCamera.f1` | f32 | `15.0f` |
+| `CameraDirector.resetCameraMan.f1` | f32 | `800.0f` |
+| `CameraDirector.resetCameraMan.f2` | f32 | `300.0f` |
 | `CameraDirector.sDefaultFovy` | f32 | `45.0f` |
 | `CameraDirector.sSubjectiveInterpolateFrame` | s32 | `20` |
 | `CameraDirector.sSubjectivePosInterpolateFrame` | s32 | `0` |
 | `CameraDirector.sSubjectiveRotInterpolateFrame` | s32 | `10` |
+| `CameraDirector.startSubjectiveCamera.f1` | f32 | `10.0f` |
+| `CameraDirector.startSubjectiveCamera.f2` | f32 | `15.0f` |
+| `CameraFix.calc.f1` | f32 | `0.98f` |
+| `CameraFixedPoint.calc.f1` | f32 | `0.1f` |
+| `CameraFixedPoint.calc.f2` | f32 | `15.0f` |
+| `CameraFixedThere.calc.f1` | f32 | `0.1f` |
+| `CameraFixedThere.calc.f2` | f32 | `15.0f` |
 | `CameraFixedThere.sGroundFixAngle` | f32 | `30.0f` |
+| `CameraFollow.arrangeHeight.f1` | f32 | `0.99f` |
+| `CameraFollow.arrangeHeight.f2` | f32 | `0.99f` |
+| `CameraFollow.arrangeLookDown.f1` | f32 | `0.99f` |
+| `CameraFollow.arrangeLookDown.f2` | f32 | `0.99f` |
+| `CameraFollow.arrangeLookDown.f3` | f32 | `0.02f` |
+| `CameraFollow.arrangeLookUp.f1` | f32 | `0.99f` |
+| `CameraFollow.arrangeLookUp.f2` | f32 | `0.99f` |
+| `CameraFollow.calcRotPos.f1` | f32 | `0.000002f` |
+| `CameraFollow.calcRotPos.f2` | f32 | `0.000002f` |
+| `CameraFollow.constrainAngleX.f1` | f32 | `0.5f` |
+| `CameraFollow.constrainAngleX.f2` | f32 | `0.5f` |
+| `CameraFollow.constrainAngleY.f1` | f32 | `180.0f` |
+| `CameraFollow.constrainDistance.f1` | f32 | `0.5f` |
 | `CameraFollow.sCameraRadius` | f32 | `15.0f` |
 | `CameraFollow.sColCheckHeight` | f32 | `100.0f` |
 | `CameraFollow.sRoundAddition` | f32 | `0.08f` |
 | `CameraFollow.sRoundResetAddition` | f32 | `0.2f` |
 | `CameraFollow.sSlopeFrontDist` | f32 | `500.0f` |
+| `CameraFollow.startRound.f1` | f32 | `2.0f` |
+| `CameraFooFighter.calc.f1` | f32 | `0.1f` |
+| `CameraFooFighter.calc.f2` | f32 | `15.0f` |
+| `CameraFooFighter.calc.f3` | f32 | `0.995f` |
 | `CameraFooFighter.sRateWhenBraking` | f32 | `0.05f` |
+| `CameraFooFighterPlanet.calc.f1` | f32 | `0.1f` |
+| `CameraFooFighterPlanet.calc.f2` | f32 | `15.0f` |
+| `CameraFooFighterPlanet.calc.f3` | f32 | `0.05f` |
+| `CameraFooFighterPlanet.reset.f1` | f32 | `0.1f` |
+| `CameraFooFighterPlanet.reset.f2` | f32 | `15.0f` |
 | `CameraFooFighterPlanet.sRateWhenBraking` | f32 | `0.05f` |
+| `CameraFrontAndBack.calc.f1` | f32 | `0.1f` |
+| `CameraFrontAndBack.calc.f2` | f32 | `15.0f` |
+| `CameraFrontAndBack.setParamFromChunk.f1` | f32 | `180.0f` |
+| `CameraFrontAndBack.setParamFromChunk.f2` | f32 | `180.0f` |
 | `CameraFrontAndBack.sInterpolation` | s32 | `120` |
 | `CameraFrontAndBack.sWarpDistance` | f32 | `500.0f` |
+| `CameraHeightArrange.calcOffset.f1` | f32 | `0.5f` |
+| `CameraHeightArrange.calcOffset.f2` | f32 | `180.0f` |
+| `CameraHeightArrange.calcOffset.f3` | f32 | `0.1f` |
+| `CameraHeightArrange.chase.f1` | f32 | `0.5f` |
+| `CameraHeightArrange.resetParameter.f1` | f32 | `0.1f` |
+| `CameraHeightArrange.resetParameter.f2` | f32 | `15.0f` |
+| `CameraHeightArrange.resetParameter.f3` | f32 | `0.3f` |
+| `CameraHeightArrange.resetParameter.f4` | f32 | `0.1f` |
+| `CameraHeightArrange.resetParameter.f5` | f32 | `500.0f` |
+| `CameraHeightArrange.resetParameter.f6` | f32 | `800.0f` |
 | `CameraHeightArrange.sLocalOffsetRateScale` | f32 | `0.05f` |
+| `CameraHeightArrange.updateUpper.f1` | f32 | `0.5f` |
+| `CameraInwardSphere.calc.f1` | f32 | `0.1f` |
+| `CameraInwardSphere.calc.f10` | f32 | `0.1f` |
+| `CameraInwardSphere.calc.f11` | f32 | `0.9f` |
+| `CameraInwardSphere.calc.f12` | f32 | `0.1f` |
+| `CameraInwardSphere.calc.f2` | f32 | `15.0f` |
+| `CameraInwardSphere.calc.f3` | f32 | `1000.0f` |
+| `CameraInwardSphere.calc.f4` | f32 | `2000.0f` |
+| `CameraInwardSphere.calc.f5` | f32 | `0.7f` |
+| `CameraInwardSphere.calc.f6` | f32 | `35.0f` |
+| `CameraInwardSphere.calc.f7` | f32 | `35.0f` |
+| `CameraInwardSphere.calc.f8` | f32 | `1000.0f` |
+| `CameraInwardSphere.calc.f9` | f32 | `0.9f` |
+| `CameraInwardSphere.calcGravityCenter.f1` | f32 | `1000.0f` |
+| `CameraInwardSphere.calcGravityCenter.f2` | f32 | `0.001f` |
 | `CameraInwardSphere.sBaseDist` | f32 | `300.0f` |
+| `CameraInwardTower.calcIdealPose.f1` | f32 | `0.9f` |
+| `CameraInwardTower.calcIdealPose.f2` | f32 | `0.1f` |
+| `CameraInwardTower.calcIdealPose.f3` | f32 | `0.9f` |
+| `CameraInwardTower.calcIdealPose.f4` | f32 | `0.1f` |
 | `CameraInwardTower.sAttenuation` | f32 | `20.0f` |
 | `CameraInwardTower.sResetRotSpeed` | f32 | `0.2f` |
 | `CameraInwardTower.sRoundThreshold` | f32 | `0.3f` |
+| `CameraLocalUtil.arrangeDistanceByFovy.f1` | f32 | `0.5f` |
+| `CameraLocalUtil.calcRoundTarget.f1` | f32 | `360.0f` |
+| `CameraLocalUtil.calcRoundTarget.f2` | f32 | `2.0f` |
+| `CameraLocalUtil.calcRoundTarget.f3` | f32 | `2.0f` |
+| `CameraLocalUtil.calcSafeUpVec.f1` | f32 | `0.98f` |
+| `CameraLocalUtil.calcSafeUpVec.f2` | f32 | `0.98f` |
 | `CameraLocalUtil.cSafeWatchDistance` | f32 | `300.0f` |
+| `CameraLocalUtil.makeGroundWatchPoint.f1` | f32 | `0.1f` |
+| `CameraLocalUtil.makeGroundWatchPoint.f2` | f32 | `15.0f` |
+| `CameraLocalUtil.makeGroundWatchPoint.f3` | f32 | `0.05f` |
+| `CameraLocalUtil.makeGroundWatchPoint.f4` | f32 | `0.95f` |
+| `CameraLocalUtil.slerpCamera.f1` | f32 | `0.00001f` |
+| `CameraLocalUtil.updateMoveCollision.f1` | f32 | `0.03f` |
+| `CameraLocalUtil.updateMoveCollision.f2` | f32 | `5.0f` |
 | `CameraManEvent.sDefaultBlendFrame` | s32 | `60` |
+| `CameraManEvent.setSafePose.f1` | f32 | `0.98f` |
+| `CameraManEvent.setSafePose.f2` | f32 | `0.98f` |
 | `CameraManEvent.sMinDistance` | f32 | `300.0f` |
+| `CameraManGame.createDefaultFooFighterCamera.f1` | f32 | `170.0f` |
+| `CameraManGame.createDefaultFooFighterCamera.f2` | f32 | `100.0f` |
+| `CameraManGame.createDefaultFooFighterCamera.f3` | f32 | `45.0f` |
+| `CameraManGame.createDefaultFooFighterCamera.f4` | f64 | `1200.0` |
+| `CameraManGame.createDefaultFooFighterCamera.f5` | f32 | `300.0f` |
+| `CameraManGame.createDefaultFooFighterCamera.f6` | f32 | `0.03f` |
+| `CameraManGame.createDefaultWaterCamera.f1` | f32 | `170.0f` |
+| `CameraManGame.createDefaultWaterCamera.f2` | f32 | `100.0f` |
+| `CameraManGame.createDefaultWaterCamera.f3` | f32 | `45.0f` |
+| `CameraManGame.createDefaultWaterCamera.f4` | f32 | `1000.0f` |
+| `CameraManGame.createDefaultWaterCamera.f5` | f32 | `900.0f` |
+| `CameraManGame.createDefaultWaterCamera.f6` | f32 | `0.01f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f1` | f32 | `170.0f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f2` | f32 | `100.0f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f3` | f32 | `45.0f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f4` | f64 | `900.0` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f5` | f32 | `600.0f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f6` | f32 | `0.174533f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f7` | f32 | `0.349066f` |
+| `CameraManGame.createDefaultWaterSurfaceCamera.f8` | f32 | `0.15f` |
+| `CameraManGame.createZoomCamera.f1` | f32 | `100.0f` |
 | `CameraManGame.sInterpolateOffCounterMax` | s32 | `5` |
 | `CameraManGame.sMinDistance` | f32 | `300.0f` |
 | `CameraManGame.sZoomRadius` | f32 | `100.0f` |
+| `CameraManGame.zoomIn.f1` | f32 | `1.5f` |
+| `CameraManGame.zoomIn.f2` | f32 | `180.0f` |
+| `CameraManGame.zoomIn.f3` | f32 | `2.0f` |
+| `CameraMedianPlanet.calcWatchPos.f1` | f32 | `0.1f` |
+| `CameraMedianPlanet.calcWatchPos.f2` | f32 | `15.0f` |
 | `CameraMedianPlanet.sAngleConstrainRate` | f32 | `0.2f` |
 | `CameraMedianPlanet.sPartialRate` | f32 | `0.5f` |
+| `CameraMedianTower.calc.f1` | f32 | `0.1f` |
+| `CameraMedianTower.calc.f2` | f32 | `15.0f` |
+| `CameraMedianTower.calcFovyPos.f1` | f32 | `0.5f` |
+| `CameraMedianTower.calcFovyPos.f2` | f32 | `200.0f` |
 | `CameraMedianTower.sAngularVel` | f32 | `0.5f` |
 | `CameraMedianTower.sInterpolate` | s32 | `120` |
 | `CameraMedianTower.sPartialRate` | f32 | `0.5f` |
+| `CameraMedianTower.updateReset.f1` | f32 | `140.0f` |
+| `CameraMtxRegParallel.calcIdealPose.f1` | f32 | `300.0f` |
+| `CameraMtxRegParallel.calcIdealPose.f2` | f32 | `300.0f` |
+| `CameraMtxRegParallel.calcIdealPose.f3` | f32 | `0.1f` |
+| `CameraMtxRegParallel.calcIdealPose.f4` | f32 | `15.0f` |
+| `CameraMtxRegParallel.calcIdealPose.f5` | f32 | `2.0f` |
+| `CameraObjParallel.calc.f1` | f32 | `0.1f` |
+| `CameraObjParallel.calc.f2` | f32 | `15.0f` |
+| `CameraParallel.calcIdealPose.f1` | f32 | `300.0f` |
+| `CameraParallel.calcIdealPose.f2` | f32 | `300.0f` |
+| `CameraParallel.calcIdealPose.f3` | f32 | `90.0f` |
 | `CameraParallel.sDistance` | f32 | `3000.0f` |
+| `CameraParallel.setParamFromChunk.f1` | f32 | `180.0f` |
+| `CameraParallel.setParamFromChunk.f2` | f32 | `180.0f` |
 | `CameraParallel.sRoundAddition` | f32 | `0.08f` |
 | `CameraParallel.sRoundDiv` | f32 | `8.0f` |
+| `CameraParamChunk.load.f1` | f32 | `30.0f` |
+| `CameraParamChunkHolder.arrangeChunk.f1` | f32 | `0.17453294f` |
+| `CameraParamChunkHolder.arrangeChunk.f10` | f32 | `0.02f` |
+| `CameraParamChunkHolder.arrangeChunk.f11` | f32 | `0.992f` |
+| `CameraParamChunkHolder.arrangeChunk.f12` | f32 | `0.5f` |
+| `CameraParamChunkHolder.arrangeChunk.f2` | f32 | `0.34906587f` |
+| `CameraParamChunkHolder.arrangeChunk.f3` | f32 | `0.15f` |
+| `CameraParamChunkHolder.arrangeChunk.f4` | f32 | `30.0f` |
+| `CameraParamChunkHolder.arrangeChunk.f5` | f32 | `0.35f` |
+| `CameraParamChunkHolder.arrangeChunk.f6` | f32 | `0.35f` |
+| `CameraParamChunkHolder.arrangeChunk.f7` | f32 | `0.01f` |
+| `CameraParamChunkHolder.arrangeChunk.f8` | f32 | `0.5f` |
+| `CameraParamChunkHolder.arrangeChunk.f9` | f32 | `0.5f` |
+| `CameraPointer.calc.f1` | f32 | `0.5f` |
+| `CameraPointer.calc.f2` | f32 | `0.5f` |
+| `CameraPointer.calc.f3` | f32 | `0.9f` |
+| `CameraPointer.calc.f4` | f32 | `0.1f` |
+| `CameraPointer.calc.f5` | f32 | `40.0f` |
+| `CameraPointer.calc.f6` | f32 | `30.0f` |
+| `CameraPointer.calc.f7` | f32 | `2.0f` |
+| `CameraPointer.calc.f8` | f32 | `38.0f` |
+| `CameraPointer.calc.f9` | f32 | `1000.0f` |
+| `CameraPointer.reset.f1` | f32 | `100.0f` |
 | `CameraPointer.sFovyBlendRate` | f32 | `0.05f` |
 | `CameraPointer.sMaxDistance` | f32 | `0.15f` |
+| `CameraRaceFollow.calc.f1` | f32 | `0.1f` |
+| `CameraRaceFollow.calc.f2` | f32 | `15.0f` |
+| `CameraRaceFollow.calc.f3` | f32 | `2.0f` |
+| `CameraRaceFollow.calc.f4` | f32 | `0.05f` |
+| `CameraRaceFollow.setParamFromChunk.f1` | f32 | `180.0f` |
+| `CameraRailDemo.placeOnRail.f1` | f32 | `1000.0f` |
+| `CameraRailFollow.calc.f1` | f32 | `0.1f` |
+| `CameraRailFollow.calc.f2` | f32 | `15.0f` |
+| `CameraRailWatch.calc.f1` | f32 | `0.1f` |
+| `CameraRailWatch.calc.f2` | f32 | `15.0f` |
 | `CameraShakePatternImpl.sSinglyMaxFrame` | s32 | `25` |
+| `CameraShakePatternImpl.update.f1` | f32 | `4.0f` |
+| `CameraShakePatternImpl.update.f2` | f32 | `0.5f` |
+| `CameraShakePatternImpl.update.f3` | f64 | `0.01` |
+| `CameraShaker.adjustOffsetToScreen.f1` | f32 | `30.0f` |
+| `CameraShaker.adjustOffsetToScreen.f2` | f32 | `30.0f` |
 | `CameraShaker.cInfinityInitialNum` | u32 | `4` |
 | `CameraShaker.cInfinityIntensity` | f32 | `1.0f` |
 | `CameraShaker.cInfinitySpeed` | f32 | `15.0f` |
+| `CameraSlide.calc.f1` | f32 | `180.0f` |
+| `CameraSlide.calc.f2` | f32 | `0.1f` |
+| `CameraSlide.calc.f3` | f32 | `15.0f` |
+| `CameraSpiral.calc.f1` | f32 | `0.1f` |
+| `CameraSpiral.calc.f2` | f32 | `15.0f` |
+| `CameraSpiral.calc.f3` | f32 | `6.0f` |
+| `CameraSpiral.calc.f4` | f32 | `15.0f` |
+| `CameraSpiral.calc.f5` | f32 | `10.0f` |
+| `CameraSubjective.calc.f1` | f32 | `45.0f` |
+| `CameraSubjective.calc.f2` | f32 | `0.9f` |
+| `CameraSubjective.calc.f3` | f32 | `0.9f` |
+| `CameraSubjective.calc.f4` | f32 | `2.0f` |
+| `CameraSubjective.calc.f5` | f32 | `2.0f` |
+| `CameraSubjective.calc.f6` | f32 | `180.0f` |
+| `CameraSubjective.calc.f7` | f32 | `180.0f` |
 | `CameraSubjective.sDistance` | f32 | `200.0f` |
 | `CameraSubjective.sDivH` | f32 | `10.0f` |
 | `CameraSubjective.sDivW` | f32 | `10.0f` |
@@ -19828,29 +21463,88 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CameraSubjective.sRotSpeedEff` | f32 | `3.0f` |
 | `CameraSubjective.sRotXMax` | f32 | `80.0f` |
 | `CameraSubjective.sRotYMax` | f32 | `90.0f` |
+| `CameraTalk.calc.f1` | f32 | `2.0f` |
+| `CameraTalk.calc.f2` | f32 | `2.0f` |
 | `CameraTalk.sAngleX` | f32 | `0.12f` |
 | `CameraTalk.sAngleY` | f32 | `0.7f` |
 | `CameraTalk.sRate` | f32 | `0.5f` |
 | `CameraTargetHolder.sMovingThreshold` | f32 | `1.0f` |
+| `CameraTower.arrangeHorizontalPose.f1` | f32 | `0.7f` |
 | `CameraTower.sAttenuation` | f32 | `0.05f` |
+| `CameraTower.setParamFromChunk.f1` | f32 | `0.5f` |
 | `CameraTower.sRoundAddition` | f32 | `0.08f` |
+| `CameraTowerPos.arrangeHorizontalPose.f1` | f32 | `0.7f` |
+| `CameraTowerPos.arrangeWatchPos.f1` | f32 | `180.0f` |
+| `CameraTowerPos.arrangeWatchPos.f2` | f32 | `0.5f` |
+| `CameraTowerPos.arrangeWatchPos.f3` | f32 | `2.0f` |
+| `CameraTowerPos.calcIdealPose.f1` | f32 | `0.1f` |
+| `CameraTowerPos.calcIdealPose.f2` | f32 | `15.0f` |
 | `CameraTowerPos.sAttenuation` | f32 | `0.05f` |
+| `CameraTowerPos.setParamFromChunk.f1` | f32 | `0.5f` |
+| `CameraTripodBossJoint.calcIdealPose.f1` | f32 | `90.0f` |
+| `CameraTripodBossJoint.calcIdealPose.f2` | f32 | `0.1f` |
+| `CameraTripodBossJoint.calcIdealPose.f3` | f32 | `15.0f` |
+| `CameraTripodBossJoint.reset.f1` | f32 | `0.1f` |
+| `CameraTripodBossJoint.reset.f2` | f32 | `15.0f` |
 | `CameraTripodBossJoint.sAttenuation` | f32 | `0.7f` |
 | `CameraTripodBossJoint.sDistance` | f32 | `300.0f` |
+| `CameraTripodBossJoint.setParamFromChunk.f1` | f32 | `180.0f` |
+| `CameraTripodBossJoint.setParamFromChunk.f2` | f32 | `180.0f` |
 | `CameraTripodBossJoint.sRoundAddition` | f32 | `0.08f` |
 | `CameraTripodBossJoint.sRoundDiv` | f32 | `8.0f` |
+| `CameraTripodPlanet.calc.f1` | f32 | `0.1f` |
+| `CameraTripodPlanet.calc.f2` | f32 | `15.0f` |
+| `CameraTrundle.calc.f1` | f32 | `0.1f` |
+| `CameraTrundle.calc.f2` | f32 | `15.0f` |
+| `CameraTwistedPassage.calc.f1` | f32 | `0.1f` |
+| `CameraTwistedPassage.calc.f2` | f32 | `15.0f` |
+| `CameraTwistedPassage.calcNearestCoord.f1` | f32 | `110.0f` |
+| `CameraTwistedPassage.calcNearestCoord.f2` | f32 | `110.0f` |
 | `CameraTwistedPassage.sUpVecBlend` | f32 | `0.97f` |
+| `CameraViewInterpolator.calcBinder.f1` | f32 | `0.5f` |
+| `CameraViewInterpolator.calcCollision.f1` | f32 | `0.25f` |
+| `CameraViewInterpolator.calcCollision.f2` | f32 | `0.98f` |
+| `CameraViewInterpolator.calcCollision.f3` | f32 | `0.98f` |
+| `CameraViewInterpolator.reduceOscillation.f1` | f32 | `0.9f` |
+| `CameraViewInterpolator.reduceOscillation.f2` | f32 | `0.1f` |
 | `CameraViewInterpolator.sCollisionBallRadius` | f32 | `10000.0f` |
 | `CameraViewInterpolator.sCollisionThroughDistance` | f32 | `3400.0f` |
 | `CameraViewInterpolator.sNearZ` | f32 | `100.0f` |
+| `CameraWaterFollow.calc.f1` | f32 | `0.1f` |
+| `CameraWaterFollow.calc.f2` | f32 | `15.0f` |
+| `CameraWaterFollow.calc.f3` | f32 | `10000.0f` |
+| `CameraWaterFollow.calc.f4` | f32 | `0.005f` |
 | `CameraWaterFollow.sRoundingFrame` | s32 | `60` |
+| `CameraWaterPlanet.calc.f1` | f32 | `0.1f` |
+| `CameraWaterPlanet.calc.f2` | f32 | `15.0f` |
+| `CameraWaterPlanet.calc.f3` | f32 | `0.05f` |
+| `CameraWaterPlanet.reset.f1` | f32 | `0.1f` |
+| `CameraWaterPlanet.reset.f2` | f32 | `15.0f` |
+| `CameraWaterPlanetBoss.calc.f1` | f32 | `0.1f` |
+| `CameraWaterPlanetBoss.calc.f2` | f32 | `15.0f` |
+| `CameraWaterPlanetBoss.calc.f3` | f32 | `180.0f` |
+| `CameraWaterPlanetBoss.calc.f4` | f32 | `0.005f` |
+| `CameraWaterPlanetBoss.calc.f5` | f32 | `2.0f` |
+| `CameraWaterPlanetBoss.calc.f6` | f32 | `2.0f` |
 | `CameraWaterPlanetBoss.sAngleRate` | f32 | `0.02f` |
 | `CameraWaterPlanetBoss.sRoundingFrame` | s32 | `60` |
 | `CameraWonderPlanet.cAngleXChaseRate` | f32 | `0.05f` |
 | `CameraWonderPlanet.cCameraResetFrame` | s32 | `30` |
+| `CamHeliEffector.update.f1` | f32 | `0.98f` |
+| `CamHeliEffector.update.f2` | f32 | `0.001f` |
+| `CamHeliEffector.update.f3` | f32 | `6.0f` |
+| `CamHeliEffector.update.f4` | f32 | `6.0f` |
+| `CamKarikariEffector.calcFovy.f1` | f32 | `0.3f` |
 | `CamKarikariEffector.sKarikariCounterMax` | s32 | `30` |
 | `CamKarikariEffector.sKarikariViewRate` | f32 | `0.8f` |
 | `CamKarikariEffector.sPlayerRadius` | f32 | `75.0f` |
+| `CamKarikariEffector.update.f1` | f32 | `0.5f` |
+| `CamKarikariEffector.update.f2` | f32 | `180.0f` |
+| `CamKarikariEffector.update.f3` | f32 | `180.0f` |
+| `OnlyCamera.calcSafePose.f1` | f32 | `0.98f` |
+| `OnlyCamera.calcSafePose.f2` | f32 | `0.98f` |
+| `OnlyCamera.calcStartPose.f1` | f32 | `0.98f` |
+| `OnlyCamera.moveToIdealPosition.f1` | f32 | `0.5f` |
 | `OnlyCamera.sAccel` | f32 | `1.0f` |
 | `OnlyCamera.sBaseLength` | f32 | `300.0f` |
 | `OnlyCamera.sMinDistance` | f32 | `1.0f` |
@@ -19862,19 +21556,27 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `AstroDomeDemoStarter.cAppearRotate` | f32[3] | `90.0f, -5.0f, 0.0f` |
 | `AstroDomeDemoStarter.cBgmStartFrame` | s32 | `108` |
 | `AstroDomeDemoStarter.cJumpOutNearClipDistance` | f32 | `250.0f` |
 | `AstroDomeDemoStarter.cJumpOutRotateSpeed` | f32 | `-18.0f` |
 | `AstroDomeDemoStarter.cWhiteOutFrame` | s32 | `146` |
+| `AstroDomeDemoStarter.exeSpinDriverShoot.f1` | f32 | `50.0f` |
 | `AstroDomeDemoStarter.exeSpinDriverShoot.setBckRate.1` | f32 | `1.0f` |
 | `AstroDomeDemoStarter.exeSpinDriverStart.1` | s32 | `43` |
 | `AstroDomeDemoStarter.exeSpinDriverStart.setBckRate.1` | f32 | `0.0f` |
+| `AstroDomeDemoStarter.movePlayer.f1` | f32 | `0.01f` |
+| `AstroDomeDemoStarter.movePlayer.f2` | f32 | `4.0f` |
+| `AstroDomeDemoStarter.startJumpOut.f1` | f32 | `180.0f` |
+| `DemoKoopaJrShip.control.f1` | f32 | `5.0f` |
 | `DemoKoopaJrShip.exeAppear.1` | s32 | `1` |
 | `DemoKoopaJrShip.sBgmStartStep` | s32 | `309` |
+| `DemoKoopaJrShip.sKoopaJrPos` | f32[3] | `135.0f, 188.0f, 0.0f` |
 | `DemoKoopaJrShip.startLeaveAnim.setBckRate.1` | f32 | `-1.0f` |
 | `DemoTalkAnimCtrl.updateDemo.1` | s32 | `1` |
 | `GrandStarReturnDemoStarter.exeRevival.1` | s32 | `40` |
 | `GrandStarReturnDemoStarter.exeRevival.2` | s32 | `40` |
+| `GrandStarReturnDemoStarter.updateRushStarPos.f1` | f32 | `100.0f` |
 | `PrologueDirector.sArriveEndWipeFrame` | s32 | `30` |
 | `PrologueDirector.sArriveStartWipeFrame` | s32 | `30` |
 | `PrologueDirector.sFallingStarStep` | s32 | `130` |
@@ -19884,14 +21586,25 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PrologueDirector.sPeachLetterStartWipeFrame` | s32 | `60` |
 | `PrologueDirector.sPeachLetterWait` | s32 | `20` |
 | `PrologueDirector.sPicBookStartWipeFrame` | s32 | `60` |
+| `ReturnDemoRailMove.calcPathPosDir.f1` | f32 | `0.01f` |
+| `ReturnDemoRailMove.setupPathDrawForGraneStarReturnDemo.f1` | f32 | `100.0f` |
+| `ReturnDemoRailMove.setupPathDrawForGraneStarReturnDemo.f2` | f32 | `0.1f` |
+| `ScenarioStarter.calcShootMotionTime.f1` | f32 | `0.2f` |
+| `ScenarioStarter.calcShootMotionTime.f2` | f32 | `0.05f` |
 | `ScenarioStarter.exeRailMove.1` | s32 | `10` |
+| `ScenarioStarter.exeRailMove.f1` | f32 | `0.4f` |
+| `ScenarioStarter.init.f1` | f32 | `200.0f` |
 | `ScenarioStarter.trySkipTrigger.1` | s32 | `10` |
+| `ScenarioStarter.updateBindPosition.f1` | f32 | `0.01f` |
 | `StarReturnDemoStarter.cCapHideEndStep` | s32 | `221` |
 | `StarReturnDemoStarter.cCapHideStartStep` | s32 | `21` |
 | `StarReturnDemoStarter.cDemoAppearWaitFrame` | s32 | `45` |
 | `StarReturnDemoStarter.cFadeOutFrame` | s32 | `60` |
 | `StarReturnDemoStarter.cFallStartFrameGrandStar` | s32 | `360` |
 | `StarReturnDemoStarter.cOverlayFrame` | s32 | `3` |
+| `StarReturnDemoStarter.exeFall.f1` | f32 | `3000.0f` |
+| `StarReturnDemoStarter.exeFall.f2` | f32 | `1.8f` |
+| `StarReturnDemoStarter.exeFall.f3` | f32 | `35.0f` |
 
 <a id="p-nebula-tunables--gameeffect"></a>
 
@@ -19899,6 +21612,27 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `EffectObjGravityDust.getClippingCenterOffset.f1` | f32 | `500.0f` |
+| `EffectObjGravityDust.getClippingRadius.f1` | f32 | `500.0f` |
+| `MultiEmitterCallBack.getLightTint.f1` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f2` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f3` | f32 | `0.5f` |
+| `MultiEmitterCallBack.getLightTint.f4` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f5` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f6` | f32 | `0.5f` |
+| `MultiEmitterCallBack.getLightTint.f7` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f8` | f32 | `255.0f` |
+| `MultiEmitterCallBack.getLightTint.f9` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f1` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f2` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f3` | f32 | `1000.0f` |
+| `ParticleDrawExecutor.draw2D.f4` | f32 | `1000.0f` |
+| `ParticleDrawExecutor.draw2D.f5` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f6` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f7` | f32 | `0.5f` |
+| `ParticleDrawExecutor.draw2D.f8` | f32 | `0.5f` |
+| `RandomEffectObj.getClippingRadius.f1` | f32 | `1500.0f` |
+| `RandomEffectObj.getFarClipDistance.f1` | f32 | `400.0f` |
 | `RandomEffectObj.sRandWidth` | s32 | `180` |
 
 <a id="p-nebula-tunables--gameenemy"></a>
@@ -19907,9 +21641,44 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `AnimScaleController.AnimScaleDefaultParam.f1` | f32 | `0.5f` |
+| `AnimScaleController.AnimScaleDefaultParam.f2` | f32 | `0.85f` |
+| `AnimScaleController.AnimScaleDefaultParam.f3` | f32 | `8.0f` |
+| `AnimScaleController.AnimScaleDefaultParam.f4` | f32 | `0.8f` |
+| `AnimScaleController.AnimScaleDefaultParam.f5` | f32 | `0.08f` |
+| `AnimScaleController.AnimScaleDefaultParam.f6` | f32 | `2.2f` |
+| `AnimScaleController.AnimScaleParam.f1` | f32 | `0.2f` |
+| `AnimScaleController.AnimScaleParam.f10` | f32 | `0.12f` |
+| `AnimScaleController.AnimScaleParam.f11` | f32 | `0.91f` |
+| `AnimScaleController.AnimScaleParam.f12` | f32 | `0.25f` |
+| `AnimScaleController.AnimScaleParam.f2` | f32 | `0.91f` |
+| `AnimScaleController.AnimScaleParam.f3` | f32 | `0.2f` |
+| `AnimScaleController.AnimScaleParam.f4` | f32 | `1.8f` |
+| `AnimScaleController.AnimScaleParam.f5` | f32 | `12.0f` |
+| `AnimScaleController.AnimScaleParam.f6` | f32 | `0.55f` |
+| `AnimScaleController.AnimScaleParam.f7` | f32 | `0.12f` |
+| `AnimScaleController.AnimScaleParam.f8` | f32 | `2.0f` |
+| `AnimScaleController.AnimScaleParam.f9` | f32 | `0.06f` |
+| `AnimScaleController.exeCrush.f1` | f32 | `0.3f` |
+| `AnimScaleController.exeCrush.f2` | f32 | `4.0f` |
+| `AnimScaleController.tryStop.f1` | f32 | `0.001f` |
+| `AnimScaleController.tryStop.f2` | f32 | `0.001f` |
+| `AnimStampController.AnimStampController.f1` | f32 | `0.2f` |
+| `AnimStampController.AnimStampController.f2` | f32 | `1.5f` |
+| `AnimStampController.AnimStampController.f3` | f32 | `0.125f` |
+| `AnimStampController.AnimStampController.f4` | f32 | `4.0f` |
+| `AnimStampController.AnimStampController.f5` | f64 | `0.12` |
+| `AnimStampController.AnimStampController.f6` | f32 | `4.0f` |
 | `BallBeamer.exeWait.isNearPlayer.1` | f32 | `3000.0f` |
+| `BallBeamer.init.f1` | f32 | `50.0f` |
+| `BallBeamer.init.f2` | f32 | `120.0f` |
+| `BallBeamer.init.f3` | f32 | `20.0f` |
+| `BallBeamer.init.f4` | f32 | `120.0f` |
+| `BallBeamer.init.f5` | f32 | `12.0f` |
 | `Balloonfish.endStarPointerBind.setBckRate.1` | f32 | `1.0f` |
 | `Balloonfish.exeStarPointerBind.setBckRate.1` | f32 | `0.0f` |
+| `Balloonfish.exeWait.f1` | f32 | `0.02f` |
+| `Balloonfish.exeWait.f2` | f32 | `0.1f` |
 | `Balloonfish.hAttackBeginTime` | s32 | `82` |
 | `Balloonfish.hDashEndTime` | s32 | `95` |
 | `Balloonfish.hDashScale` | f32 | `0.5f` |
@@ -19917,6 +21686,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Balloonfish.hRotateAngle` | f32 | `0.0f` |
 | `Balloonfish.hTargetPlayerVelocityMult` | f32 | `10.0f` |
 | `Balloonfish.hWaitMaxScale` | f32 | `1.5f` |
+| `Balloonfish.init.f1` | f32 | `100.0f` |
+| `Balloonfish.init.f2` | f32 | `100.0f` |
+| `Balloonfish.init.f3` | f32 | `60.0f` |
+| `Balloonfish.init.f4` | f32 | `110.0f` |
+| `Balloonfish.init.f5` | f32 | `80.0f` |
+| `Balloonfish.init.f6` | f32 | `80.0f` |
 | `BasaBasa.cAttachDistance` | f32 | `10.0f` |
 | `BasaBasa.cAttachSpeedRate` | f32 | `5.0f` |
 | `BasaBasa.cAttackEndEffectHeight` | f32 | `200.0f` |
@@ -19932,6 +21707,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BasaBasa.cHomeDistanceMargin` | f32 | `1000.0f` |
 | `BasaBasa.cHoverBelowAttack` | f32 | `350.0f` |
 | `BasaBasa.cIceAttackUpRate` | f32 | `5.0f` |
+| `BasaBasa.controlVelocity.f1` | f32 | `0.95f` |
+| `BasaBasa.controlVelocity.f2` | f32 | `0.96f` |
+| `BasaBasa.controlVelocity.f3` | f32 | `0.45f` |
+| `BasaBasa.controlVelocity.f4` | f32 | `8.0f` |
+| `BasaBasa.controlVelocity.f5` | f32 | `15.0f` |
+| `BasaBasa.controlVelocity.f6` | f32 | `23.0f` |
 | `BasaBasa.cPushSpeed` | f32 | `1.5f` |
 | `BasaBasa.cSideDamping` | f32 | `0.5f` |
 | `BasaBasa.cSpinStormDistance` | f32 | `500.0f` |
@@ -19939,13 +21720,34 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BasaBasa.cTurnDegree` | f32 | `2.55f` |
 | `BasaBasa.exeAttachCelling.1` | s32 | `42` |
 | `BasaBasa.exeAttackEnd.1` | s32 | `50` |
+| `BasaBasa.exeAttackEnd.f1` | f32 | `0.1f` |
+| `BasaBasa.exeAttackEndRecover.f1` | f32 | `0.5f` |
+| `BasaBasa.exeAttackEndRecover.f2` | f32 | `116.0f` |
+| `BasaBasa.exeAttackEndRecover.f3` | f32 | `0.3f` |
+| `BasaBasa.exeAttackStart.f1` | f32 | `2.0f` |
+| `BasaBasa.exeAttackStart.f2` | f32 | `0.2f` |
 | `BasaBasa.exeChaseStart.1` | s32 | `50` |
 | `BasaBasa.exeChaseStart.2` | s32 | `15` |
 | `BasaBasa.exeChaseStart.3` | s32 | `34` |
+| `BasaBasa.exeChaseStart.f1` | f32 | `15.0f` |
 | `BasaBasa.exeHitBack.1` | s32 | `5` |
 | `BasaBasa.exeHitBack.turnDirectionToPlayerDegree.1` | f32 | `180.0f` |
 | `BasaBasa.exeQuickTurnStart.1` | s32 | `45` |
+| `BasaBasa.init.f1` | f32 | `90.0f` |
+| `BasaBasa.init.f10` | f32 | `25.0f` |
+| `BasaBasa.init.f11` | f32 | `25.0f` |
+| `BasaBasa.init.f2` | f32 | `60.0f` |
+| `BasaBasa.init.f3` | f32 | `110.0f` |
+| `BasaBasa.init.f4` | f32 | `100.0f` |
+| `BasaBasa.init.f5` | f32 | `100.0f` |
+| `BasaBasa.init.f6` | f32 | `20.0f` |
+| `BasaBasa.init.f7` | f32 | `10.0f` |
+| `BasaBasa.init.f8` | f32 | `600.0f` |
+| `BasaBasa.init.f9` | f32 | `800.0f` |
+| `BasaBasa.initAfterPlacement.f1` | f32 | `20.0f` |
+| `BasaBasa.initAfterPlacement.f2` | f32 | `30.0f` |
 | `BasaBasa.updateRailType.moveCoord.1` | f32 | `1.0f` |
+| `BegomanBaby.attackSensor.f1` | f32 | `2.0f` |
 | `BegomanBaby.control.1` | s32 | `1` |
 | `BegomanBaby.exeAfterLaunch.1` | s32 | `80` |
 | `BegomanBaby.exeAfterLaunch.2` | s32 | `85` |
@@ -19954,15 +21756,78 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanBaby.exeAfterLaunch.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `BegomanBaby.exeAfterLaunch.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `BegomanBaby.exeAfterLaunch.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
+| `BegomanBaby.exeAfterLaunch.f1` | f32 | `5.0f` |
+| `BegomanBaby.exeAfterLaunch.f2` | f32 | `80.0f` |
+| `BegomanBaby.exeAfterLaunch.f3` | f32 | `5.0f` |
 | `BegomanBaby.exeAfterLaunchOnGround.applyVelocityDampAndGravity.1` | f32 | `3.0f` |
 | `BegomanBaby.exeAfterLaunchOnGround.applyVelocityDampAndGravity.2` | f32 | `0.8f` |
 | `BegomanBaby.exeAfterLaunchOnGround.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `BegomanBaby.exeAfterLaunchOnGround.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `BegomanBaby.exeAfterLaunchOnGround.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
 | `BegomanBaby.exeBlow.1` | s32 | `20` |
+| `BegomanBaby.exeBlow.f1` | f32 | `0.3f` |
+| `BegomanBaby.exeBlow.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeBrake.f1` | f32 | `0.2f` |
+| `BegomanBaby.exeBrake.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeHitReaction.f1` | f32 | `0.25f` |
+| `BegomanBaby.exeHitReaction.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeInWater.f1` | f32 | `10.0f` |
+| `BegomanBaby.exeKeepDistance.f1` | f32 | `0.2f` |
+| `BegomanBaby.exeKeepDistance.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeKeepDistance.f3` | f32 | `600.0f` |
+| `BegomanBaby.exeKeepDistance.f4` | f32 | `400.0f` |
+| `BegomanBaby.exeLaunchTurn.f1` | f32 | `0.4f` |
+| `BegomanBaby.exeLaunchTurn.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeNoCalcWait.f1` | f32 | `0.5f` |
+| `BegomanBaby.exeProvoke.f1` | f32 | `0.3f` |
+| `BegomanBaby.exeProvoke.f2` | f32 | `0.5f` |
+| `BegomanBaby.exePursue.f1` | f32 | `0.5f` |
+| `BegomanBaby.exePursue.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeReturn.f1` | f32 | `0.2f` |
+| `BegomanBaby.exeReturn.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeSignAttack.f1` | f32 | `0.5f` |
+| `BegomanBaby.exeSignAttack.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeStepBack.f1` | f32 | `0.2f` |
+| `BegomanBaby.exeStepBack.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeTired.f1` | f32 | `0.2f` |
+| `BegomanBaby.exeTired.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeTrample.f1` | f32 | `0.25f` |
+| `BegomanBaby.exeTrample.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeTurn.f1` | f32 | `0.4f` |
+| `BegomanBaby.exeTurn.f2` | f32 | `0.5f` |
+| `BegomanBaby.exeWait.f1` | f32 | `0.15f` |
+| `BegomanBaby.exeWait.f2` | f32 | `0.5f` |
+| `BegomanBaby.hHitReactionParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
+| `BegomanBaby.hPursueParam` | f32[4] | `0.4f, 3.0f, 0.97f, 3.0f` |
+| `BegomanBaby.hSignAttackParam` | f32[4] | `0.0f, 3.0f, 0.8f, 3.0f` |
+| `BegomanBaby.hStopParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
+| `BegomanBaby.hTiredParam` | f32[4] | `0.2f, 1.0f, 0.95f, 3.0f` |
+| `BegomanBaby.hTurnParam` | f32[4] | `0.4f, 3.0f, 0.95f, 0.0f` |
+| `BegomanBaby.hWaitParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
+| `BegomanBaby.init.f1` | f32 | `45.0f` |
+| `BegomanBaby.init.f2` | f32 | `45.0f` |
+| `BegomanBaby.init.f3` | f32 | `40.0f` |
+| `BegomanBaby.init.f4` | f32 | `80.0f` |
+| `BegomanBaby.init.f5` | f32 | `35.0f` |
+| `BegomanBaby.killWithGenItem.f1` | f32 | `80.0f` |
+| `BegomanBaby.killWithGenItem.f2` | f32 | `10.0f` |
+| `BegomanBaby.killWithGenItem.f3` | f32 | `40.0f` |
+| `BegomanBaby.killWithGenItem.f4` | f32 | `10.0f` |
+| `BegomanBaby.killWithGenItem.f5` | f32 | `40.0f` |
 | `BegomanBaby.receiveMsgEnemyAttack.addVelocityLimit.1` | f32 | `4.0f` |
+| `BegomanBaby.receiveMsgEnemyAttack.f1` | f32 | `35.0f` |
+| `BegomanBaby.receiveMsgEnemyAttack.f2` | f32 | `15.0f` |
+| `BegomanBaby.receiveMsgEnemyAttack.f3` | f32 | `150.0f` |
+| `BegomanBaby.receiveMsgEnemyAttack.f4` | f32 | `150.0f` |
+| `BegomanBaby.receiveMsgPlayerAttack.f1` | f32 | `35.0f` |
+| `BegomanBaby.receiveMsgPlayerAttack.f2` | f32 | `15.0f` |
+| `BegomanBaby.receiveMsgPlayerAttack.f3` | f32 | `35.0f` |
+| `BegomanBaby.receiveMsgPlayerAttack.f4` | f32 | `15.0f` |
+| `BegomanBase.calcDirectionAwayFromRail.f1` | f32 | `90.0f` |
 | `BegomanBase.hBlendGravityRate` | f32 | `0.1f` |
 | `BegomanBase.hBodyRailPush` | f32 | `8.0f` |
+| `BegomanBase.hBrakeOnAirParam` | f32[4] | `0.0f, 1.0f, 0.95f, 3.0f` |
+| `BegomanBase.hBrakeParam` | f32[4] | `0.0f, 1.0f, 0.7f, 3.0f` |
 | `BegomanBase.hBrakeTime` | s32 | `50` |
 | `BegomanBase.hElectricTouchTime` | s32 | `40` |
 | `BegomanBase.hFallCheckDepth` | f32 | `150.0f` |
@@ -19971,7 +21836,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanBase.hGroundReboundRate` | f32 | `0.5f` |
 | `BegomanBase.hGroupClippingNum` | s32 | `16` |
 | `BegomanBase.hIsFaceToPlayerDegree` | f32 | `30` |
+| `BegomanBase.hKeepDistanceFarParam` | f32[4] | `0.35f, 1.0f, 0.95f, 3.0f` |
+| `BegomanBase.hKeepDistanceNearParam` | f32[4] | `-0.22f, 1.0f, 0.95f, 3.0f` |
 | `BegomanBase.hKeepDistanceToWaitDist` | f32 | `1200.0f` |
+| `BegomanBase.hKeepDistanceWaitParam` | f32[4] | `0.0f, 1.0f, 0.95f, 3.0f` |
 | `BegomanBase.hKeepDistSideVel` | f32 | `0.6f` |
 | `BegomanBase.hLaunchDamp` | f32 | `0.98f` |
 | `BegomanBase.hLaunchGravity` | f32 | `1.0f` |
@@ -19989,12 +21857,28 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanBase.hRailPushJumpBoss` | f32 | `30.0f` |
 | `BegomanBase.hReboundWallAddVel` | f32 | `5.0f` |
 | `BegomanBase.hReceiveLimitTime` | s32 | `2` |
+| `BegomanBase.hReturnMoveParam` | f32[4] | `0.2f, 1.0f, 0.95f, 3.0f` |
+| `BegomanBase.hReturnWaitParam` | f32[4] | `0.0f, 1.0f, 0.95f, 0.0f` |
 | `BegomanBase.hStarPointerRadiusRate` | f32 | `0.75f` |
 | `BegomanBase.hTiredCount` | s32 | `180` |
 | `BegomanBase.hTurnEndDegree` | f32 | `10` |
 | `BegomanBase.hTurnStartDegree` | f32 | `3` |
 | `BegomanBase.hWaitRailAheadDot` | f32 | `0.5f` |
 | `BegomanBase.hWakeDist` | f32 | `1000.0f` |
+| `BegomanBase.initEffectAndStarPointerBind.f1` | f32 | `0.5f` |
+| `BegomanBase.initSensor.f1` | f32 | `0.5f` |
+| `BegomanBase.initSensor.f2` | f32 | `1.5f` |
+| `BegomanBase.initSensor.f3` | f32 | `0.5f` |
+| `BegomanBase.initSensor.f4` | f32 | `0.5f` |
+| `BegomanBase.isFallNextMove.f1` | f32 | `2.0f` |
+| `BegomanBase.preventSlopeBlow.f1` | f32 | `0.5f` |
+| `BegomanBase.preventSwingby.f1` | f32 | `0.5f` |
+| `BegomanLauncher.exeDisappear.f1` | f32 | `90.0f` |
+| `BegomanLauncher.exeLaunch.f1` | f32 | `100.0f` |
+| `BegomanLauncher.exeLaunch.f2` | f32 | `10.0f` |
+| `BegomanLauncher.exeLaunch.f3` | f32 | `30.0f` |
+| `BegomanLauncher.exeLaunch.f4` | f32 | `30.0f` |
+| `BegomanLauncher.init.f1` | f32 | `100.0f` |
 | `BegomanLauncher.sLaunchTime` | s32 | `0` |
 | `BegomanSpike.cBinderRadius` | f32 | `100.0f` |
 | `BegomanSpike.cBlowFrame` | s32 | `20` |
@@ -20010,6 +21894,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanSpike.cElectricDeathTime` | s32 | `20` |
 | `BegomanSpike.cExplosionBlowVel` | f32 | `35.0f` |
 | `BegomanSpike.cExplosionBlowVerticalVel` | f32 | `15.0f` |
+| `BegomanSpike.cHitReactionParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
 | `BegomanSpike.cHitReactionRotate` | f32 | `0.25f` |
 | `BegomanSpike.cInWaterVel` | f32 | `10.0f` |
 | `BegomanSpike.cKeepDistFar` | f32 | `800.0f` |
@@ -20017,14 +21902,20 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanSpike.cNoCalcWaitRotate` | f32 | `0.5f` |
 | `BegomanSpike.cPreventSwingbyDamp` | f32 | `0.7f` |
 | `BegomanSpike.cProvokeRotate` | f32 | `0.3f` |
+| `BegomanSpike.cPursueParam` | f32[4] | `0.4f, 3.0f, 0.97f, 3.0f` |
 | `BegomanSpike.cPursueRotate` | f32 | `0.5f` |
 | `BegomanSpike.cReboundEnemyAddVel` | f32 | `8.0f` |
 | `BegomanSpike.cReboundPlayerAddVel` | f32 | `2.0f` |
+| `BegomanSpike.cSignAttackParam` | f32[4] | `0.0f, 3.0f, 0.8f, 3.0f` |
 | `BegomanSpike.cSignAttackRotate` | f32 | `0.5f` |
 | `BegomanSpike.cSlowRotate` | f32 | `0.2f` |
+| `BegomanSpike.cStopParam` | f32[4] | `0.0f, 3.0f, 0.95f, 0.0f` |
 | `BegomanSpike.cStopSceneTime` | s32 | `2` |
+| `BegomanSpike.cTiredParam` | f32[4] | `0.2f, 1.0f, 0.95f, 3.0f` |
 | `BegomanSpike.cTrampleReactionRotate` | f32 | `0.25f` |
+| `BegomanSpike.cTurnParam` | f32[4] | `0.4f, 3.0f, 0.95f, 0.0f` |
 | `BegomanSpike.cTurnRotate` | f32 | `0.4f` |
+| `BegomanSpike.cWaitParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
 | `BegomanSpike.cWaitRotate` | f32 | `0.15f` |
 | `BegomanSpring.cBabyLaunchVelH` | f32 | `10.0f` |
 | `BegomanSpring.cBabyLaunchVelV` | f32 | `50.0f` |
@@ -20044,6 +21935,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanSpring.cExplosionBlowVel` | f32 | `35.0f` |
 | `BegomanSpring.cExplosionBlowVerticalVel` | f32 | `15.0f` |
 | `BegomanSpring.cHideAppearDistance` | f32 | `1000.0f` |
+| `BegomanSpring.cHitReactionParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
 | `BegomanSpring.cHitReactionRotate` | f32 | `0.25f` |
 | `BegomanSpring.cHopInitRotate` | f32 | `0.5f` |
 | `BegomanSpring.cHopRotateBrakeTime` | f32 | `44.0f` |
@@ -20055,17 +21947,36 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BegomanSpring.cPreventSlopeOverDamp` | f32 | `0.2f` |
 | `BegomanSpring.cPreventSwingbyDamp` | f32 | `0.7f` |
 | `BegomanSpring.cProvokeRotate` | f32 | `0.3f` |
+| `BegomanSpring.cPursueParam` | f32[4] | `0.4f, 3.0f, 0.97f, 3.0f` |
 | `BegomanSpring.cPursueRotate` | f32 | `0.5f` |
 | `BegomanSpring.cReboundEnemyAddVel` | f32 | `8.0f` |
 | `BegomanSpring.cReboundPlayerAddVel` | f32 | `2.0f` |
 | `BegomanSpring.cShakeRotate` | f32 | `0.17f` |
+| `BegomanSpring.cSignAttackParam` | f32[4] | `0.0f, 3.0f, 0.8f, 3.0f` |
 | `BegomanSpring.cSignAttackRotate` | f32 | `0.5f` |
 | `BegomanSpring.cSlowRotate` | f32 | `0.2f` |
+| `BegomanSpring.cStopParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
 | `BegomanSpring.cStopSceneTime` | s32 | `2` |
+| `BegomanSpring.cTiredParam` | f32[4] | `0.2f, 1.0f, 0.95f, 3.0f` |
 | `BegomanSpring.cTrampleRotate` | f32 | `0.25f` |
 | `BegomanSpring.cTrampleSensorRadius` | f32 | `130.0f` |
+| `BegomanSpring.cTurnParam` | f32[4] | `0.4f, 3.0f, 0.95f, 1.0f` |
 | `BegomanSpring.cTurnRotate` | f32 | `0.4f` |
+| `BegomanSpring.cWaitParam` | f32[4] | `0.0f, 3.0f, 0.95f, 1.0f` |
 | `BegomanSpring.cWaitRotate` | f32 | `0.15f` |
+| `BegomanSpringHead.init.f1` | f32 | `100.0f` |
+| `BegomanSpringHead.init.f2` | f32 | `100.0f` |
+| `Birikyu.exeMoveCircle.f1` | f32 | `400.0f` |
+| `Birikyu.exeMoveCircle.f2` | f32 | `400.0f` |
+| `Birikyu.getHitRadius.f1` | f32 | `120.0f` |
+| `Birikyu.getHitRadius.f2` | f32 | `50.0f` |
+| `Birikyu.init.f1` | f32 | `100.0f` |
+| `Birikyu.initAfterPlacement.f1` | f32 | `400.0f` |
+| `Birikyu.initRail.f1` | f32 | `100.0f` |
+| `Birikyu.initRail.f2` | f32 | `500.0f` |
+| `Birikyu.initShadow.f1` | f32 | `0.8f` |
+| `BombBird.addVelocityToUpFromGround.f1` | f32 | `3.4028235e38f` |
+| `BombBird.attackSensor.f1` | f32 | `0.25f` |
 | `BombBird.exeFlyOnRailSearch.1` | s32 | `54` |
 | `BombBird.exeFlyOnRailSearch.2` | s32 | `54` |
 | `BombBird.exeFlyWithAttack.1` | s32 | `130` |
@@ -20076,8 +21987,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombBird.hDotEpsilon` | f32 | `0.001f` |
 | `BombBird.hEscapeUpVel` | f32 | `5.0f` |
 | `BombBird.hEscapeVel` | f32 | `5.0f` |
+| `BombBird.hFallParam` | f32[4] | `0.0f, 1.2f, 0.98f, 0.0f` |
 | `BombBird.hFlyVel` | f32 | `0.3f` |
 | `BombBird.hGravity` | f32 | `1.0f` |
+| `BombBird.hOnGroundParam` | f32[4] | `0.0f, 1.2f, 0.8f, 0.0f` |
 | `BombBird.hSearchDist` | f32 | `2000.0f` |
 | `BombBird.hSearchKeepHeight` | f32 | `800.0f` |
 | `BombBird.hSearchKeepHeightAccUp` | f32 | `10.0f` |
@@ -20088,7 +22001,21 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombBird.hSwoonEndUpVel` | f32 | `5.0f` |
 | `BombBird.hToRailDiv` | f32 | `200.0f` |
 | `BombBird.hTurnLimitRadian` | f32 | `4.5836625f` |
+| `BombBird.init.f1` | f32 | `100.0f` |
+| `BombBird.init.f2` | f32 | `100.0f` |
+| `BombBird.init.f3` | f32 | `100.0f` |
+| `BombBird.init.f4` | f32 | `100.0f` |
+| `BombBird.init.f5` | f32 | `1.5f` |
+| `BombBird.init.f6` | f32 | `30.0f` |
+| `BombBird.init.f7` | f32 | `40.0f` |
+| `BombBird.init.f8` | f32 | `0.5f` |
+| `BombBirdBomb.exeExplosion.f1` | f32 | `800.0f` |
+| `BombBirdBomb.exeExplosion.f2` | f32 | `1200.0f` |
+| `BombBirdBomb.exeExplosion.f3` | f32 | `2000.0f` |
+| `BombBirdBomb.exeWait.f1` | f32 | `5.5f` |
+| `BombBirdBomb.exeWait.f2` | f32 | `5.5f` |
 | `BombBirdBomb.exeWait.reboundVelocityFromCollision.1` | f32 | `1.0f` |
+| `BombBirdBomb.init.f1` | f32 | `60.0f` |
 | `BombBirdBomb.sExplosionMaxTime` | s32 | `10` |
 | `BombBirdBomb.sExplosionRadius` | f32 | `280.0f` |
 | `BombBirdBomb.sExplosionTime` | s32 | `20` |
@@ -20098,12 +22025,27 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombBirdBomb.sReboundRate` | f32 | `0.4f` |
 | `BombBirdBomb.sReboundSpeedMin` | f32 | `5.0f` |
 | `BombHei.endCountdown.setBrkRate.1` | f32 | `1.0f` |
+| `BombHei.exeExplode.f1` | f32 | `800.0f` |
+| `BombHei.exeExplode.f2` | f32 | `1200.0f` |
+| `BombHei.exeExplode.f3` | f32 | `2000.0f` |
+| `BombHei.exeLaunch.f1` | f32 | `0.98f` |
+| `BombHei.exeLaunch.f2` | f32 | `5.0f` |
 | `BombHei.exeLaunch.reboundVelocityFromCollision.1` | f32 | `0.1f` |
 | `BombHei.exeLaunch.reboundVelocityFromCollision.2` | f32 | `6.0f` |
 | `BombHei.exeLaunch.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `BombHei.exePhysics.f1` | f32 | `2.0f` |
+| `BombHei.exePhysics.f2` | f32 | `0.98f` |
 | `BombHei.exePhysics.reboundVelocityFromCollision.1` | f32 | `0.1f` |
 | `BombHei.exePhysics.reboundVelocityFromCollision.2` | f32 | `6.0f` |
 | `BombHei.exePhysics.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `BombHei.exePursue.f1` | f32 | `0.5f` |
+| `BombHei.exePursue.f2` | f32 | `0.5f` |
+| `BombHei.exePursueHit.f1` | f32 | `0.5f` |
+| `BombHei.exePursueHit.f2` | f32 | `0.5f` |
+| `BombHei.exeSpinHit.f1` | f32 | `0.5f` |
+| `BombHei.exeSpinHit.f2` | f32 | `0.5f` |
+| `BombHei.exeStarting.f1` | f32 | `0.5f` |
+| `BombHei.exeStarting.f2` | f32 | `0.5f` |
 | `BombHei.exeStop.attenuateVelocity.1` | f32 | `0.98f` |
 | `BombHei.exeStop.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `BombHei.exeStop.reboundVelocityFromCollision.2` | f32 | `0.0f` |
@@ -20111,6 +22053,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombHei.exeThrown.reboundVelocityFromCollision.1` | f32 | `0.1f` |
 | `BombHei.exeThrown.reboundVelocityFromCollision.2` | f32 | `6.0f` |
 | `BombHei.exeThrown.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `BombHei.exeWait.f1` | f32 | `0.5f` |
+| `BombHei.exeWait.f2` | f32 | `0.5f` |
+| `BombHei.exeWait.f3` | f32 | `1000.0f` |
+| `BombHei.exeWalk.f1` | f32 | `0.5f` |
+| `BombHei.exeWalk.f2` | f32 | `0.5f` |
+| `BombHei.exeWalk.f3` | f32 | `1000.0f` |
 | `BombHei.hBrkFastRate` | f32 | `2.0f` |
 | `BombHei.hBrkSlowRate` | f32 | `0.5f` |
 | `BombHei.hExplodeTime` | s32 | `8` |
@@ -20119,6 +22067,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombHei.hGravityThrown` | f32 | `0.75` |
 | `BombHei.hGroundCosine` | f32 | `0.75f` |
 | `BombHei.hMultVelAngle` | f32 | `1.0f` |
+| `BombHei.hNoMoveNoTurnParam` | f32[4] | `0.0f, 2.0f, 0.8f, 0.0f` |
 | `BombHei.hPrePursueJumpVel` | f32 | `10.0f` |
 | `BombHei.hPursueHitTime` | s32 | `38` |
 | `BombHei.hPushedAcc` | f32 | `2.0f` |
@@ -20134,40 +22083,104 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombHei.hTranslateHeight` | f32 | `53.0f` |
 | `BombHei.hTurnLimitRadian` | f32 | `3.0f` |
 | `BombHei.hWalkTime` | s32 | `160` |
+| `BombHei.init.f1` | f32 | `60.0f` |
+| `BombHei.init.f2` | f32 | `60.0f` |
+| `BombHei.init.f3` | f32 | `200.0f` |
+| `BombHei.init.f4` | f32 | `60.0f` |
+| `BombHei.init.f5` | f32 | `70.0f` |
+| `BombHei.init.f6` | f32 | `35.0f` |
+| `BombHei.startBoundSound.f1` | f32 | `100.0f` |
 | `BombHeiLauncher.hThrowFrontVel` | f32 | `1.0f` |
 | `BombHeiLauncher.hThrowVel` | f32 | `35.0f` |
+| `BombHeiLauncher.initAfterPlacement.f1` | f32 | `30.0f` |
 | `BombTeresa.addTeresaSpinPullVelocity.addVelocityMoveToTarget.1` | f32 | `0.0f` |
 | `BombTeresa.addTeresaSpinPullVelocity.addVelocityMoveToTarget.2` | f32 | `0.0f` |
 | `BombTeresa.addTeresaSpinPullVelocity.addVelocityMoveToTarget.3` | f32 | `150.0f` |
+| `BombTeresa.addTeresaSpinPullVelocity.f1` | f32 | `3.0f` |
+| `BombTeresa.addTeresaSpinPullVelocity.f2` | f32 | `100.0f` |
+| `BombTeresa.endTongueMtxCallBack.f1` | f32 | `35.0f` |
+| `BombTeresa.endTongueMtxCallBack.f2` | f32 | `400.0f` |
+| `BombTeresa.endTongueMtxCallBack.f3` | f32 | `1000.0f` |
+| `BombTeresa.endTongueMtxCallBack.f4` | f32 | `0.5f` |
 | `BombTeresa.exeAttackTongueFailed.1` | s32 | `40` |
 | `BombTeresa.exeBallAppear.1` | s32 | `160` |
 | `BombTeresa.exeBallAppear.2` | s32 | `70` |
 | `BombTeresa.exeBallAppear.addVelocityToGravity.1` | f32 | `1.0f` |
 | `BombTeresa.exeBallAppear.attenuateVelocity.1` | f32 | `0.99f` |
+| `BombTeresa.exeBallAppear.f1` | f32 | `70.0f` |
+| `BombTeresa.exeBallAppear.f2` | f32 | `0.1f` |
+| `BombTeresa.exeBallAppear.f3` | f32 | `0.1f` |
 | `BombTeresa.exeBallAppear.reboundVelocityFromCollision.1` | f32 | `0.95f` |
 | `BombTeresa.exeBallAppear.reboundVelocityFromCollision.2` | f32 | `2.0f` |
 | `BombTeresa.exeBallAppear.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `BombTeresa.exeChase.f1` | f32 | `0.9f` |
 | `BombTeresa.exeChase.turnDirectionToPlayerDegree.1` | f32 | `1.4f` |
+| `BombTeresa.exeDirectTackle.f1` | f32 | `1.5f` |
+| `BombTeresa.exeDirectTackle.f2` | f32 | `100.0f` |
+| `BombTeresa.exeDirectTackle.f3` | f32 | `0.6f` |
+| `BombTeresa.exeDirectTackle.f4` | f32 | `100.0f` |
 | `BombTeresa.exeDirectTackle.turnDirectionToPlayerDegree.1` | f32 | `0.8f` |
+| `BombTeresa.exeDirectTackleSign.f1` | f32 | `100.0f` |
+| `BombTeresa.exeDirectTackleSign.f2` | f32 | `0.6f` |
+| `BombTeresa.exeDirectTackleSign.f3` | f32 | `100.0f` |
 | `BombTeresa.exeDirectTackleSign.turnDirectionToPlayerDegree.1` | f32 | `10.0f` |
 | `BombTeresa.exeDisperse.1` | s32 | `40` |
 | `BombTeresa.exeDrift.1` | s32 | `190` |
 | `BombTeresa.exeDrift.2` | s32 | `190` |
 | `BombTeresa.exeDrift.3` | s32 | `190` |
+| `BombTeresa.exeDrift.f1` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f10` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f11` | f32 | `0.15f` |
+| `BombTeresa.exeDrift.f12` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f13` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f14` | f32 | `0.15f` |
+| `BombTeresa.exeDrift.f15` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f16` | f32 | `0.992f` |
+| `BombTeresa.exeDrift.f2` | f32 | `7.0f` |
+| `BombTeresa.exeDrift.f3` | f32 | `0.8f` |
+| `BombTeresa.exeDrift.f4` | f32 | `20.0f` |
+| `BombTeresa.exeDrift.f5` | f32 | `20.0f` |
+| `BombTeresa.exeDrift.f6` | f32 | `20.0f` |
+| `BombTeresa.exeDrift.f7` | f32 | `150.0f` |
+| `BombTeresa.exeDrift.f8` | f32 | `70.0f` |
+| `BombTeresa.exeDrift.f9` | f32 | `0.15f` |
+| `BombTeresa.exeDriftRelease.f1` | f32 | `150.0f` |
 | `BombTeresa.exeExplosion.1` | s32 | `20` |
 | `BombTeresa.exeShadowAppear.1` | s32 | `130` |
 | `BombTeresa.exeShadowAppear.addVelocityToGravity.1` | f32 | `1.0f` |
+| `BombTeresa.exeShadowAppear.f1` | f32 | `0.995f` |
+| `BombTeresa.exeShadowAppear.f2` | f32 | `0.8f` |
+| `BombTeresa.exeShadowAppear.f3` | f32 | `0.1f` |
+| `BombTeresa.exeShadowAppear.f4` | f32 | `0.6f` |
 | `BombTeresa.exeShadowAppear.turnDirectionToPlayerDegree.1` | f32 | `3.0f` |
 | `BombTeresa.exeShock.1` | s32 | `20` |
 | `BombTeresa.exeShock.attenuateVelocity.1` | f32 | `0.98f` |
 | `BombTeresa.exeWait.isNearPlayerAnyTime.1` | f32 | `1800.0f` |
+| `BombTeresa.exeWander.f1` | f32 | `0.5f` |
+| `BombTeresa.exeWander.f2` | f32 | `0.5f` |
+| `BombTeresa.exeWander.f3` | f32 | `0.5f` |
 | `BombTeresa.exeWander.isNearPlayerAnyTime.1` | f32 | `1800.0f` |
+| `BombTeresa.init.f1` | f32 | `70.0f` |
+| `BombTeresa.init.f2` | f32 | `80.0f` |
+| `BombTeresa.initSensor.f1` | f32 | `20.0f` |
+| `BombTeresa.initSensor.f2` | f32 | `85.0f` |
+| `BombTeresa.initSensor.f3` | f32 | `85.0f` |
 | `BombTeresa.isEnableHitExplosionToPlayer.1` | s32 | `190` |
+| `BombTeresa.receiveMsgEnemyAttack.f1` | f32 | `20.0f` |
+| `BombTeresa.receiveMsgPush.f1` | f32 | `3.0f` |
+| `BombTeresa.rootTongueMtxCallBack.f1` | f32 | `0.5f` |
+| `BombTeresa.rootTongueMtxCallBack.f2` | f32 | `400.0f` |
+| `BombTeresa.rootTongueMtxCallBack.f3` | f32 | `1000.0f` |
+| `BombTeresa.rootTongueMtxCallBack.f4` | f32 | `0.5f` |
+| `BombTeresa.tryChaseEnd.f1` | f32 | `2000.0f` |
+| `BombTeresa.tryDirectTackle.f1` | f32 | `30.0f` |
 | `BombTeresa.tryDirectTackle.isNearPlayer.1` | f32 | `900.0f` |
 | `BombTeresa.updateDriftReleaseVelocity.addVelocityKeepHeightUseShadow.1` | f32 | `150.0f` |
 | `BombTeresa.updateDriftReleaseVelocity.addVelocityKeepHeightUseShadow.2` | f32 | `0.4f` |
 | `BombTeresa.updateDriftReleaseVelocity.addVelocityKeepHeightUseShadow.3` | f32 | `40.0f` |
 | `BombTeresa.updateDriftReleaseVelocity.attenuateVelocity.1` | f32 | `0.9f` |
+| `BombTeresa.updateDriftReleaseVelocity.f1` | f32 | `0.1f` |
+| `BombTeresa.updateDriftReleaseVelocity.f2` | f32 | `0.6f` |
 | `BombTeresa.updateDriftReleaseVelocity.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `BombTeresa.updateDriftReleaseVelocity.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `BombTeresa.updateDriftReleaseVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -20175,6 +22188,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BombTeresa.updateNormalVelocity.addVelocityKeepHeightUseShadow.2` | f32 | `0.4f` |
 | `BombTeresa.updateNormalVelocity.addVelocityKeepHeightUseShadow.3` | f32 | `40.0f` |
 | `BombTeresa.updateNormalVelocity.attenuateVelocity.1` | f32 | `0.9f` |
+| `BombTeresa.updateNormalVelocity.f1` | f32 | `0.1f` |
+| `BombTeresa.updateNormalVelocity.f2` | f32 | `0.6f` |
 | `BombTeresa.updateNormalVelocity.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `BombTeresa.updateNormalVelocity.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `BombTeresa.updateNormalVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -20182,6 +22197,9 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CocoNutBall.cAimHeight` | f32 | `120.0f` |
 | `CocoNutBall.cAimProbeScale` | f32 | `1.5f` |
 | `CocoNutBall.cAimRaiseStep` | f32 | `60.0f` |
+| `CocoNutBall.calcHitBackVelocityAndGravity.f1` | f32 | `2.0f` |
+| `CocoNutBall.calcHitBackVelocityAndGravity.f2` | f32 | `2.0f` |
+| `CocoNutBall.calcHitBackVelocityAndGravity.f3` | f32 | `2.0f` |
 | `CocoNutBall.cBinderRadius` | f32 | `60.0f` |
 | `CocoNutBall.cBindRadius` | f32 | `500.0f` |
 | `CocoNutBall.cBodyRadius` | f32 | `40.0f` |
@@ -20207,6 +22225,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CocoNutBall.cRallySpeedPerHit` | f32 | `3.0f` |
 | `CocoNutBall.cReboundBckRate` | f32 | `0.25f` |
 | `CocoNutBall.cReboundGravityScale` | f32 | `2.0f` |
+| `CocoNutBall.cReboundVelocity` | f32[3] | `0.0f, 15.0f, 5.0f` |
 | `CocoNutBall.cSensorGroupSize` | u16 | `8` |
 | `CocoNutBall.cShadowRadius` | f32 | `60.0f` |
 | `CocoNutBall.cThrowSpeed` | f32 | `15.0f` |
@@ -20217,33 +22236,57 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CocoSambo.cAppearLandFrame` | s32 | `105` |
 | `CocoSambo.cAppearUpFrame` | s32 | `60` |
 | `CocoSambo.cBlowFrame` | s32 | `20` |
+| `CocoSambo.cBlowVelocity` | f32[3] | `0.0f, 20.0f, -100.0f` |
 | `CocoSambo.cFallFrame` | s32 | `45` |
+| `CocoSambo.cHeadSensorOffset` | f32[3] | `60.0f, 0.0f, 0.0f` |
 | `CocoSambo.cHeadSensorRadius` | f32 | `100.0f` |
 | `CocoSambo.cPressFrame` | s32 | `35` |
+| `CocoSambo.cSensorOffset` | f32[3] | `40.0f, 0.0f, 0.0f` |
 | `CocoSambo.cSwoonEndDamagedFrame` | s32 | `95` |
 | `CocoSambo.cSwoonFrame` | s32 | `180` |
 | `CocoSambo.cTrampleSensorRadius` | f32 | `150.0f` |
 | `CocoSambo.endPointerAiming.setBckRate.1` | f32 | `1.0f` |
 | `CocoSambo.endPointerAiming.setBckRate.2` | f32 | `1.0f` |
+| `CocoSambo.exeAppear.f1` | f32 | `180.0f` |
 | `CocoSambo.exeAttack.checkPassBckFrame.1` | f32 | `115.0f` |
+| `CocoSambo.exeAttack.f1` | f32 | `30.0f` |
 | `CocoSambo.exeBlow.1` | s32 | `1` |
 | `CocoSambo.exeBlow.2` | s32 | `2` |
+| `CocoSambo.exeFall.f1` | f32 | `2.0f` |
+| `CocoSambo.exeFall.f2` | f32 | `2.0f` |
+| `CocoSambo.exeFall.f3` | f32 | `2.0f` |
 | `CocoSambo.exeFallHead.1` | s32 | `2` |
 | `CocoSambo.exeFallHead.2` | s32 | `3` |
 | `CocoSambo.exeHide.1` | s32 | `65` |
 | `CocoSambo.exePointerAiming.setBckRate.1` | f32 | `0.0f` |
 | `CocoSambo.exePointerAiming.setBckRate.2` | f32 | `0.0f` |
 | `CocoSambo.exePressY.setBckRate.1` | f32 | `0.0f` |
+| `CocoSambo.exeRecover.f1` | f32 | `180.0f` |
 | `CocoSambo.exeRecover.setBckRate.1` | f32 | `1.0f` |
 | `CocoSambo.exeRecoverWait.setBckRate.1` | f32 | `0.0f` |
 | `CocoSambo.exeWait.isNearPlayer.1` | f32 | `700.0f` |
 | `CocoSambo.exeWait.isNearPlayer.2` | f32 | `100.0f` |
+| `CocoSambo.init.f1` | f32 | `90.0f` |
+| `CocoSambo.init.f2` | f32 | `90.0f` |
+| `CocoSambo.init.f3` | f32 | `80.0f` |
+| `CocoSambo.init.f4` | f32 | `100.0f` |
+| `CocoSambo.initSensor.f1` | f32 | `80.0f` |
+| `CocoSambo.tryToFallHead.f1` | f32 | `0.75f` |
+| `DharmaSambo.attackSensor.f1` | f32 | `0.25f` |
+| `DharmaSambo.attackSensor.f2` | f32 | `0.25f` |
+| `DharmaSambo.attackSensor.f3` | f32 | `0.25f` |
+| `DharmaSambo.control.f1` | f32 | `99999.0f` |
 | `DharmaSambo.DharmaSambo_exeStarPointerBind.setBckRate.1` | f32 | `0.0f` |
 | `DharmaSambo.DharmaSamboParts_exeStarPointerBind.setBckRate.1` | f32 | `0.0f` |
 | `DharmaSambo.endStarPointerBind.setBckRate.1` | f32 | `1.0f` |
+| `DharmaSambo.exeAppear.f1` | f32 | `59.0f` |
 | `DharmaSambo.exeAppear.setBckRate.1` | f32 | `1.0f` |
 | `DharmaSambo.exeAttack.setBckRate.1` | f32 | `1.2f` |
+| `DharmaSambo.exeEscapeLand.f1` | f32 | `1.2f` |
+| `DharmaSambo.exeEscapeRun.f1` | f32 | `1.2f` |
 | `DharmaSambo.exeHide.setBckRate.1` | f32 | `1.2f` |
+| `DharmaSambo.exeHideAppear.f1` | f32 | `5.0f` |
+| `DharmaSambo.exePursue.f1` | f32 | `2000.0f` |
 | `DharmaSambo.hAppearSeTiming` | s32 | `60` |
 | `DharmaSambo.hBindMinStep` | s32 | `10` |
 | `DharmaSambo.hBodyPartsNum` | s32 | `4` |
@@ -20275,7 +22318,19 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DharmaSambo.hSpinHitVelV` | f32 | `30.0f` |
 | `DharmaSambo.hStarPointerBindEndLandTime` | s32 | `27` |
 | `DharmaSambo.hWaitUnderGroundDistance` | f32 | `800.0f` |
+| `DharmaSambo.init.f1` | f32 | `80.0f` |
+| `DharmaSambo.init.f2` | f32 | `80.0f` |
+| `DharmaSambo.init.f3` | f32 | `90.0f` |
+| `DharmaSambo.init.f4` | f32 | `90.0f` |
+| `DharmaSambo.init.f5` | f32 | `80.0f` |
+| `DharmaSambo.init.f6` | f32 | `80.0f` |
+| `DharmaSambo.init.f7` | f32 | `80.0f` |
+| `DharmaSambo.init.f8` | f32 | `110.0f` |
+| `DharmaSambo.init.f9` | f32 | `80.0f` |
+| `DharmaSambo.kill.f1` | f32 | `10.0f` |
+| `DharmaSambo.kill.f2` | f32 | `40.0f` |
 | `DharmaSambo.tearDownStarPointerBind.setBckRate.1` | f32 | `1.0f` |
+| `Dossun.init.f1` | f32 | `100.0f` |
 | `Dossun.sCamShakeDistanceStrong` | f32 | `2000.0f` |
 | `Dossun.sCamShakeDistanceWeak` | f32 | `3500.0f` |
 | `Dossun.sFallingSpeed` | f32 | `30.0f` |
@@ -20285,9 +22340,22 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Dossun.sUpperFrame` | s32 | `180` |
 | `Dossun.sUpperHeight` | f32 | `1000.0f` |
 | `ElectricPressureBullet.exeFly.1` | s32 | `10` |
+| `ElectricPressureBullet.exeFly.f1` | f32 | `4.0f` |
+| `ElectricPressureBullet.init.f1` | f32 | `100.0f` |
+| `ElectricPressureBullet.init.f2` | f32 | `100.0f` |
+| `ElectricPressureBullet.init.f3` | f32 | `100.0f` |
+| `ElectricPressureBullet.init.f4` | f32 | `75.0f` |
 | `EyeBeamer.cBeamModelLength` | f32 | `2000.0f` |
 | `EyeBeamer.cBeamRadius` | f32 | `140.0f` |
 | `EyeBeamer.cClipMargin` | f32 | `300.0f` |
+| `EyeBeamer.exePatrol.f1` | f32 | `0.5f` |
+| `EyeBeamer.exePatrol.f2` | f32 | `0.5f` |
+| `EyeBeamer.init.f1` | f32 | `0.5f` |
+| `EyeBeamer.init.f2` | f32 | `0.5f` |
+| `EyeBeamer.initAfterPlacement.f1` | f32 | `0.5f` |
+| `EyeBeamer.initAfterPlacement.f2` | f32 | `0.5f` |
+| `EyeBeamer.initAfterPlacement.f3` | f32 | `0.5f` |
+| `EyeBeamer.initAfterPlacement.f4` | f32 | `0.5f` |
 | `EyeBeamer.tryPatrol.1` | s32 | `500` |
 | `FireBall.cBinderRadius` | f32 | `60.0f` |
 | `FireBall.cForceKillDistance` | f32 | `5000.0f` |
@@ -20300,7 +22368,9 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `FireBall.cSensorRadius` | f32 | `40.0f` |
 | `FireBall.cStarWandRadius3d` | f32 | `150.0f` |
 | `FireBall.cThrowOffsetY` | f32 | `120.0f` |
+| `FireBall.exeThrow.f1` | f32 | `200.0f` |
 | `FireBubble.cAppearGravity` | f32 | `0.75f` |
+| `FireBubble.cAppearVelocity` | f32[3] | `0.0f, 35.0f, 6.0f` |
 | `FireBubble.cBinderRadius` | f32 | `40.0f` |
 | `FireBubble.cChaseFrame` | s32 | `30` |
 | `FireBubble.cChaseGravity` | f32 | `2.0f` |
@@ -20313,27 +22383,138 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `FireBubble.cRandomActFrame` | s32 | `120` |
 | `FireBubble.cReflectCursorSpeed` | f32 | `10.0f` |
 | `FireBubble.cReflectGravity` | f32 | `1.5f` |
+| `FireBubble.cReflectVelocity` | f32[3] | `0.0f, 40.0f, -15.0f` |
 | `FireBubble.cSensorRadius` | f32 | `30.0f` |
 | `FireBubble.cStarWandRadius` | f32 | `150.0f` |
 | `FireBubble.exeChase.checkPassBckFrame.1` | f32 | `0.0f` |
+| `FireBubble.init.f1` | f32 | `40.0f` |
+| `FireBubble.init.f2` | f32 | `40.0f` |
+| `FireBubble.updateChaseFrontVec.f1` | f32 | `40.0f` |
+| `Gesso.attackSensor.f1` | f32 | `25.0f` |
+| `Gesso.calcSinkMove.f1` | f32 | `100.0f` |
+| `Gesso.calcSinkMove.f2` | f32 | `3.0f` |
+| `Gesso.calcSinkMove.f3` | f32 | `180.0f` |
+| `Gesso.calcSinkMove.f4` | f32 | `180.0f` |
+| `Gesso.calcSinkMove.f5` | f32 | `3.0f` |
+| `Gesso.calcSinkMove.f6` | f32 | `3.0f` |
+| `Gesso.calcSinkMove.f7` | f32 | `2.3f` |
+| `Gesso.calcSinkMove.f8` | f32 | `180.0f` |
+| `Gesso.calcWalkMove.f1` | f32 | `0.990099f` |
+| `Gesso.calcWalkMove.f10` | f32 | `5.0f` |
+| `Gesso.calcWalkMove.f11` | f32 | `7.0f` |
+| `Gesso.calcWalkMove.f12` | f32 | `4.6f` |
+| `Gesso.calcWalkMove.f13` | f32 | `3.0f` |
+| `Gesso.calcWalkMove.f14` | f32 | `2.0f` |
+| `Gesso.calcWalkMove.f15` | f32 | `7.0f` |
+| `Gesso.calcWalkMove.f16` | f32 | `4.6f` |
+| `Gesso.calcWalkMove.f17` | f32 | `70.0f` |
+| `Gesso.calcWalkMove.f18` | f32 | `100.0f` |
+| `Gesso.calcWalkMove.f2` | f32 | `7.0f` |
+| `Gesso.calcWalkMove.f3` | f32 | `3.0f` |
+| `Gesso.calcWalkMove.f4` | f32 | `5.0f` |
+| `Gesso.calcWalkMove.f5` | f32 | `2.3f` |
+| `Gesso.calcWalkMove.f6` | f32 | `7.0f` |
+| `Gesso.calcWalkMove.f7` | f32 | `3.0f` |
+| `Gesso.calcWalkMove.f8` | f32 | `2.3f` |
+| `Gesso.calcWalkMove.f9` | f32 | `3.0f` |
 | `Gesso.clipAndInitPos.isNearPlayer.1` | f32 | `10000.0f` |
+| `Gesso.control.f1` | f32 | `0.5f` |
+| `Gesso.control.f2` | f32 | `0.7f` |
+| `Gesso.control.f3` | f32 | `50.0f` |
+| `Gesso.exeAttack.f1` | f32 | `0.9f` |
+| `Gesso.exeAttack.f2` | f32 | `1.5f` |
+| `Gesso.exeAttack.f3` | f32 | `45.0f` |
+| `Gesso.exeAttack.f4` | f32 | `2.0f` |
+| `Gesso.exeComeBack.f1` | f32 | `1.5f` |
+| `Gesso.exeComeBack.f2` | f32 | `45.0f` |
+| `Gesso.exeComeBack.f3` | f32 | `2.0f` |
+| `Gesso.exeComeBack.f4` | f32 | `1.5f` |
+| `Gesso.exeComeBack.f5` | f32 | `3.0f` |
+| `Gesso.exeComeBack.f6` | f32 | `100.0f` |
 | `Gesso.exeComeFromBox.1` | s32 | `10` |
+| `Gesso.exeComeFromBox.f1` | f32 | `100.0f` |
+| `Gesso.exeComeFromBox.f2` | f32 | `0.3f` |
+| `Gesso.exeComeFromBox.f3` | f32 | `10.0f` |
+| `Gesso.exeComeFromBox.f4` | f32 | `5.0f` |
+| `Gesso.exeLostPlayer.f1` | f32 | `1.5f` |
+| `Gesso.exeLostPlayer.f2` | f32 | `45.0f` |
+| `Gesso.exeLostPlayer.f3` | f32 | `2.0f` |
 | `Gesso.exePunchDown.1` | s32 | `20` |
+| `Gesso.exePunchDown.f1` | f32 | `1.5f` |
+| `Gesso.exeSearch.f1` | f32 | `1.5f` |
+| `Gesso.exeSearch.f2` | f32 | `45.0f` |
+| `Gesso.exeSearch.f3` | f32 | `2.0f` |
+| `Gesso.exeSearch.f4` | f32 | `1.5f` |
 | `Gesso.exeSearch.turnDirectionToPlayerDegree.1` | f32 | `1.5f` |
+| `Gesso.exeSink.f1` | f32 | `1.5f` |
 | `Gesso.exeSink.isNearPlayer.1` | f32 | `1000.0f` |
 | `Gesso.exeWait.1` | s32 | `2` |
+| `Gesso.exeWait.f1` | f32 | `1.5f` |
+| `Gesso.exeWait.f2` | f32 | `45.0f` |
+| `Gesso.exeWait.f3` | f32 | `2.0f` |
+| `Gesso.exeWait.f4` | f32 | `0.3f` |
 | `Gesso.exeWait.isNearPlayer.1` | f32 | `1400.0f` |
+| `Gesso.exeWalk.f1` | f32 | `1.5f` |
+| `Gesso.exeWalkCharge.f1` | f32 | `0.995f` |
+| `Gesso.init.f1` | f32 | `100.0f` |
+| `Gesso.init.f2` | f32 | `150.0f` |
+| `Gesso.init.f3` | f32 | `100.0f` |
+| `Gesso.init.f4` | f32 | `90.0f` |
+| `Gesso.knockOut.f1` | f32 | `30.0f` |
+| `Gesso.receiveMsgPush.f1` | f32 | `0.2f` |
 | `Gesso.selectNextNerve.isNearPlayer.1` | f32 | `2400.0f` |
 | `Gesso.sStepForWalk` | s32 | `43` |
 | `Gesso.tryChangeHighSpeedMode.isNearPlayer.1` | f32 | `1000.0f` |
 | `HammerHeadPackun.exeAttack.1` | s32 | `156` |
 | `HammerHeadPackun.exeCrow.1` | s32 | `45` |
 | `HammerHeadPackun.exeDamage.1` | s32 | `76` |
+| `HammerHeadPackun.exeNumb.f1` | f32 | `1.5f` |
 | `HammerHeadPackun.exeRise.1` | s32 | `56` |
+| `HammerHeadPackun.init.f1` | f32 | `169.0f` |
+| `HammerHeadPackun.init.f2` | f32 | `120.0f` |
+| `HammerHeadPackun.init.f3` | f32 | `8.0f` |
+| `HammerHeadPackun.init.f4` | f32 | `0.06f` |
+| `HammerHeadPackun.initLeaf.f1` | f32 | `100.0f` |
+| `HammerHeadPackun.initLeaf.f2` | f32 | `90.0f` |
+| `HammerHeadPackun.initLeaf.f3` | f32 | `90.0f` |
+| `HammerHeadPackun.initLeaf.f4` | f32 | `90.0f` |
+| `HammerHeadPackun.initLeaf.f5` | f32 | `90.0f` |
+| `HammerHeadPackun.initSensor.f1` | f32 | `130.0f` |
+| `HammerHeadPackun.initSensor.f2` | f32 | `120.0f` |
+| `HammerHeadPackun.initSensor.f3` | f32 | `120.0f` |
+| `HammerHeadPackun.initSensor.f4` | f32 | `45.0f` |
+| `HammerHeadPackun.initSensor.f5` | f32 | `45.0f` |
+| `HammerHeadPackun.initSensor.f6` | f32 | `50.0f` |
+| `HammerHeadPackun.initSensor.f7` | f32 | `45.0f` |
+| `HammerHeadPackun.initSensor.f8` | f32 | `60.0f` |
+| `HammerHeadPackun.initSensor.f9` | f32 | `80.0f` |
 | `HammerHeadPackun.isAttackSensorValid.1` | s32 | `40` |
 | `HammerHeadPackun.isChance.1` | s32 | `50` |
+| `HammerHeadPackun.isInFieldOfView.f1` | f32 | `30.0f` |
+| `HammerHeadPackun.isInFieldOfView.f2` | f32 | `30.0f` |
+| `HammerHeadPackun.isInFieldOfView.f3` | f32 | `30.0f` |
+| `HammerHeadPackun.isTargetInRange.f1` | f32 | `800.0f` |
+| `HammerHeadPackun.kill.f1` | f32 | `10.0f` |
+| `HammerHeadPackun.kill.f2` | f32 | `40.0f` |
+| `HammerHeadPackun.turnTo.f1` | f32 | `180.0f` |
+| `Hanachan.applyPlayerHipDropReaction.f1` | f32 | `999999.0f` |
+| `Hanachan.calcNearestInfectionId.f1` | f32 | `9999999.0f` |
 | `Hanachan.endStarPointerBind.setBckRate.1` | f32 | `1.0f` |
+| `Hanachan.exeAngryEnd.f1` | f32 | `0.98f` |
+| `Hanachan.exeAngryEnd.f2` | f32 | `0.5f` |
+| `Hanachan.exeAngryEnd.f3` | f32 | `0.5f` |
+| `Hanachan.exeAngryPursue.f1` | f32 | `0.98f` |
+| `Hanachan.exeAngryPursue.f2` | f32 | `0.08f` |
+| `Hanachan.exeBecomeAngry.f1` | f32 | `0.98f` |
 | `Hanachan.exeBlow.1` | s32 | `15` |
+| `Hanachan.exeHipDropped.f1` | f32 | `2.0f` |
+| `Hanachan.exeHipDropped.f2` | f32 | `0.98f` |
+| `Hanachan.exeOverturn.f1` | f32 | `0.98f` |
+| `Hanachan.exeOverturnBound.f1` | f32 | `0.98f` |
+| `Hanachan.exeRecover.f1` | f32 | `0.98f` |
+| `Hanachan.exeTrample.f1` | f32 | `0.98f` |
+| `Hanachan.exeWalk.f1` | f32 | `0.98f` |
+| `Hanachan.exeWallHitEnd.f1` | f32 | `0.98f` |
 | `Hanachan.hAngryAnimRate` | f32 | `3.0f` |
 | `Hanachan.hAngryEndJumpVelV` | f32 | `0.0f` |
 | `Hanachan.hAngrySpeed` | f32 | `13.0f` |
@@ -20381,6 +22562,41 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Hanachan.hWallHitEndGravity` | f32 | `2.0f` |
 | `Hanachan.hWallHitEndJumpVelV` | f32 | `20.0f` |
 | `Hanachan.hWallHitInterval` | s32 | `3` |
+| `Hanachan.init.f1` | f32 | `85.0f` |
+| `Hanachan.init.f10` | f32 | `110.0f` |
+| `Hanachan.init.f11` | f32 | `80.0f` |
+| `Hanachan.init.f12` | f32 | `2.0f` |
+| `Hanachan.init.f13` | f32 | `2.0f` |
+| `Hanachan.init.f14` | f32 | `2.0f` |
+| `Hanachan.init.f15` | f32 | `2.0f` |
+| `Hanachan.init.f16` | f32 | `2.0f` |
+| `Hanachan.init.f17` | f32 | `2.0f` |
+| `Hanachan.init.f18` | f32 | `2.0f` |
+| `Hanachan.init.f19` | f32 | `2.0f` |
+| `Hanachan.init.f2` | f32 | `100.0f` |
+| `Hanachan.init.f3` | f32 | `85.0f` |
+| `Hanachan.init.f4` | f32 | `85.0f` |
+| `Hanachan.init.f5` | f32 | `85.0f` |
+| `Hanachan.init.f6` | f32 | `100.0f` |
+| `Hanachan.init.f7` | f32 | `100.0f` |
+| `Hanachan.init.f8` | f32 | `100.0f` |
+| `Hanachan.init.f9` | f32 | `70.0f` |
+| `Hanachan.kill.f1` | f32 | `10.0f` |
+| `Hanachan.kill.f2` | f32 | `40.0f` |
+| `Hanachan.moveBodyAlongHead.f1` | f32 | `2.0f` |
+| `Hanachan.moveBodyAlongHead.f2` | f32 | `2.0f` |
+| `Hanachan.moveBodyAlongHead.f3` | f32 | `0.3f` |
+| `Hanachan.moveBodyAlongHead.f4` | f32 | `0.5f` |
+| `Hanachan.moveHeadAlongRail.f1` | f32 | `800.0f` |
+| `Hanachan.moveHeadAlongRail.f2` | f32 | `0.04f` |
+| `Hanachan.moveHeadAlongRail.f3` | f32 | `0.08f` |
+| `Hanachan.moveHeadAlongRail.f4` | f32 | `0.5f` |
+| `Hanachan.moveHeadAlongRail.f5` | f32 | `0.5f` |
+| `Hanachan.moveHeadToPlayer.f1` | f32 | `0.5f` |
+| `Hanachan.moveHeadToPlayer.f2` | f32 | `0.5f` |
+| `Hanachan.receiveMsgPush.f1` | f32 | `2.0f` |
+| `Hanachan.receiveMsgPush.f2` | f32 | `2.0f` |
+| `Hanachan.setNerveBlow.f1` | f32 | `2.0f` |
 | `HomingKiller.cAppearMoveDistance` | f32 | `200.0f` |
 | `HomingKiller.cAppearMoveFrame` | s32 | `20` |
 | `HomingKiller.cAppearRumbleFrame` | s32 | `22` |
@@ -20388,6 +22604,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `HomingKiller.cAppearRumbleWidth` | f32 | `18.0f` |
 | `HomingKiller.cAppearStopFrame` | s32 | `30` |
 | `HomingKiller.cBinderRadius` | f32 | `70.0f` |
+| `HomingKiller.cBodyHitSensorOffset` | f32[3] | `0.0f, 0.0f, -10.0f` |
 | `HomingKiller.cBodyHitSensorRadius` | f32 | `70.0f` |
 | `HomingKiller.cCameraShakeDistance` | f32 | `1000.0f` |
 | `HomingKiller.cChaseEndDistance` | f32 | `3000.0f` |
@@ -20421,27 +22638,54 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `HomingKiller.cTorpedoLightClippingRadius` | f32 | `1000.0f` |
 | `HomingKiller.cUpVecRotateSpeed` | f32 | `2.0f` |
 | `HomingKiller.exeFreeze.setBckRate.1` | f32 | `0.0f` |
+| `HomingKiller.init.f1` | f32 | `2000.0f` |
+| `HomingKiller.initMapToolInfo.f1` | f32 | `0.0001f` |
+| `HomingKiller.isChaseStart.f1` | f32 | `0.5f` |
+| `HomingKiller.isValidShowModel.f1` | f32 | `300.0f` |
+| `HomingKiller.isValidShowModel.f2` | f32 | `200.0f` |
+| `HomingKiller.startMoveLevelSound.f1` | f32 | `100.0f` |
+| `IceMerameraKing.addVelocityToInitPos.f1` | f32 | `0.5f` |
+| `IceMerameraKing.attackSensor.f1` | f32 | `200.0f` |
+| `IceMerameraKing.control.f1` | f32 | `0.25f` |
+| `IceMerameraKing.control.f2` | f32 | `15.0f` |
+| `IceMerameraKing.control.f3` | f32 | `24.0f` |
 | `IceMerameraKing.exeAngryDemo.1` | s32 | `1` |
 | `IceMerameraKing.exeAngryDemo.2` | s32 | `85` |
 | `IceMerameraKing.exeAngryDemo.3` | s32 | `85` |
 | `IceMerameraKing.exeAngryDemo.addVelocityKeepHeightUseShadow.1` | f32 | `400.0f` |
 | `IceMerameraKing.exeAngryDemo.addVelocityKeepHeightUseShadow.2` | f32 | `1.5f` |
 | `IceMerameraKing.exeAngryDemo.addVelocityKeepHeightUseShadow.3` | f32 | `300.0f` |
+| `IceMerameraKing.exeAngryDemo.f1` | f32 | `200.0f` |
+| `IceMerameraKing.exeAngryDemo.f2` | f32 | `15.0f` |
+| `IceMerameraKing.exeAngryDemo.f3` | f32 | `70.0f` |
 | `IceMerameraKing.exeAttack.addVelocityKeepHeightUseShadow.1` | f32 | `800.0f` |
 | `IceMerameraKing.exeAttack.addVelocityKeepHeightUseShadow.2` | f32 | `1.5f` |
 | `IceMerameraKing.exeAttack.addVelocityKeepHeightUseShadow.3` | f32 | `300.0f` |
+| `IceMerameraKing.exeAttackAfter.f1` | f32 | `800.0f` |
+| `IceMerameraKing.exeAttackAfter.f2` | f32 | `1200.0f` |
+| `IceMerameraKing.exeAttackAfter.f3` | f32 | `2000.0f` |
 | `IceMerameraKing.exeDamage.1` | s32 | `20` |
 | `IceMerameraKing.exeDamage.addVelocityKeepHeightUseShadow.1` | f32 | `900.0f` |
 | `IceMerameraKing.exeDamage.addVelocityKeepHeightUseShadow.2` | f32 | `3.0f` |
 | `IceMerameraKing.exeDamage.addVelocityKeepHeightUseShadow.3` | f32 | `300.0f` |
 | `IceMerameraKing.exeDamage.setVelocityJump.1` | f32 | `80.0f` |
+| `IceMerameraKing.exeEscape.f1` | f32 | `2.0f` |
+| `IceMerameraKing.exeEscape.f2` | f32 | `6.0f` |
+| `IceMerameraKing.exeEscape.f3` | f32 | `100.0f` |
+| `IceMerameraKing.exeEscape.f4` | f32 | `0.5f` |
+| `IceMerameraKing.exeEscape.f5` | f32 | `0.25f` |
+| `IceMerameraKing.exeEscape.f6` | f32 | `0.5f` |
 | `IceMerameraKing.exeEscapeJump.1` | s32 | `20` |
 | `IceMerameraKing.exeEscapeJump.2` | s32 | `20` |
 | `IceMerameraKing.exeEscapeJump.addVelocitySeparateHV.1` | f32 | `20.0f` |
 | `IceMerameraKing.exeEscapeJump.addVelocitySeparateHV.2` | f32 | `90.0f` |
+| `IceMerameraKing.exeEscapeJump.f1` | f32 | `0.5f` |
+| `IceMerameraKing.exeEscapeJump.f2` | f32 | `0.5f` |
 | `IceMerameraKing.exeExtinguish.1` | s32 | `40` |
 | `IceMerameraKing.exeExtinguish.addVelocityKeepHeightUseShadow.1` | f32 | `1.3f` |
 | `IceMerameraKing.exeExtinguish.addVelocityKeepHeightUseShadow.2` | f32 | `700.0f` |
+| `IceMerameraKing.exeExtinguish.f1` | f32 | `20.0f` |
+| `IceMerameraKing.exeExtinguish.f2` | f32 | `200.0f` |
 | `IceMerameraKing.exePreAttack.addVelocityKeepHeightUseShadow.1` | f32 | `800.0f` |
 | `IceMerameraKing.exePreAttack.addVelocityKeepHeightUseShadow.2` | f32 | `1.5f` |
 | `IceMerameraKing.exePreAttack.addVelocityKeepHeightUseShadow.3` | f32 | `300.0f` |
@@ -20465,6 +22709,30 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `IceMerameraKing.exeThrow.addVelocityKeepHeightUseShadow.1` | f32 | `400.0f` |
 | `IceMerameraKing.exeThrow.addVelocityKeepHeightUseShadow.2` | f32 | `1.5f` |
 | `IceMerameraKing.exeThrow.addVelocityKeepHeightUseShadow.3` | f32 | `300.0f` |
+| `IceMerameraKing.exeThrow.f1` | f32 | `35.0f` |
+| `IceMerameraKing.exeThrow.f2` | f32 | `5.0f` |
+| `IceMerameraKing.hAngryDemoParam` | f32[4] | `0.0f, 0.5f, 0.9f, 1.5f` |
+| `IceMerameraKing.hAttackParam` | f32[4] | `0.0f, 6.0f, 0.98f, 0.0f` |
+| `IceMerameraKing.hDamageJumpParam` | f32[4] | `0.0f, 1.9f, 0.98f, 0.0f` |
+| `IceMerameraKing.hEscapeOnAirParam` | f32[4] | `0.0f, 3.0f, 0.96f, 0.0f` |
+| `IceMerameraKing.hEscapeOnGroundParam` | f32[4] | `-0.7f, 1.0f, 0.96f, 180.0f` |
+| `IceMerameraKing.hExtinguishFallOnAirParam` | f32[4] | `0.0f, 4.0f, 0.96f, 0.0f` |
+| `IceMerameraKing.hExtinguishOnAirParam` | f32[4] | `0.0f, 0.125f, 0.96f, 0.0f` |
+| `IceMerameraKing.hFlyParam` | f32[4] | `0.0f, 0.5f, 0.9f, 1.0f` |
+| `IceMerameraKing.hOnAirParam` | f32[4] | `0.0f, 3.0f, 0.96f, 0.0f` |
+| `IceMerameraKing.hOnGroundParam` | f32[4] | `0.0f, 1.0f, 0.8f, 0.0f` |
+| `IceMerameraKing.hPreRecoverJumpParam` | f32[4] | `0.0f, 1.0f, 0.96f, 0.0f` |
+| `IceMerameraKing.IceMerameraKingShockWave.f1` | f32 | `15.0f` |
+| `IceMerameraKing.IceMerameraKingShockWave.f2` | f32 | `100.0f` |
+| `IceMerameraKing.IceMerameraKingShockWave.f3` | f32 | `24.0f` |
+| `IceMerameraKing.IceMerameraKingShockWave.f4` | f32 | `100.0f` |
+| `IceMerameraKing.init.f1` | f32 | `1.5f` |
+| `IceMerameraKing.init.f2` | f32 | `1.5f` |
+| `IceMerameraKing.init.f3` | f32 | `1.5f` |
+| `IceMerameraKing.init.f4` | f32 | `1.8f` |
+| `IceMerameraKing.init.f5` | f32 | `1500.0f` |
+| `IceMerameraKing.isEnableThrow.f1` | f32 | `0.60f` |
+| `IceMerameraKing.receiveOtherMsg.f1` | f32 | `600.0f` |
 | `IceMerameraKing.sAttackDistance` | f32 | `1000.0f` |
 | `IceMerameraKing.sBodyRadius` | f32 | `130.0f` |
 | `IceMerameraKing.sIceNum` | s32 | `6` |
@@ -20472,6 +22740,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `IceMerameraKing.sSearchDistance` | f32 | `4500.0f` |
 | `ItemGenerator.cStarPieceSpeedH` | f32 | `10.0f` |
 | `ItemGenerator.cStarPieceSpeedV` | f32 | `40.0f` |
+| `Jellyfish.control.f1` | f32 | `0.9999f` |
+| `Jellyfish.faceToMario.f1` | f32 | `0.5f` |
+| `Jellyfish.init.f1` | f32 | `100.0f` |
+| `Jellyfish.init.f2` | f32 | `30.0f` |
+| `Jellyfish.init.f3` | f32 | `130.0f` |
+| `Jellyfish.init.f4` | f32 | `100.0f` |
+| `Jellyfish.init.f5` | f32 | `1900.0f` |
+| `Jellyfish.init.f6` | f32 | `100.0f` |
+| `Jellyfish.init.f7` | f32 | `100.0f` |
+| `Jellyfish.init.f8` | f32 | `500.0f` |
 | `Jellyfish.sFindDistance` | f32 | `1000.0f` |
 | `Jellyfish.sKnockOutSpeed` | f32 | `40.0f` |
 | `Jellyfish.sMaxTiltAngle` | f32 | `30.0f` |
@@ -20480,9 +22758,28 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Jellyfish.sThreatTurnDegree` | f32 | `1.5f` |
 | `Jellyfish.sWaitSteps` | s32 | `280` |
 | `Jellyfish.sWaitTurnDegree` | f32 | `0.2f` |
+| `JellyfishElectric.control.f1` | f32 | `0.9999f` |
+| `JellyfishElectric.control.f2` | f32 | `700.0f` |
+| `JellyfishElectric.init.f1` | f32 | `60.0f` |
+| `JellyfishElectric.init.f2` | f32 | `350.0f` |
+| `JellyfishElectric.init.f3` | f32 | `400.0f` |
+| `JellyfishElectric.init.f4` | f32 | `400.0f` |
+| `JellyfishElectric.init.f5` | f32 | `230.0f` |
+| `JellyfishElectric.init.f6` | f32 | `100.0f` |
+| `JellyfishElectric.init.f7` | f32 | `500.0f` |
+| `JellyfishElectric.JellyfishElectric.f1` | f32 | `5.0f` |
 | `JellyfishElectric.selectNerveAfterWait.1` | s32 | `280` |
+| `JellyfishElectric.waitTurn.f1` | f32 | `280.0f` |
+| `JellyfishElectric.waitTurn.f2` | f32 | `0.2f` |
+| `Jiraira.exeExplode.f1` | f32 | `800.0f` |
+| `Jiraira.exeExplode.f2` | f32 | `1200.0f` |
+| `Jiraira.exeExplode.f3` | f32 | `2000.0f` |
+| `Jiraira.exeExplode.f4` | f32 | `8.0f` |
 | `Jiraira.hExplodeTime` | s32 | `8` |
 | `Jiraira.hPreRecoverTime` | s32 | `188` |
+| `Jiraira.init.f1` | f32 | `30.0f` |
+| `Jiraira.init.f2` | f32 | `100.0f` |
+| `Jiraira.init.f3` | f32 | `30.0f` |
 | `JumpBeamer.cAppearDistance` | f32 | `3000.0f` |
 | `JumpBeamer.cBodyHopRadius` | f32 | `120.0f` |
 | `JumpBeamer.cBodyRadius` | f32 | `145.0f` |
@@ -20493,7 +22790,21 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `JumpBeamer.cLeaveDistance` | f32 | `3200.0f` |
 | `JumpBeamer.cShadowHideRadius` | f32 | `110.0f` |
 | `JumpBeamer.cShadowRiseRadius` | f32 | `30.0f` |
+| `JumpBeamer.init.f1` | f32 | `100.0f` |
+| `JumpBeamer.init.f2` | f32 | `35.0f` |
+| `JumpBeamer.init.f3` | f32 | `140.0f` |
+| `JumpGuarder.control.f1` | f32 | `44.0f` |
+| `JumpGuarder.exeHopEnd.f1` | f32 | `145.0f` |
 | `JumpGuarder.exeHopStart.1` | s32 | `10` |
+| `JumpGuarder.exeHopStart.f1` | f32 | `120.0f` |
+| `JumpGuarder.exeOpen.f1` | f32 | `360.0f` |
+| `JumpGuarder.exeOpen.f2` | f32 | `360.0f` |
+| `JumpGuarder.exeOpen.f3` | f32 | `360.0f` |
+| `JumpGuarder.init.f1` | f32 | `145.0f` |
+| `JumpGuarder.init.f2` | f32 | `145.0f` |
+| `JumpGuarder.init.f3` | f32 | `35.0f` |
+| `JumpGuarder.init.f4` | f32 | `2.0f` |
+| `JumpGuarder.init.f5` | f32 | `4.0f` |
 | `JumpGuarder.sAppearDistance` | f32 | `2000.0f` |
 | `JumpGuarder.sAppearHeight` | f32 | `500.0f` |
 | `JumpGuarder.sAttack` | s32 | `360` |
@@ -20510,31 +22821,57 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `JumpGuarder.sOpenInt` | s32 | `74` |
 | `JumpGuarder.sRotateDegree` | f32 | `3.0f` |
 | `JumpGuarder.sShadowRadius` | f32 | `140.0f` |
+| `JumpGuarder.updateRotate.f1` | f32 | `90.0f` |
+| `JumpGuarder.updateRotate.f2` | f32 | `90.0f` |
+| `JumpGuarder.updateRotate.f3` | f32 | `180.0f` |
+| `JumpGuarder.updateRotate.f4` | f32 | `180.0f` |
+| `JumpGuarder.updateRotate.f5` | f32 | `360.0f` |
+| `JumpGuarder.updateRotate.f6` | f32 | `180.0f` |
+| `JumpGuarder.updateRotate.f7` | f32 | `360.0f` |
+| `JumpSpider.attackSensor.f1` | f32 | `0.25f` |
 | `JumpSpider.exeHitToPlayer.1` | s32 | `58` |
 | `JumpSpider.exeHitToPlayer.applyVelocityDampAndGravity.1` | f32 | `0.3f` |
 | `JumpSpider.exeHitToPlayer.applyVelocityDampAndGravity.2` | f32 | `0.8f` |
 | `JumpSpider.exeHitToPlayer.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `JumpSpider.exeHitToPlayer.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `JumpSpider.exeHitToPlayer.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
+| `JumpSpider.exeHitToPlayer.f1` | f32 | `0.05f` |
 | `JumpSpider.exeHitToPlayer.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `JumpSpider.exeHitToPlayer.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `JumpSpider.exeHitToPlayer.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `JumpSpider.exeJump.applyVelocityDampAndGravity.1` | f32 | `0.3f` |
+| `JumpSpider.exeJump.f1` | f32 | `22.0f` |
+| `JumpSpider.exeJump.f2` | f32 | `0.02f` |
+| `JumpSpider.exeJumpEnd.f1` | f32 | `1000.0f` |
 | `JumpSpider.exeNoPowerStart.applyVelocityDampAndGravity.1` | f32 | `0.8f` |
 | `JumpSpider.exeNoPowerStart.applyVelocityDampAndGravity.2` | f32 | `0.8f` |
 | `JumpSpider.exeNoPowerStart.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `JumpSpider.exeNoPowerStart.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `JumpSpider.exeNoPowerStart.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
+| `JumpSpider.exePreJump.f1` | f32 | `0.05f` |
+| `JumpSpider.exeStampFall.f1` | f32 | `30.0f` |
+| `JumpSpider.exeWait.f1` | f32 | `1000.0f` |
 | `JumpSpider.hAirDampH` | f32 | `0.98f` |
 | `JumpSpider.hAirDampV` | f32 | `0.98f` |
 | `JumpSpider.hGroundDamp` | f32 | `0.8f` |
 | `JumpSpider.hJumpVelV` | f32 | `1.0f` |
 | `JumpSpider.hStampDeathTime` | s32 | `20` |
+| `JumpSpider.init.f1` | f32 | `100.0f` |
+| `JumpSpider.init.f2` | f32 | `100.0f` |
+| `JumpSpider.init.f3` | f32 | `60.0f` |
+| `JumpSpider.init.f4` | f32 | `100.0f` |
+| `JumpSpider.init.f5` | f32 | `80.0f` |
+| `JumpSpider.init.f6` | f32 | `110.0f` |
+| `JumpSpider.initAfterPlacement.f1` | f32 | `10.0f` |
+| `JumpSpider.initAfterPlacement.f2` | f32 | `300.0f` |
 | `Kabokuri.addVelocityBase.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `Kabokuri.addVelocityBase.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `Kabokuri.addVelocityBase.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `Kabokuri.addVelocityToRailPoint.f1` | f32 | `0.4f` |
 | `Kabokuri.exeHitAttacked.reboundVelocityFromCollision.1` | f32 | `0.9f` |
 | `Kabokuri.exeHitAttacked.turnDirectionToPlayerDegree.1` | f32 | `160.0f` |
+| `Kabokuri.init.f1` | f32 | `90.0f` |
+| `Kabokuri.init.f2` | f32 | `90.0f` |
 | `Kabokuri.sAttackHitRadius` | f32 | `70.0f` |
 | `Kabokuri.sAttackHitYOffset` | f32 | `70.0f` |
 | `Kabokuri.sBinderRadius` | f32 | `90.0f` |
@@ -20555,11 +22892,19 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Kabokuri.sWalkGoalRange` | f32 | `25.0f` |
 | `Kabokuri.sWalkSpeed` | f32 | `0.2f` |
 | `Kabokuri.sWalkTurnDegree` | f32 | `2.0f` |
+| `KabokuriFire.receiveOtherMsg.f1` | f32 | `350.0f` |
 | `KabokuriFire.sBodyHitSize` | f32 | `40.0f` |
 | `KabokuriFire.sBodyHitYOffset` | f32 | `90.0f` |
 | `KabokuriFire.sFireTime` | s32 | `320` |
 | `KabokuriFireHolder.sMaxKabokuriFire` | s32 | `16` |
 | `Kameck.exeAttack.1` | s32 | `9` |
+| `Kameck.exeMove.f1` | f32 | `20.0f` |
+| `Kameck.init.f1` | f32 | `70.0f` |
+| `Kameck.init.f2` | f32 | `120.0f` |
+| `Kameck.init.f3` | f32 | `40.0f` |
+| `Kameck.init.f4` | f32 | `80.0f` |
+| `Kameck.init.f5` | f32 | `70.0f` |
+| `Kameck.init.f6` | f32 | `80.0f` |
 | `Kameck.sAttackRange` | f32 | `2000.0f` |
 | `Kameck.sBeamSpeed` | f32 | `12.0f` |
 | `Kameck.sDefaultActiveDistance` | f32 | `3000.0f` |
@@ -20571,8 +22916,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Kameck.sHitVerticalPower` | f32 | `25.0f` |
 | `Kameck.sTurnPlayerLimit` | f32 | `0.98f` |
 | `Kameck.sUpVecBlendRate` | f32 | `0.04f` |
+| `Kameck.tryAttackWait.f1` | f32 | `0.6f` |
+| `Kameck.tryAttackWait.f2` | f32 | `110.0f` |
 | `KameckBeam.sBeamRadius` | f32 | `80.0f` |
 | `KameckBeam.sBurningTime` | s32 | `40` |
+| `KameckBeam.setKameckBeamCollisionFilter.f1` | f32 | `10.0f` |
+| `KameckBeam.sFireAngleLebel1` | f32[1] | `0.0f` |
+| `KameckBeam.sFireAngleLebel2` | f32[2] | `30.0f, -30.0f` |
+| `KameckBeam.sFireAngleLebel3` | f32[3] | `0.0f, 120.0f, -120.0f` |
 | `KameckBeam.sMaxBeamLife` | s32 | `360` |
 | `KameckBeam.sStormRange` | f32 | `500.0f` |
 | `KameckBeamHolder.sMaxKameckBeam` | s32 | `16` |
@@ -20588,6 +22939,13 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KameckFireBall.sLife` | s32 | `180` |
 | `KameckFireBall.sReboundRate` | f32 | `0.4f` |
 | `KameckFireBall.sSweepTime` | s32 | `40` |
+| `KameckTurtle.attackSensor.f1` | f32 | `0.8f` |
+| `KameckTurtle.exeRun.f1` | f32 | `0.5f` |
+| `KameckTurtle.exeRun.f2` | f32 | `0.5f` |
+| `KameckTurtle.init.f1` | f32 | `40.0f` |
+| `KameckTurtle.init.f2` | f32 | `10.0f` |
+| `KameckTurtle.init.f3` | f32 | `60.0f` |
+| `KameckTurtle.init.f4` | f32 | `50.0f` |
 | `KameckTurtle.sDeccelEndTime` | s32 | `400` |
 | `KameckTurtle.sDeccelStartTime` | s32 | `200` |
 | `KameckTurtle.sFrontVecBlendRate` | f32 | `0.2f` |
@@ -20596,6 +22954,23 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KameckTurtle.sRunSpeed` | f32 | `15.0f` |
 | `KameckTurtle.sRunSpinDegree` | f32 | `-25.0f` |
 | `KameckTurtle.sUpVecBlendRate` | f32 | `0.2f` |
+| `Kanina.appearItemPunch.f1` | f32 | `10.0f` |
+| `Kanina.appearItemPunch.f2` | f32 | `40.0f` |
+| `Kanina.getRunAwayBreakTimeRandom.f1` | f32 | `0.25f` |
+| `Kanina.getRunAwayBreakTimeRandom.f2` | f32 | `0.25f` |
+| `Kanina.getRunAwayBreakTimeRandom.f3` | f32 | `0.5f` |
+| `Kanina.getRunAwayBreakTimeRandom.f4` | f32 | `0.5f` |
+| `Kanina.getRunAwayBreakTimeRandom.f5` | f32 | `0.75f` |
+| `Kanina.getRunAwayTimeRandom.f1` | f32 | `0.25f` |
+| `Kanina.getRunAwayTimeRandom.f2` | f32 | `0.25f` |
+| `Kanina.getRunAwayTimeRandom.f3` | f32 | `0.5f` |
+| `Kanina.getRunAwayTimeRandom.f4` | f32 | `0.5f` |
+| `Kanina.getRunAwayTimeRandom.f5` | f32 | `0.75f` |
+| `Kanina.init.f1` | f32 | `0.25f` |
+| `Kanina.init.f2` | f32 | `6.0f` |
+| `Kanina.init.f3` | f32 | `0.1f` |
+| `Kanina.isPlayerBackward.f1` | f32 | `2.0f` |
+| `Kanina.isPlayerBackward.f2` | f32 | `30.0f` |
 | `Kanina.sAirFrec` | f32 | `0.99f` |
 | `Kanina.sAnimRateRunAway` | f32 | `1.0f` |
 | `Kanina.sBackwardAngle` | f32 | `30.0f` |
@@ -20644,6 +23019,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Kanina.sWalkSpeedRunAwayRed` | f32 | `7.0f` |
 | `Kanina.sWallHitReboundAcc` | f32 | `6.0f` |
 | `Kanina.sWallHitReboundAccY` | f32 | `20.0f` |
+| `Kanina.tryFindPlayer.f1` | f32 | `180.0f` |
+| `Kanina.tryFindPlayer.f2` | f32 | `30.0f` |
 | `Kanina.tryHitWall.reboundVelocityFromCollision.1` | f32 | `1.0f` |
 | `Kanina.tryHitWall.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `Kanina.tryHitWall.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -20652,6 +23029,13 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Karikari.applyEnvironmentInfluenceToVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `Karikari.exeCling.setBckRate.1` | f32 | `1.0f` |
 | `Karikari.exeInTornado.setBckRate.1` | f32 | `2.0f` |
+| `Karikari.generateItem.f1` | f32 | `80.0f` |
+| `Karikari.generateItem.f2` | f32 | `10.0f` |
+| `Karikari.generateItem.f3` | f32 | `40.0f` |
+| `Karikari.init.f1` | f32 | `100.0f` |
+| `Karikari.init.f2` | f32 | `30.0f` |
+| `Karikari.init.f3` | f32 | `40.0f` |
+| `Karikari.init.f4` | f32 | `25.0f` |
 | `Karikari.sAttackedVel` | f32 | `43.0f` |
 | `Karikari.sAttackedVerticalVel` | f32 | `33.0f` |
 | `Karikari.sBeginWaitMotionFrame` | s32 | `20` |
@@ -20661,6 +23045,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Karikari.sDistToCling` | f32 | `80.0f` |
 | `Karikari.sDistToPursue` | f32 | `1000.0f` |
 | `Karikari.sEnemyAttackHitVel` | f32 | `30.0f` |
+| `Karikari.setVelocityFromCursorMove.f1` | f64 | `40.0` |
 | `Karikari.sExplosionBlowOutVel` | f32 | `30.0f` |
 | `Karikari.sFromCursorVelScale` | f32 | `5.0f` |
 | `Karikari.sFrozenRecoverGravity` | f32 | `2.4f` |
@@ -20692,6 +23077,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Karikari.sWatchForJumpTime` | s32 | `7` |
 | `Karikari.sWatchForJumpVel` | f32 | `35.0f` |
 | `Karikari.sWatchForLoopInterval` | s32 | `45` |
+| `KarikariDirector.clearScratchInfo.f1` | f32 | `100000000.0f` |
 | `KarikariDirector.sNoReleaseTime` | s32 | `10` |
 | `Karon.cBinderRadius` | f32 | `70.0f` |
 | `Karon.cBodySize` | f32 | `90.0f` |
@@ -20706,13 +23092,19 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Karon.cFollowRailDistance` | f32 | `600.0f` |
 | `Karon.cGoalDist` | f32 | `40.0f` |
 | `Karon.cGroupClippingNum` | s32 | `32` |
+| `Karon.cHitReactionAirParam` | f32[4] | `0.0f, 2.0f, 0.95f, 5.0f` |
+| `Karon.cHitReactionOnGroundParam` | f32[4] | `0.0f, 1.2f, 0.8f, 5.0f` |
 | `Karon.cHitReactionVelH` | f32 | `10.0f` |
 | `Karon.cHitReactionVelV` | f32 | `20.0f` |
+| `Karon.cNoMoveNoTurnOnAirParam` | f32[4] | `0.0f, 2.0f, 0.95f, 0.0f` |
+| `Karon.cNoMoveNoTurnParam` | f32[4] | `0.0f, 1.2f, 0.8f, 0.0f` |
 | `Karon.cPlayerUpRate` | f32 | `0.25f` |
 | `Karon.cPrePursueJumpVel` | f32 | `10.0f` |
 | `Karon.cPursueDistance` | f32 | `700.0f` |
 | `Karon.cPursueGiveUpDistance` | f32 | `1200.0f` |
+| `Karon.cPursueParam` | f32[4] | `0.25f, 1.2f, 0.95f, 2.0f` |
 | `Karon.cPushRate` | f32 | `2.0f` |
+| `Karon.cSearchParam` | f32[4] | `0.0f, 1.2f, 0.95f, 2.0f` |
 | `Karon.cShadowRadius` | f32 | `60.0f` |
 | `Karon.cStarPieceNum` | s32 | `3` |
 | `Karon.cStarPieceSpeedH` | f32 | `10.0f` |
@@ -20721,7 +23113,20 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Karon.cStarPointerRadius` | f32 | `100.0f` |
 | `Karon.cTerritoryRadius` | f32 | `500.0f` |
 | `Karon.cTurnMinTime` | s32 | `10` |
+| `Karon.cWalkParam` | f32[4] | `0.12f, 1.2f, 0.95f, 2.0f` |
+| `Karon.exeTurn.f1` | f32 | `2.0f` |
 | `Kiraira.attackSensor.turnDirectionToTargetDegree.1` | f32 | `20.0f` |
+| `Kiraira.drift.f1` | f32 | `1.5f` |
+| `Kiraira.drift.f2` | f32 | `45.0f` |
+| `Kiraira.drift.f3` | f32 | `2.0f` |
+| `Kiraira.exeDead.f1` | f32 | `50.0f` |
+| `Kiraira.exeRecover.f1` | f32 | `90.0f` |
+| `Kiraira.exeRecover.f2` | f32 | `20.0f` |
+| `Kiraira.init.f1` | f32 | `120.0f` |
+| `Kiraira.init.f2` | f32 | `90.0f` |
+| `Kiraira.init.f3` | f32 | `4000.0f` |
+| `Kiraira.init.f4` | f32 | `100.0f` |
+| `Kiraira.init.f5` | f32 | `500.0f` |
 | `Kiraira.receiveOtherMsg.turnDirectionToTargetDegree.1` | f32 | `20.0f` |
 | `Kiraira.sCameraShakeDistance` | f32 | `3000.0f` |
 | `Kiraira.sEyeHitSize` | f32 | `600.0f` |
@@ -20732,14 +23137,73 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Kiraira.sRailGoalOffset` | f32 | `50.0f` |
 | `Kiraira.sStepToStare` | s32 | `5` |
 | `Kiraira.sTurnRate` | f32 | `2.8f` |
+| `KirairaChain.control.f1` | f32 | `0.3f` |
+| `KirairaChain.control.f2` | f32 | `0.3f` |
+| `KirairaChain.control.f3` | f32 | `0.3f` |
+| `KirairaChain.control.f4` | f32 | `0.3f` |
+| `KirairaChain.control.f5` | f32 | `0.3f` |
+| `KirairaChain.control.f6` | f32 | `0.3f` |
+| `KirairaChain.KirairaChain.f1` | f32 | `0.5f` |
+| `KirairaChain.KirairaChain.f2` | f32 | `0.5f` |
+| `KirairaChain.KirairaChain.f3` | f32 | `0.5f` |
+| `KirairaChain.KirairaChain.f4` | f32 | `300.0f` |
+| `KirairaChain.KirairaChain.f5` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromBottom.f1` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromBottom.f2` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromBottomAndCalcAxis.f1` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromBottomAndCalcAxis.f2` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromTop.f1` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromTop.f2` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromTopAndCalcAxis.f1` | f32 | `40.0f` |
+| `KirairaChain.restrictPointFromTopAndCalcAxis.f2` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f1` | f32 | `0.05f` |
+| `KirairaChain.updatePoints.f10` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f11` | f32 | `0.95f` |
+| `KirairaChain.updatePoints.f12` | f32 | `0.95f` |
+| `KirairaChain.updatePoints.f13` | f32 | `0.5f` |
+| `KirairaChain.updatePoints.f14` | f32 | `0.5f` |
+| `KirairaChain.updatePoints.f15` | f32 | `0.5f` |
+| `KirairaChain.updatePoints.f16` | f32 | `100.0f` |
+| `KirairaChain.updatePoints.f17` | f32 | `0.9f` |
+| `KirairaChain.updatePoints.f2` | f32 | `0.3f` |
+| `KirairaChain.updatePoints.f3` | f32 | `70.0f` |
+| `KirairaChain.updatePoints.f4` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f5` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f6` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f7` | f32 | `40.0f` |
+| `KirairaChain.updatePoints.f8` | f32 | `0.95f` |
+| `KirairaChain.updatePoints.f9` | f32 | `0.95f` |
 | `KoopaJrShip.exeAppear.1` | s32 | `1` |
 | `KoopaJrShip.exeBreak.1` | s32 | `287` |
 | `KoopaJrShip.exeBreak.2` | s32 | `320` |
+| `KoopaJrShip.exeMove.f1` | f32 | `2.0f` |
+| `KoopaJrShip.exeMove.f2` | f32 | `4.0f` |
+| `KoopaJrShip.exeMoveFrontAttack.f1` | f32 | `2.0f` |
+| `KoopaJrShip.exeMoveFrontAttack.f2` | f32 | `4.0f` |
 | `KoopaJrShip.exeShootMain.1` | s32 | `15` |
+| `KoopaJrShip.exeTurnFront.f1` | f32 | `0.60f` |
+| `KoopaJrShip.getPropellerRotSpeed.f1` | f32 | `40.0f` |
+| `KoopaJrShip.getPropellerRotSpeed.f2` | f32 | `40.0f` |
+| `KoopaJrShip.getPropellerRotSpeed.f3` | f32 | `20.0f` |
 | `KoopaJrShip.init.setBckRate.1` | f32 | `0.0f` |
+| `KoopaJrShip.initKiller.f1` | f32 | `5500.0f` |
+| `KoopaJrShip.initKiller.f2` | f32 | `6500.0f` |
+| `KoopaJrShip.shootMainShells.f1` | f32 | `23.0f` |
+| `KoopaJrShip.shootMainShells.f2` | f32 | `15.0f` |
+| `KoopaJrShip.shootMainShells.f3` | f32 | `23.0f` |
+| `KoopaJrShip.shootMainShells.f4` | f32 | `30.0f` |
+| `KoopaJrShip.shootMainShells.f5` | f32 | `23.0f` |
+| `KoopaJrShip.shootShell.f1` | f32 | `15.0f` |
 | `KoopaJrShip.sKillerBackOffset` | f32 | `100.0f` |
+| `KoopaJrShip.sKoopaJrPos` | f32[3] | `135.0f, 188.0f, 0.0f` |
+| `KoopaJrShip.sKoopaJrPosFront` | f32[3] | `0.0f, 188.0f, 135.0f` |
 | `KoopaJrShip.sMainShellNum` | s32 | `9` |
 | `KoopaJrShip.sShellNum` | s32 | `18` |
+| `KoopaJrShip.updateCoordSpeed.f1` | f32 | `2.0f` |
+| `KoopaJrShip.updateCoordSpeed.f2` | f32 | `4.0f` |
+| `KoopaJrShip.updateCoordSpeed.f3` | f32 | `0.95f` |
+| `KoopaJrShip.updateCoordSpeed.f4` | f32 | `60.0f` |
+| `KoopaJrShip.updateKoopaJrPos.f1` | f32 | `5.0f` |
 | `KoopaJrShipCannonMainShell.cAttackSensorRadius` | f32 | `75.0f` |
 | `KoopaJrShipCannonMainShell.cBaseScale` | f32 | `1.2f` |
 | `KoopaJrShipCannonMainShell.cBinderRadius` | f32 | `75.0f` |
@@ -20762,6 +23226,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoopaJrShipCannonShell.cStarWandRadius` | f32 | `150.0f` |
 | `KoopaJrShipCannonShell.cWallHitInvalidTime` | s32 | `10` |
 | `KoopaJrShipCannonShell.exeDown.reboundVelocityFromCollision.1` | f32 | `1.0f` |
+| `KoteBug.attackSensor.f1` | f32 | `0.25f` |
+| `KoteBug.control.f1` | f32 | `3.1415927f` |
 | `KoteBug.exeEscapeSearch.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
 | `KoteBug.exeFlyPursue.addVelocityKeepHeightUseShadow.1` | f32 | `0.0f` |
 | `KoteBug.exeFlyPursue.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
@@ -20774,6 +23240,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoteBug.exeHitToPlayer.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `KoteBug.exeOverturn.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
 | `KoteBug.exeOverturnFall.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
+| `KoteBug.exeOverturnFall.f1` | f32 | `0.75f` |
 | `KoteBug.exePreEscape.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
 | `KoteBug.exePreRecover.applyVelocityDampAndGravity.1` | f32 | `1.0f` |
 | `KoteBug.exePreRecover.reboundVelocityFromCollision.1` | f32 | `0.0f` |
@@ -20822,15 +23289,95 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KoteBug.hSearchDistance` | f32 | `1000.0f` |
 | `KoteBug.hSearchTurnLimitDegree` | f32 | `5.7f` |
 | `KoteBug.hStampDeathTime` | s32 | `20` |
+| `KoteBug.init.f1` | f32 | `70.0f` |
+| `KoteBug.init.f2` | f32 | `70.0f` |
+| `KoteBug.init.f3` | f32 | `100.0f` |
+| `KoteBug.init.f4` | f32 | `20.0f` |
+| `KoteBug.init.f5` | f32 | `110.0f` |
+| `KoteBug.init.f6` | f32 | `80.0f` |
+| `KoteBug.init.f7` | f32 | `70.0f` |
+| `KoteBug.receiveMsgPlayerAttack.f1` | f32 | `10.0f` |
+| `KoteBug.receiveOtherMsg.f1` | f32 | `0.25f` |
+| `KoteBug.setOverturnFall.f1` | f32 | `10.0f` |
 | `Kuribo.calcPassiveMovement.addVelocityToGravity.1` | f32 | `1.5f` |
+| `Kuribo.calcPassiveMovement.f1` | f32 | `0.93f` |
+| `Kuribo.calcPassiveMovement.f2` | f32 | `0.99f` |
+| `Kuribo.calcPassiveMovement.f3` | f32 | `0.2f` |
+| `Kuribo.calcPassiveMovement.f4` | f32 | `0.7f` |
+| `Kuribo.control.f1` | f32 | `0.05f` |
+| `Kuribo.control.f2` | f32 | `0.5f` |
+| `Kuribo.control.f3` | f32 | `0.05f` |
+| `Kuribo.exeAppearFromBox.f1` | f32 | `7.0f` |
+| `Kuribo.exeAppearFromBox.f2` | f32 | `30.0f` |
+| `Kuribo.exeAttackSuccess.f1` | f32 | `5.0f` |
 | `Kuribo.exeBlow.1` | s32 | `10` |
+| `Kuribo.exeBlowDown.f1` | f32 | `30.0f` |
 | `Kuribo.exeFlatDown.1` | s32 | `20` |
 | `Kuribo.exeHipDropDown.1` | s32 | `40` |
+| `Kuribo.init.f1` | f32 | `70.0f` |
+| `Kuribo.init.f2` | f32 | `75.0f` |
+| `Kuribo.init.f3` | f32 | `70.0f` |
+| `Kuribo.init.f4` | f32 | `70.0f` |
+| `Kuribo.init.f5` | f32 | `60.0f` |
+| `Kuribo.initSensor.f1` | f32 | `75.0f` |
+| `Kuribo.initSensor.f2` | f32 | `75.0f` |
+| `Kuribo.initSensor.f3` | f32 | `45.0f` |
+| `Kuribo.initSensor.f4` | f32 | `75.0f` |
+| `Kuribo.KuriboParam.f1` | f32 | `1.5f` |
+| `Kuribo.KuriboParam.f10` | f32 | `5.0f` |
+| `Kuribo.KuriboParam.f11` | f32 | `20.0f` |
+| `Kuribo.KuriboParam.f2` | f32 | `0.99f` |
+| `Kuribo.KuriboParam.f3` | f32 | `0.93f` |
+| `Kuribo.KuriboParam.f4` | f32 | `1000.0f` |
+| `Kuribo.KuriboParam.f5` | f32 | `70.0f` |
+| `Kuribo.KuriboParam.f6` | f32 | `30.0f` |
+| `Kuribo.KuriboParam.f7` | f32 | `0.2f` |
+| `Kuribo.KuriboParam.f8` | f32 | `3.0f` |
+| `Kuribo.KuriboParam.f9` | f32 | `0.4f` |
 | `Kuribo.receiveMsgPush.addVelocityFromPush.1` | f32 | `1.5f` |
+| `Kuribo.requestBlowDown.f1` | f32 | `36.0f` |
+| `Kuribo.requestBlowDown.f2` | f32 | `30.0f` |
 | `Kuribo.tryActive.isNearPlayerAnyTime.1` | f32 | `3000.0f` |
 | `Kuribo.tryEndBlow.1` | s32 | `10` |
 | `Kuribo.tryEndBlowLand.1` | s32 | `15` |
 | `Kuribo.tryNonActive.isNearPlayerAnyTime.1` | f32 | `3000.0f` |
+| `KuriboChief.exeBlowDown.f1` | f32 | `30.0f` |
+| `KuriboChief.init.f1` | f32 | `350.0f` |
+| `KuriboChief.init.f2` | f32 | `350.0f` |
+| `KuriboChief.initSensor.f1` | f32 | `150.0f` |
+| `KuriboChief.initSensor.f10` | f32 | `60.0f` |
+| `KuriboChief.initSensor.f11` | f32 | `50.0f` |
+| `KuriboChief.initSensor.f12` | f32 | `400.0f` |
+| `KuriboChief.initSensor.f13` | f32 | `150.0f` |
+| `KuriboChief.initSensor.f2` | f32 | `300.0f` |
+| `KuriboChief.initSensor.f3` | f32 | `120.0f` |
+| `KuriboChief.initSensor.f4` | f32 | `150.0f` |
+| `KuriboChief.initSensor.f5` | f32 | `360.0f` |
+| `KuriboChief.initSensor.f6` | f32 | `130.0f` |
+| `KuriboChief.initSensor.f7` | f32 | `60.0f` |
+| `KuriboChief.initSensor.f8` | f32 | `50.0f` |
+| `KuriboChief.initSensor.f9` | f32 | `130.0f` |
+| `KuriboChief.KuriboChiefParam.f1` | f32 | `1.5f` |
+| `KuriboChief.KuriboChiefParam.f10` | f32 | `0.99f` |
+| `KuriboChief.KuriboChiefParam.f11` | f32 | `0.6f` |
+| `KuriboChief.KuriboChiefParam.f12` | f32 | `2.0f` |
+| `KuriboChief.KuriboChiefParam.f13` | f32 | `35.0f` |
+| `KuriboChief.KuriboChiefParam.f14` | f32 | `0.1f` |
+| `KuriboChief.KuriboChiefParam.f15` | f32 | `30.0f` |
+| `KuriboChief.KuriboChiefParam.f16` | f32 | `0.6f` |
+| `KuriboChief.KuriboChiefParam.f17` | f32 | `0.06f` |
+| `KuriboChief.KuriboChiefParam.f18` | f32 | `3.0f` |
+| `KuriboChief.KuriboChiefParam.f19` | f32 | `0.1f` |
+| `KuriboChief.KuriboChiefParam.f2` | f32 | `0.99f` |
+| `KuriboChief.KuriboChiefParam.f3` | f32 | `0.93f` |
+| `KuriboChief.KuriboChiefParam.f4` | f32 | `1400.0f` |
+| `KuriboChief.KuriboChiefParam.f5` | f32 | `80.0f` |
+| `KuriboChief.KuriboChiefParam.f6` | f32 | `40.0f` |
+| `KuriboChief.KuriboChiefParam.f7` | f32 | `0.1f` |
+| `KuriboChief.KuriboChiefParam.f8` | f32 | `0.2f` |
+| `KuriboChief.KuriboChiefParam.f9` | f32 | `1.5f` |
+| `KuriboChief.requestBlowDown.f1` | f32 | `25.0f` |
+| `KuriboChief.requestBlowDown.f2` | f32 | `35.0f` |
 | `KuriboChief.sBinderSize` | f32 | `300.0f` |
 | `KuriboChief.sBinderYOffset` | f32 | `300.0f` |
 | `KuriboChief.sBlowDownLandTime` | s32 | `5` |
@@ -20842,47 +23389,118 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `KuriboChief.sTurnLimitDegree` | f32 | `5.0f` |
 | `KuriboChief.sUpVecBlendRate` | f32 | `0.05f` |
 | `KuriboMini.calcPassiveMovement.addVelocityToGravity.1` | f32 | `1.5f` |
+| `KuriboMini.calcPassiveMovement.f1` | f32 | `0.93f` |
+| `KuriboMini.calcPassiveMovement.f2` | f32 | `0.99f` |
+| `KuriboMini.calcPassiveMovement.f3` | f32 | `0.2f` |
+| `KuriboMini.calcPassiveMovement.f4` | f32 | `0.7f` |
+| `KuriboMini.control.f1` | f32 | `0.05f` |
+| `KuriboMini.control.f2` | f32 | `0.5f` |
 | `KuriboMini.exeAttackSuccess.turnDirectionToPlayerDegree.1` | f32 | `5.0f` |
+| `KuriboMini.exeBlowDown.f1` | f32 | `30.0f` |
 | `KuriboMini.exeFlatDown.1` | s32 | `20` |
 | `KuriboMini.exeHipDropDown.1` | s32 | `40` |
+| `KuriboMini.init.f1` | f32 | `40.0f` |
+| `KuriboMini.init.f2` | f32 | `60.0f` |
+| `KuriboMini.init.f3` | f32 | `40.0f` |
+| `KuriboMini.init.f4` | f32 | `60.0f` |
+| `KuriboMini.init.f5` | f32 | `60.0f` |
+| `KuriboMini.initSensor.f1` | f32 | `60.0f` |
+| `KuriboMini.initSensor.f2` | f32 | `60.0f` |
+| `KuriboMini.initSensor.f3` | f32 | `40.0f` |
+| `KuriboMini.initSensor.f4` | f32 | `60.0f` |
+| `KuriboMini.KuriboMiniParam.f1` | f32 | `1.5f` |
+| `KuriboMini.KuriboMiniParam.f10` | f32 | `5.0f` |
+| `KuriboMini.KuriboMiniParam.f11` | f32 | `20.0f` |
+| `KuriboMini.KuriboMiniParam.f2` | f32 | `0.99f` |
+| `KuriboMini.KuriboMiniParam.f3` | f32 | `0.93f` |
+| `KuriboMini.KuriboMiniParam.f4` | f32 | `1000.0f` |
+| `KuriboMini.KuriboMiniParam.f5` | f32 | `70.0f` |
+| `KuriboMini.KuriboMiniParam.f6` | f32 | `30.0f` |
+| `KuriboMini.KuriboMiniParam.f7` | f32 | `0.1f` |
+| `KuriboMini.KuriboMiniParam.f8` | f32 | `3.0f` |
+| `KuriboMini.KuriboMiniParam.f9` | f32 | `0.2f` |
 | `KuriboMini.receiveMsgPush.addVelocityFromPush.1` | f32 | `1.5f` |
+| `KuriboMini.requestBlowDown.f1` | f32 | `22.0f` |
+| `KuriboMini.requestBlowDown.f2` | f32 | `25.0f` |
 | `MechanicKoopaMini.exeFind.addVelocityJump.1` | f32 | `26.0f` |
 | `MechanicKoopaMini.exeJumpStart.addVelocityJump.1` | f32 | `45.0f` |
+| `MechanicKoopaMini.exePreFireAttack.f1` | f32 | `10.0f` |
+| `MechanicKoopaMini.exePursue.f1` | f32 | `10.0f` |
+| `MechanicKoopaMini.exePursue.f2` | f32 | `0.99f` |
+| `MechanicKoopaMini.exePursue.f3` | f32 | `1100.0f` |
+| `MechanicKoopaMini.exePursue.f4` | f32 | `300.0f` |
+| `MechanicKoopaMini.exePursue.f5` | f32 | `5.729578f` |
+| `MechanicKoopaMini.exeTurn.f1` | f32 | `5.0f` |
+| `MechanicKoopaMini.exeWait.f1` | f32 | `900.0f` |
 | `MechanicKoopaMini.exeWait.isFaceToPlayerDegree.1` | f32 | `120.0f` |
+| `MechanicKoopaMini.exeWalkOnRail.f1` | f32 | `0.99f` |
+| `MechanicKoopaMini.exeWalkOnRail.f2` | f32 | `900.0f` |
 | `MechanicKoopaMini.exeWalkOnRail.isFaceToPlayerDegree.1` | f32 | `120.0f` |
 | `MechanicKoopaMini.exeWalkOnRail.moveAndTurnAlongRail.1` | f32 | `600.0f` |
 | `MechanicKoopaMini.exeWalkOnRail.moveAndTurnAlongRail.2` | f32 | `600.0f` |
+| `MechanicKoopaMini.hFireAttackParam` | f32[4] | `0.0f, 2.0f, 0.8f, 1.0f` |
+| `MechanicKoopaMini.hHitReactionAirParam` | f32[4] | `0.0f, 2.0f, 0.95f, 5.0f` |
+| `MechanicKoopaMini.hHitReactionOnGroundParam` | f32[4] | `0.0f, 1.2f, 0.8f, 5.0f` |
+| `MechanicKoopaMini.hJumpAirParam` | f32[4] | `0.5f, 2.0f, 0.95f, 0.0f` |
+| `MechanicKoopaMini.hJumpOnGroundParam` | f32[4] | `0.0f, 1.2f, 0.8f, 0.0f` |
+| `MechanicKoopaMini.hNoMoveNoTurnParam` | f32[4] | `0.0f, 2.0f, 0.8f, 0.0f` |
+| `MechanicKoopaMini.hOnAirMoveParam` | f32[4] | `0.2f, 2.0f, 0.98f, 2.0f` |
+| `MechanicKoopaMini.hOnAirParam` | f32[4] | `0.0f, 2.0f, 0.98f, 0.0f` |
+| `MechanicKoopaMini.hOnAirTurnParam` | f32[4] | `0.0f, 2.0f, 0.98f, 2.0f` |
+| `MechanicKoopaMini.hPreFireAttackParam` | f32[4] | `0.0f, 2.0f, 0.8f, 0.0f` |
+| `MechanicKoopaMini.hPursueParam` | f32[4] | `1.3f, 2.0f, 0.8f, 2.0f` |
 | `MechanicKoopaMini.hPushUpRangeSub` | f32 | `130` |
 | `MechanicKoopaMini.hTrampleUpRangeSub` | f32 | `80` |
+| `MechanicKoopaMini.hTurnParam` | f32[4] | `0.0f, 2.0f, 0.8f, 2.0f` |
+| `MechanicKoopaMini.hWalkParam` | f32[4] | `0.4f, 2.0f, 0.8f, 2.0f` |
+| `MechanicKoopaMini.init.f1` | f32 | `120.0f` |
+| `MechanicKoopaMini.init.f2` | f32 | `130.0f` |
+| `MechanicKoopaMini.init.f3` | f32 | `48.0f` |
+| `MechanicKoopaMini.init.f4` | f32 | `13.0f` |
+| `MechanicKoopaMini.init.f5` | f32 | `29.0f` |
+| `MechanicKoopaMini.init.f6` | f32 | `70.0f` |
+| `MechanicKoopaMini.init.f7` | f32 | `35.0f` |
 | `MechanicKoopaMini.receiveMsgPush.addVelocityFromPush.1` | f32 | `3.0f` |
+| `MechanicKoopaMini.updateHitSensor.f1` | f32 | `400.0f` |
+| `Meramera.addRunawayJumpPower.f1` | f32 | `0.1f` |
+| `Meramera.addRunawayJumpPower.f2` | f32 | `0.9f` |
+| `Meramera.addRunawayJumpPower.f3` | f32 | `0.2f` |
+| `Meramera.addRunawayJumpPower.f4` | f32 | `0.8f` |
 | `Meramera.exeDamage.reboundVelocityFromEachCollision.1` | f32 | `0.0f` |
 | `Meramera.exeDamage.reboundVelocityFromEachCollision.2` | f32 | `0.0f` |
 | `Meramera.exeDamage.reboundVelocityFromEachCollision.3` | f32 | `0.0f` |
 | `Meramera.exeDamage.reboundVelocityFromEachCollision.4` | f32 | `0.0f` |
 | `Meramera.exeDiving.setBckRate.1` | f32 | `1.4f` |
 | `Meramera.exeDown.reboundVelocityFromEachCollision.1` | f32 | `0.0f` |
+| `Meramera.exeRunaway.f1` | f32 | `5.0f` |
 | `Meramera.exeRunaway.reboundVelocityFromEachCollision.1` | f32 | `0.5f` |
 | `Meramera.exeRunaway.reboundVelocityFromEachCollision.2` | f32 | `0.3f` |
 | `Meramera.exeRunaway.reboundVelocityFromEachCollision.3` | f32 | `0.0f` |
 | `Meramera.exeRunaway.reboundVelocityFromEachCollision.4` | f32 | `10.0f` |
 | `Meramera.exeStartDiving.setBckRate.1` | f32 | `0.0f` |
 | `Meramera.sAttackHitRadius` | f32 | `70.0f` |
+| `Meramera.sAttackSuccessHeight` | f32[4] | `50.0f, 0.5f, 0.1f, 15.0f` |
 | `Meramera.sBaseScale` | f32 | `150.0f` |
 | `Meramera.sBindRadius` | f32 | `45.0f` |
 | `Meramera.sBodyHitRadius` | f32 | `55.0f` |
 | `Meramera.sBreakHitRadius` | f32 | `10.0f` |
 | `Meramera.sChaseDashAccel` | f32 | `0.98f` |
+| `Meramera.sChaseDashHeight` | f32[4] | `190.0f, 0.5f, 0.2f, 20.0f` |
+| `Meramera.sChaseDashLowHeight` | f32[4] | `150.0f, 0.5f, 0.1f, 15.0f` |
 | `Meramera.sChaseDashMoveAccel` | f32 | `0.175f` |
 | `Meramera.sChaseDashTime` | s32 | `45` |
 | `Meramera.sChaseDistance` | f32 | `900.0f` |
 | `Meramera.sChaseStartAttenuate` | f32 | `0.97f` |
+| `Meramera.sChaseStartHeight` | f32[4] | `300.0f, 0.5f, 0.2f, 15.0f` |
 | `Meramera.sChaseStartTurnCos` | f32 | `0.99f` |
 | `Meramera.sChaseTurnAccel` | f32 | `0.97f` |
 | `Meramera.sChaseTurnFloatAccel` | f32 | `0.05f` |
 | `Meramera.sChaseTurnGravityAccel` | f32 | `0.99f` |
+| `Meramera.sChaseTurnHeight` | f32[4] | `190.0f, 0.3f, 0.3f, 20.0f` |
 | `Meramera.sChaseTurnTime` | s32 | `50` |
 | `Meramera.sDamageAttenuate` | f32 | `0.9f` |
 | `Meramera.sDamageExtinguishStep` | s32 | `3` |
+| `Meramera.sDamageHeight` | f32[4] | `140.0f, 0.0f, 1.2f, 15.0f` |
 | `Meramera.sDefaultAttenuate` | f32 | `0.98f` |
 | `Meramera.sDiveProbeDepth` | f32 | `600.0f` |
 | `Meramera.sDiveProbeLift` | f32 | `100.0f` |
@@ -20901,8 +23519,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Meramera.sExtinguishTurnDegree` | f32 | `10.0f` |
 | `Meramera.sFireTurnDegree` | f32 | `1.0f` |
 | `Meramera.sFloatAttenuate` | f32 | `0.94f` |
+| `Meramera.sFloatHeight` | f32[4] | `100.0f, 0.9f, 0.1f, 50.0f` |
 | `Meramera.sFloatUpSpeed` | f32 | `50.0f` |
 | `Meramera.sIgnitionForceJump` | f32 | `15.0f` |
+| `Meramera.sIgnitionHeight` | f32[4] | `100.0f, 0.5f, 0.1f, 50.0f` |
 | `Meramera.sIgnitionStartStep` | s32 | `15` |
 | `Meramera.sIgnitionTime` | s32 | `20` |
 | `Meramera.sIgnitionUpSpeed` | f32 | `25.0f` |
@@ -20939,6 +23559,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Meramera.sSpinNearDistance` | f32 | `300.0f` |
 | `Meramera.sSpinTurnDegree` | f32 | `5.0f` |
 | `Meramera.sTerritoryChaseRange` | f32 | `3000.0f` |
+| `Meramera.sWaitHeight` | f32[4] | `130.0f, 0.5f, 0.1f, 15.0f` |
 | `Meramera.sWalkArriveDistance` | f32 | `100.0f` |
 | `Meramera.sWalkMoveAccel` | f32 | `0.05f` |
 | `Meramera.sWalkRadius` | f32 | `200.0f` |
@@ -20948,14 +23569,19 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Metbo.cBaseMtxBlendRate` | f32 | `0.3f` |
 | `Metbo.cBodyRadius` | f32 | `100.0f` |
 | `Metbo.cChaseGiveUpChance` | s32 | `50` |
+| `Metbo.cChaseParam` | f32[4] | `0.8f, 2.0f, 0.9f, 2.0f` |
+| `Metbo.cDontMoveParam` | f32[4] | `0.0f, 2.0f, 0.5f, 0.0f` |
 | `Metbo.cFallCheckAhead` | f32 | `200.0f` |
 | `Metbo.cFallCheckDepth` | f32 | `300.0f` |
 | `Metbo.cFallCheckHeight` | f32 | `100.0f` |
+| `Metbo.cFallParam` | f32[4] | `0.0f, 3.0f, 0.99f, 0.0f` |
 | `Metbo.cFindRadiusIn` | f32 | `800.0f` |
 | `Metbo.cFindRadiusOut` | f32 | `1200.0f` |
 | `Metbo.cGroupClippingNum` | s32 | `32` |
 | `Metbo.cReceivePushPower` | f32 | `1.5f` |
+| `Metbo.cSearchParam` | f32[4] | `0.0f, 2.0f, 0.5f, 5.0f` |
 | `Metbo.cShadowRadius` | f32 | `80.0f` |
+| `Metbo.cSkateMoveParam` | f32[4] | `0.0f, 2.0f, 0.98f, 0.0f` |
 | `Metbo.cSpeedMax` | f32 | `30.0f` |
 | `Metbo.cSpinHitStop` | s32 | `3` |
 | `Metbo.cSpinPower` | f32 | `45.0f` |
@@ -20963,15 +23589,31 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Metbo.cStarPieceNum` | s32 | `3` |
 | `Metbo.cStepForChaseMax` | s32 | `220` |
 | `Metbo.cStepForWalkAround` | s32 | `200` |
+| `Metbo.cWalkAroundParam` | f32[4] | `0.25f, 2.0f, 0.92f, 2.0f` |
 | `Metbo.cWalkAroundRadius` | f32 | `300.0f` |
 | `Metbo.cWalkAroundTurn` | f32 | `20.0f` |
 | `Metbo.cWalkAroundTurnInterval` | s32 | `10` |
+| `Metbo.init.f1` | f32 | `0.2f` |
+| `Metbo.init.f2` | f32 | `40.0f` |
+| `Metbo.init.f3` | f32 | `20.0f` |
+| `Metbo.startSwoon.f1` | f32 | `180.0f` |
 | `Metbo.startSwoon.turnDirectionToPlayerDegree.1` | f32 | `180.0f` |
 | `Mogu.exeHitBlow.applyVelocityDampAndGravity.1` | f32 | `2.0f` |
 | `Mogu.exeHitBlow.applyVelocityDampAndGravity.2` | f32 | `0.8f` |
 | `Mogu.exeHitBlow.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `Mogu.exeHitBlow.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `Mogu.exeHitBlow.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
+| `Mogu.exeHitBlow.f1` | f32 | `10.0f` |
+| `Mogu.exeHitBlow.f2` | f32 | `40.0f` |
+| `Mogu.init.f1` | f32 | `160.0f` |
+| `Mogu.init.f2` | f32 | `55.0f` |
+| `Mogu.init.f3` | f32 | `13.0f` |
+| `Mogu.init.f4` | f32 | `150.0f` |
+| `Mogu.init.f5` | f32 | `100.0f` |
+| `Mogu.init.f6` | f32 | `50.0f` |
+| `Mogu.init.f7` | f32 | `60.0f` |
+| `Mogu.init.f8` | f32 | `67.38f` |
+| `Mogu.sCannonFleetSightParam` | f32[3] | `1500.0f, 10.0f, 90.0f` |
 | `Mogu.sFastHideDistance` | f32 | `200.0f` |
 | `Mogu.sFastHidePlayerSpeed` | f32 | `8.0f` |
 | `Mogu.sFastHideRate` | f32 | `1.5f` |
@@ -20984,6 +23626,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Mogu.sPunchLift` | f32 | `5.0f` |
 | `Mogu.sPunchSpeedH` | f32 | `30.0f` |
 | `Mogu.sPunchSpeedUp` | f32 | `50.0f` |
+| `Mogu.sThrowableSightParam` | f32[3] | `900.0f, 10.0f, 90.0f` |
 | `Mogu.sThrowAfterSteps` | s32 | `45` |
 | `Mogu.sThrowReleaseStep` | s32 | `47` |
 | `Mogu.sThrowSpeed` | f32 | `15.0f` |
@@ -20992,6 +23635,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Mogucchi.cBodyRadius` | f32 | `120.0f` |
 | `Mogucchi.cDefaultMaxStrollSpeed` | f32 | `5.0f` |
 | `Mogucchi.cGroundCheckLength` | f32 | `1000.0f` |
+| `Mogucchi.cHeadOffset` | f32[3] | `40.0f, 0.0f, -8.0f` |
 | `Mogucchi.cHeadRadius` | f32 | `83.0f` |
 | `Mogucchi.cHillAppearDistance` | f32 | `80.0f` |
 | `Mogucchi.cHillAppearDistanceMax` | f32 | `100.0f` |
@@ -21007,10 +23651,15 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Mogucchi.cScatterUpSpeed` | f32 | `50.0f` |
 | `Mogucchi.cSpinRadius` | f32 | `180.0f` |
 | `Mogucchi.cStrollAccel` | f32 | `0.1f` |
+| `Mogucchi.exeScatter.f1` | f32 | `180.0f` |
+| `Mogucchi.makeEulerRotation.f1` | f32 | `180.0f` |
+| `Mogucchi.updateReferenceMtx.f1` | f32 | `180.0f` |
+| `MogucchiHill.appearPiece.f1` | f32 | `2.0f` |
 | `MogucchiHill.sAppearDist` | f32 | `300.0f` |
 | `MogucchiHill.sCrumbleFrame` | s32 | `40` |
 | `MogucchiHill.sMinScale` | f32 | `0.6f` |
 | `MogucchiHill.sPieceSensorRadius` | f32 | `120.0f` |
+| `MogucchiRefuseTerritory.init.f1` | f32 | `100.0f` |
 | `MogucchiShooter.exePanic.setBckRate.1` | f32 | `2.0f` |
 | `MogucchiShooter.sAngerBlurOffset` | f32 | `100.0f` |
 | `MogucchiShooter.sExplosionBlurOffset` | f32 | `100.0f` |
@@ -21018,19 +23667,38 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MogucchiShooter.sLimitAngleOfTurn` | f32 | `30.0f` |
 | `MogucchiShooter.sStepToAngerBlur` | s32 | `40` |
 | `MogucchiShooter.sTurnRate` | f32 | `1.0f` |
+| `MoguStone.doBehavior.f1` | f32 | `0.25f` |
 | `MoguStone.exeFall.applyVelocityDampAndGravity.1` | f32 | `2.0f` |
 | `MoguStone.exeFall.applyVelocityDampAndGravity.2` | f32 | `0.8f` |
 | `MoguStone.exeFall.applyVelocityDampAndGravity.3` | f32 | `0.98f` |
 | `MoguStone.exeFall.applyVelocityDampAndGravity.4` | f32 | `0.98f` |
 | `MoguStone.exeFall.applyVelocityDampAndGravity.5` | f32 | `1.0f` |
+| `MoguStone.init.f1` | f32 | `40.0f` |
+| `MoguStone.init.f2` | f32 | `80.0f` |
+| `MoguStone.init.f3` | f32 | `50.0f` |
+| `MoguStone.init.f4` | f32 | `60.0f` |
+| `MoguStone.init.f5` | f32 | `80.0f` |
+| `MoguStone.init.f6` | f32 | `90.0f` |
 | `MoguStone.sIceArcAddHeight` | f32 | `200.0f` |
 | `MoguStone.sIcePathSteps` | s32 | `101` |
 | `MoguStone.sThrowSteps` | s32 | `100` |
+| `MoguStone.ThrowingIce.f1` | f32 | `1.3f` |
+| `MoguStone.ThrowingIce.f2` | f32 | `1.3f` |
+| `MoguStone.ThrowingIce.f3` | f32 | `1.3f` |
 | `NokonokoLand.exeFlyAway.1` | s32 | `33` |
+| `NokonokoLand.exeFlyAway.f1` | f32 | `15.0f` |
+| `NokonokoLand.exeFlyAway.f2` | f32 | `35.0f` |
+| `NokonokoLand.exeFlyAway.f3` | f32 | `1.5f` |
+| `NokonokoLand.exeFlyAway.f4` | f32 | `0.99f` |
+| `NokonokoLand.exeTurnLoop.f1` | f32 | `139.0f` |
+| `NokonokoLand.init.f1` | f32 | `50.0f` |
+| `NokonokoLand.init.f2` | f32 | `100.0f` |
+| `NokonokoLand.isLookDirRailDirection.f1` | f32 | `0.01f` |
 | `NokonokoLand.sAppearValidDistance` | f32 | `350.0f` |
 | `NokonokoLand.sPoseLerpRate` | f32 | `0.3f` |
 | `NokonokoLand.sPushPower` | f32 | `0.0f` |
 | `NokonokoLand.sSceneStopTimePunch` | s32 | `3` |
+| `NokonokoLand.sSensorOffsetNormal` | f32[3] | `0.0f, 0.0f, 30.0f` |
 | `NokonokoLand.sSensorRadiusAttack` | f32 | `60.0f` |
 | `NokonokoLand.sSensorRadiusNormal` | f32 | `120.0f` |
 | `NokonokoLand.sSensorRadiusShell` | f32 | `50.0f` |
@@ -21038,7 +23706,15 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NokonokoLand.sShellStartPeakPosFrame` | s32 | `27` |
 | `NokonokoLand.sWalkSpeed` | f32 | `1.6f` |
 | `NokonokoLand.sWalkSpeedFast` | f32 | `3.2f` |
+| `Onimasu.calcTargetPose.f1` | f32 | `2.0f` |
+| `Onimasu.calcTargetPose.f2` | f32 | `0.001f` |
+| `Onimasu.calcTurnDirection.f1` | f32 | `0.5f` |
+| `Onimasu.calcTurnDirection.f2` | f32 | `0.5f` |
+| `Onimasu.emitEffectLand.f1` | f32 | `0.5f` |
 | `Onimasu.exeMove.1` | s32 | `1` |
+| `Onimasu.getPolygonOnRailPoint.f1` | f32 | `2000.0f` |
+| `Onimasu.init.f1` | f32 | `100.0f` |
+| `Onimasu.init.f2` | f32 | `500.0f` |
 | `Onimasu.sCamShakeDistanceStrong` | f32 | `2000.0f` |
 | `Onimasu.sCamShakeDistanceWeak` | f32 | `3500.0f` |
 | `Onimasu.sGravityScalar` | f32 | `1.6f` |
@@ -21046,8 +23722,13 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Onimasu.sSensorRadius` | f32 | `800.0f` |
 | `Onimasu.sTimeToNextPointQuick` | s32 | `15` |
 | `Onimasu.sWaitTimeQuick` | s32 | `45` |
+| `Onimasu.updateStompVelocity.f1` | f32 | `0.5f` |
+| `OnimasuJump.calcJumpVelocity.f1` | f32 | `0.5f` |
+| `OnimasuPivot.startMoveInner.f1` | f32 | `0.001f` |
+| `OnimasuPivot.updatePoseInner.f1` | f32 | `565.6854f` |
 | `OtaRock.cAppearDistance` | f32 | `3800.0f` |
 | `OtaRock.cHideDistance` | f32 | `4000.0f` |
+| `OtaRock.cSensorOffset` | f32[3] | `0.0f, 180.0f, 0.0f` |
 | `OtaRock.cSensorRadius` | f32 | `300.0f` |
 | `OtaRock.cThrowAngleMax` | f32 | `10.0f` |
 | `OtaRock.cThrowAngleMin` | f32 | `5.0f` |
@@ -21055,25 +23736,119 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OtaRock.cThrowFireBallSpeed` | f32 | `15.0f` |
 | `OtaRock.exeDown.1` | s32 | `2` |
 | `OtaRock.exeDown.2` | s32 | `3` |
+| `OtaRock.initModel.f1` | f32 | `50.0f` |
+| `OtaRock.initModel.f2` | f32 | `90.0f` |
 | `PackunPetit.exeAttack.1` | s32 | `12` |
 | `PackunPetit.exeAttackStart.1` | s32 | `70` |
 | `PackunPetit.exeNonActive.isNearPlayerAnyTime.1` | f32 | `5000.0f` |
 | `PackunPetit.exePunchDown.1` | s32 | `20` |
+| `PackunPetit.exePunchDown.f1` | f32 | `2.5f` |
+| `PackunPetit.exePunchDown.f2` | f32 | `50.0f` |
+| `PackunPetit.exePunchDown.f3` | f32 | `10.0f` |
+| `PackunPetit.exePunchDown.f4` | f32 | `40.0f` |
 | `PackunPetit.exeSwoon.1` | s32 | `250` |
 | `PackunPetit.exeThreat.1` | s32 | `50` |
+| `PackunPetit.exeThreat.f1` | f32 | `2.0f` |
+| `PackunPetit.exeThreat.f2` | f32 | `10.0f` |
 | `PackunPetit.exeThreat.isNearPlayer.1` | f32 | `1100.0f` |
 | `PackunPetit.exeThreat.isNearPlayer.2` | f32 | `2000.0f` |
+| `PackunPetit.exeTurn.f1` | f32 | `10.0f` |
+| `PackunPetit.exeTurn.f2` | f32 | `2.0f` |
+| `PackunPetit.exeTurn.f3` | f32 | `2.0f` |
 | `PackunPetit.exeWait.isNearPlayer.1` | f32 | `1700.0f` |
+| `PackunPetit.init.f1` | f32 | `90.0f` |
+| `PackunPetit.init.f2` | f32 | `50.0f` |
+| `PackunPetit.init.f3` | f32 | `50.0f` |
+| `PackunPetit.init.f4` | f32 | `50.0f` |
+| `PackunPetit.init.f5` | f32 | `100.0f` |
+| `PackunPetit.initBlowModel.f1` | f32 | `70.0f` |
+| `PackunPetit.initStarPointer.f1` | f32 | `100.0f` |
+| `PackunPetit.kill.f1` | f32 | `10.0f` |
+| `PackunPetit.kill.f2` | f32 | `40.0f` |
+| `PackunPetit.punchDown.f1` | f32 | `20.0f` |
+| `PackunPetit.punchDown.f2` | f32 | `40.0f` |
 | `PackunPetit.selectNrvWait.isNearPlayer.1` | f32 | `1700.0f` |
 | `PackunPetit.tryNonActive.isNearPlayerAnyTime.1` | f32 | `5000.0f` |
+| `PackunPetit.tryTurn.f1` | f32 | `90.0f` |
+| `Petari.appearStarPieceAll.f1` | f32 | `20.0f` |
+| `Petari.appearStarPieceAll.f2` | f32 | `40.0f` |
+| `Petari.appearStarPieceGradually.f1` | f32 | `20.0f` |
+| `Petari.appearStarPieceGradually.f2` | f32 | `40.0f` |
+| `Petari.avoidPlayer.f1` | f32 | `3.0f` |
+| `Petari.avoidPlayer.f2` | f32 | `0.01f` |
+| `Petari.avoidPlayer.f3` | f32 | `90.0f` |
+| `Petari.avoidPlayer.f4` | f32 | `180.0f` |
+| `Petari.avoidWall.f1` | f32 | `2.0f` |
+| `Petari.avoidWall.f2` | f32 | `2.0f` |
+| `Petari.calcBoost.f1` | f32 | `0.01f` |
+| `Petari.calcCenter.f1` | f32 | `60.0f` |
+| `Petari.control.f1` | f32 | `0.1f` |
+| `Petari.control.f2` | f32 | `0.1f` |
+| `Petari.exeApproach.f1` | f32 | `0.5f` |
+| `Petari.exeApproach.f2` | f32 | `0.92f` |
+| `Petari.exeApproach.f3` | f32 | `3.0f` |
+| `Petari.exeEscape.f1` | f32 | `180.0f` |
+| `Petari.exeEscape.f2` | f32 | `10.0f` |
+| `Petari.exeEscape.f3` | f32 | `0.45f` |
+| `Petari.exeEscape.f4` | f32 | `0.5f` |
+| `Petari.exeEscape.f5` | f32 | `4.0f` |
+| `Petari.exeEscape.f6` | f32 | `0.97f` |
+| `Petari.exeFreeze.f1` | f32 | `0.8f` |
+| `Petari.exeLand.f1` | f32 | `0.99f` |
+| `Petari.exeLand.f2` | f32 | `180.0f` |
+| `Petari.exeLand.f3` | f32 | `10.0f` |
+| `Petari.exeSpinOut.f1` | f32 | `180.0f` |
+| `Petari.exeSpinOut.f2` | f32 | `1.3f` |
 | `Petari.exeSwoonEnd.checkPassBckFrame.1` | f32 | `60.0f` |
+| `Petari.exeSwoonStart.f1` | f32 | `5.0f` |
+| `Petari.init.f1` | f32 | `60.0f` |
+| `Petari.init.f2` | f32 | `60.0f` |
+| `Petari.init.f3` | f32 | `100.0f` |
+| `Petari.init.f4` | f32 | `70.0f` |
+| `Petari.initFootPrint.f1` | f32 | `25.0f` |
+| `Petari.initFootPrint.f2` | f32 | `30.0f` |
+| `Petari.initFootPrint.f3` | f32 | `40.0f` |
+| `Petari.initFootPrint.f4` | f32 | `100.0f` |
+| `Petari.initHitSensors.f1` | f32 | `60.0f` |
+| `Petari.initHitSensors.f2` | f32 | `100.0f` |
+| `Petari.meander.f1` | f32 | `90.0f` |
+| `Petari.meander.f2` | f32 | `90.0f` |
+| `Petari.meander.f3` | f32 | `180.0f` |
+| `Petari.moveTowardTargetDirection.f1` | f32 | `1.3f` |
+| `Petari.receiveMsgEnemyAttack.f1` | f32 | `10.0f` |
 | `Petari.receiveMsgPush.addVelocityFromPush.1` | f32 | `3.0f` |
+| `Petari.receiveOtherMsg.f1` | f32 | `10.0f` |
+| `Petari.receivePlayerAttackAtBody.f1` | f32 | `10.0f` |
+| `Petari.receivePlayerAttackAtBody.f2` | f32 | `10.0f` |
 | `Petari.sApproachEndDistance` | f32 | `600.0f` |
 | `Petari.sApproachStartDistance` | f32 | `700.0f` |
+| `Petari.sBodySensorOffset` | f32[3] | `0.0f, 60.0f, 0.0f` |
 | `Petari.sEscapeEndDistance` | f32 | `710.0f` |
 | `Petari.sEscapeStartDistance` | f32 | `500.0f` |
 | `Petari.sJumpOutDistance` | f32 | `1500.0f` |
+| `Petari.sSpinSensorOffset` | f32[3] | `0.0f, 0.0f, 0.0f` |
+| `Petari.sStandParam` | f32[4] | `0.0f, 1.3f, 0.92f, 3.0f` |
+| `Petari.sSwoonParam` | f32[4] | `0.0f, 1.3f, 0.0f, 3.0f` |
+| `Petari.sSwoonStartParam` | f32[4] | `0.0f, 1.3f, 0.985f, 3.0f` |
 | `Petari.sWallLookDistance` | f32 | `600.0f` |
+| `Poihana.calcAndSetBaseMtx.f1` | f32 | `0.3f` |
+| `Poihana.calcBound.f1` | f32 | `0.01f` |
+| `Poihana.calcBound.f2` | f32 | `0.9f` |
+| `Poihana.calcBound.f3` | f32 | `9.0f` |
+| `Poihana.calcBound.f4` | f32 | `27.0f` |
+| `Poihana.calcBound.f5` | f32 | `0.9f` |
+| `Poihana.calcBound.f6` | f32 | `18.0f` |
+| `Poihana.exeShake.f1` | f32 | `0.01f` |
+| `Poihana.exeShake.f2` | f32 | `36.0f` |
+| `Poihana.init.f1` | f32 | `70.0f` |
+| `Poihana.init.f2` | f32 | `100.0f` |
+| `Poihana.init.f3` | f32 | `100.0f` |
+| `Poihana.init.f4` | f32 | `150.0f` |
+| `Poihana.init.f5` | f32 | `150.0f` |
+| `Poihana.init.f6` | f32 | `100.0f` |
+| `Poihana.init.f7` | f32 | `100.0f` |
+| `Poihana.init.f8` | f32 | `80.0f` |
+| `Poihana.init.f9` | f32 | `2.0f` |
 | `Poihana.sActiveRadius` | f32 | `3500.0f` |
 | `Poihana.sBindOffTiming` | s32 | `2` |
 | `Poihana.sBindOnTiming` | s32 | `30` |
@@ -21092,6 +23867,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Poihana.sGravityOffsetY` | f32 | `20.0f` |
 | `Poihana.sJudgeForGetUpSpeed` | f32 | `10.0f` |
 | `Poihana.sJudgeForGoBackRadius` | f32 | `100.0f` |
+| `Poihana.sNormalBinderPos` | f32[3] | `0.0f, 130.0f, 120.0f` |
 | `Poihana.sNormalBinderRadius` | f32 | `125.0f` |
 | `Poihana.sReceivePushPower` | f32 | `1.5f` |
 | `Poihana.sSearchRadius` | f32 | `800.0f` |
@@ -21100,6 +23876,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Poihana.sStepForShake` | s32 | `20` |
 | `Poihana.sStepForSwoon` | s32 | `110` |
 | `Poihana.sStepToShockLand` | s32 | `12` |
+| `Poihana.sTrampleBinderPos` | f32[3] | `0.0f, 150.0f, 0.0f` |
 | `Poihana.sTrampleBinderRadius` | f32 | `200.0f` |
 | `Poihana.sVelocityDownRate` | f32 | `0.95f` |
 | `Poihana.sVelocityDownRateSide` | f32 | `0.8f` |
@@ -21108,6 +23885,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Poihana.sWalkAroundTurn` | s32 | `2` |
 | `Poihana.sWalkSpeedMax` | f32 | `5.0f` |
 | `Poihana.sWalkTurnRate` | f32 | `2.0f` |
+| `Pukupuku.init.f1` | f32 | `100.0f` |
+| `Pukupuku.init.f2` | f32 | `500.0f` |
+| `Pukupuku.init.f3` | f32 | `50.0f` |
+| `Pukupuku.init.f4` | f32 | `60.0f` |
+| `Pukupuku.kill.f1` | f32 | `10.0f` |
+| `Pukupuku.kill.f2` | f32 | `40.0f` |
 | `Pukupuku.sBinderRadius` | f32 | `70.0f` |
 | `Pukupuku.sBlownOffSteps` | s32 | `15` |
 | `Pukupuku.sBlowRateInWater` | f32 | `0.6f` |
@@ -21128,11 +23911,46 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Pukupuku.sTrampleFallSpeed` | f32 | `10.0f` |
 | `Pukupuku.sTrampleFriction` | f32 | `0.89f` |
 | `Pukupuku.sWaterColumnScale` | f32 | `1.5f` |
+| `Pukupuku.updatePoseByJumpPath.f1` | f32 | `0.01f` |
+| `RingBeam.attackSensor.f1` | f32 | `5.0f` |
+| `RingBeam.drawShape.f1` | f32 | `0.2026834f` |
+| `RingBeam.drawShape.f10` | f32 | `500.0f` |
+| `RingBeam.drawShape.f2` | f32 | `5.0f` |
+| `RingBeam.drawShape.f3` | f32 | `5.0f` |
+| `RingBeam.drawShape.f4` | f32 | `5.0f` |
+| `RingBeam.drawShape.f5` | f32 | `5.0f` |
+| `RingBeam.drawShape.f6` | f32 | `500.0f` |
+| `RingBeam.drawShape.f7` | f32 | `5.0f` |
+| `RingBeam.drawShape.f8` | f32 | `500.0f` |
+| `RingBeam.drawShape.f9` | f32 | `5.0f` |
+| `RingBeam.exeSpread.f1` | f32 | `75.0f` |
+| `RingBeam.initPos.f1` | f32 | `75.0f` |
+| `RingBeam.RingBeam.f1` | f32 | `20.0f` |
+| `RingBeam.setRadius.f1` | f32 | `2000.0f` |
+| `RingBeam.setRadius.f2` | f32 | `2000.0f` |
+| `RingBeam.setRadius.f3` | f32 | `2000.0f` |
+| `RingBeam.setRadius.f4` | f32 | `1000.0f` |
+| `RingBeam.setRadius.f5` | f32 | `500.0f` |
+| `RingBeam.setRadius.f6` | f32 | `10.0f` |
+| `RingBeam.setRadius.f7` | f32 | `2000.0f` |
+| `RingBeam.setRadius.f8` | f32 | `2000.0f` |
 | `RingBeamer.exeAttack.enableGroupAttack.1` | f32 | `3200.0f` |
 | `RingBeamer.exeAttack.enableGroupAttack.2` | f32 | `500.0f` |
 | `RingBeamer.exeInter.1` | s32 | `80` |
 | `RingBeamer.exeWait.enableGroupAttack.1` | f32 | `3000.0f` |
 | `RingBeamer.exeWait.enableGroupAttack.2` | f32 | `500.0f` |
+| `RingBeamer.init.f1` | f32 | `160.0f` |
+| `RingBeamer.init.f2` | f32 | `80.0f` |
+| `RingBeamer.init.f3` | f32 | `130.0f` |
+| `RingBeamer.init.f4` | f32 | `110.0f` |
+| `RingBeamer.init.f5` | f32 | `120.0f` |
+| `RingBeamer.init.f6` | f32 | `20.0f` |
+| `SamboFunction.createAnimScaleController.f1` | f32 | `4.0f` |
+| `SamboFunction.createAnimScaleController.f2` | f32 | `0.06f` |
+| `SamboFunction.createAnimScaleController.f3` | f32 | `2.0f` |
+| `SamboFunction.createAnimScaleController.f4` | f32 | `0.06f` |
+| `SamboFunction.createAnimScaleController.f5` | f32 | `0.4f` |
+| `SamboFunction.createAnimScaleController.f6` | f32 | `0.8f` |
 | `SamboHead.cAirDampH` | f32 | `0.98f` |
 | `SamboHead.cAppearAttackStep` | s32 | `45` |
 | `SamboHead.cAppearDistance` | f32 | `800.0f` |
@@ -21160,6 +23978,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SamboHead.cTurnDistance` | f32 | `500.0f` |
 | `SamboHead.cTurnRadian` | f32 | `0.05f` |
 | `SamboHead.cVelHMin` | f32 | `1.0f` |
+| `SamboHead.init.f1` | f32 | `50.0f` |
 | `SamboHead.updateBounceFall.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `SamboHead.updateBounceFall.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `SamboHead.updateBounceFall.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -21183,6 +24002,45 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SearchBeamer.exeCloseMouth.2` | s32 | `5` |
 | `SearchBeamer.exeCloseSearch.1` | s32 | `50` |
 | `SearchBeamer.exeStopForPlayerOff.1` | s32 | `5` |
+| `SearchBeamer.init.f1` | f32 | `60.0f` |
+| `SearchBeamer.init.f10` | f32 | `200.0f` |
+| `SearchBeamer.init.f2` | f32 | `80.0f` |
+| `SearchBeamer.init.f3` | f32 | `80.0f` |
+| `SearchBeamer.init.f4` | f32 | `80.0f` |
+| `SearchBeamer.init.f5` | f32 | `10.0f` |
+| `SearchBeamer.init.f6` | f32 | `10.0f` |
+| `SearchBeamer.init.f7` | f32 | `100.0f` |
+| `SearchBeamer.init.f8` | f32 | `100.0f` |
+| `SearchBeamer.init.f9` | f32 | `200.0f` |
+| `SearchBeamer.updateBeamShadow.f1` | f32 | `2.0f` |
+| `Snakehead.control.f1` | f32 | `0.5f` |
+| `Snakehead.control.f2` | f32 | `480.0f` |
+| `Snakehead.control.f3` | f32 | `300.0f` |
+| `Snakehead.exeWaylay.f1` | f32 | `2.0f` |
+| `Snakehead.init.f1` | f32 | `100.0f` |
+| `Snakehead.init.f10` | f32 | `250.0f` |
+| `Snakehead.init.f11` | f32 | `150.0f` |
+| `Snakehead.init.f12` | f32 | `500.0f` |
+| `Snakehead.init.f13` | f32 | `200.0f` |
+| `Snakehead.init.f14` | f32 | `480.0f` |
+| `Snakehead.init.f15` | f32 | `300.0f` |
+| `Snakehead.init.f16` | f32 | `680.0f` |
+| `Snakehead.init.f17` | f32 | `500.0f` |
+| `Snakehead.init.f18` | f32 | `100.0f` |
+| `Snakehead.init.f19` | f32 | `500.0f` |
+| `Snakehead.init.f2` | f32 | `140.0f` |
+| `Snakehead.init.f3` | f32 | `70.0f` |
+| `Snakehead.init.f4` | f32 | `300.0f` |
+| `Snakehead.init.f5` | f32 | `250.0f` |
+| `Snakehead.init.f6` | f32 | `100.0f` |
+| `Snakehead.init.f7` | f32 | `200.0f` |
+| `Snakehead.init.f8` | f32 | `250.0f` |
+| `Snakehead.init.f9` | f32 | `600.0f` |
+| `Snakehead.initAfterPlacement.f1` | f32 | `50.0f` |
+| `Snakehead.initAfterPlacement.f2` | f32 | `1000.0f` |
+| `Snakehead.kill.f1` | f32 | `10.0f` |
+| `Snakehead.kill.f2` | f32 | `40.0f` |
+| `Snakehead.kill.f3` | f32 | `15.0f` |
 | `Snakehead.sDefaultBackSpeed` | f32 | `10.0f` |
 | `Snakehead.sDefaultForwardSpeed` | f32 | `15.0f` |
 | `Snakehead.sNearHomeSlowDown` | f32 | `1.5f` |
@@ -21195,7 +24053,25 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpinHitController.cDefaultHorizontalSpeed` | f32 | `40.0f` |
 | `SpinHitController.cDefaultStopSceneFrames` | s32 | `3` |
 | `SpinHitController.cDefaultVerticalSpeed` | f32 | `20.0f` |
+| `SpinHitController.emitItem.f1` | f32 | `10.0f` |
+| `SpinHitController.emitItem.f2` | f32 | `40.0f` |
 | `SpinHitController.execute.1` | s32 | `1` |
+| `StinkBugBase.isPlayerInTerritory.f1` | f32 | `180.0f` |
+| `StinkBugParent.control.f1` | f32 | `2.0f` |
+| `StinkBugParent.exeBack.f1` | f32 | `2.0f` |
+| `StinkBugParent.exeDemoAnger.f1` | f32 | `180.0f` |
+| `StinkBugParent.exeDemoAnger.f2` | f32 | `200.0f` |
+| `StinkBugParent.exeDemoAnger.f3` | f32 | `25.0f` |
+| `StinkBugParent.exeDemoAnger.f4` | f32 | `40.0f` |
+| `StinkBugParent.init.f1` | f32 | `250.0f` |
+| `StinkBugParent.init.f2` | f32 | `150.0f` |
+| `StinkBugParent.init.f3` | f32 | `160.0f` |
+| `StinkBugParent.init.f4` | f32 | `50.0f` |
+| `StinkBugParent.init.f5` | f32 | `80.0f` |
+| `StinkBugParent.init.f6` | f32 | `300.0f` |
+| `StinkBugParent.init.f7` | f32 | `300.0f` |
+| `StinkBugParent.init.f8` | f32 | `50.0f` |
+| `StinkBugParent.init.f9` | f32 | `1200.0f` |
 | `StinkBugParent.sChildRadius` | f32 | `150.0f` |
 | `StinkBugParent.sHornMargin` | f32 | `25.0f` |
 | `StinkBugParent.sStepForChildDeathSound` | s32 | `48` |
@@ -21211,6 +24087,22 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StinkBugParent.sTerritoryUpHalfSize` | f32 | `600.0f` |
 | `StinkBugParent.sTurnRateDashSign` | f32 | `3.0f` |
 | `StinkBugParent.sTurnRateSearch` | f32 | `1.0f` |
+| `StinkBugSmall.attackSensor.f1` | f32 | `20.0f` |
+| `StinkBugSmall.calcAndSetBaseMtx.f1` | f32 | `0.3f` |
+| `StinkBugSmall.control.f1` | f32 | `2.0f` |
+| `StinkBugSmall.exeForceFall.f1` | f32 | `2.0f` |
+| `StinkBugSmall.init.f1` | f32 | `110.0f` |
+| `StinkBugSmall.init.f2` | f32 | `10.0f` |
+| `StinkBugSmall.init.f3` | f32 | `100.0f` |
+| `StinkBugSmall.init.f4` | f32 | `30.0f` |
+| `StinkBugSmall.init.f5` | f32 | `200.0f` |
+| `StinkBugSmall.init.f6` | f32 | `200.0f` |
+| `StinkBugSmall.init.f7` | f32 | `130.0f` |
+| `StinkBugSmall.init.f8` | f32 | `50.0f` |
+| `StinkBugSmall.initAfterPlacement.f1` | f32 | `50.0f` |
+| `StinkBugSmall.initAfterPlacement.f2` | f32 | `200.0f` |
+| `StinkBugSmall.kill.f1` | f32 | `10.0f` |
+| `StinkBugSmall.kill.f2` | f32 | `40.0f` |
 | `StinkBugSmall.sBackSpeed` | f32 | `5.0f` |
 | `StinkBugSmall.sDashSpeed` | f32 | `20.0f` |
 | `StinkBugSmall.sHomeDistance` | f32 | `10.0f` |
@@ -21223,6 +24115,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StinkBugSmall.sTerritoryUpHalfSize` | f32 | `200.0f` |
 | `StinkBugSmall.sTurnRateDashSign` | f32 | `3.0f` |
 | `StinkBugSmall.sTurnRateSearch` | f32 | `1.0f` |
+| `StringSpider.attackSensor.f1` | f32 | `0.25f` |
+| `StringSpider.attackSensor.f2` | f32 | `0.25f` |
+| `StringSpider.attackSensor.f3` | f32 | `10.0f` |
+| `StringSpider.attackSensor.f4` | f32 | `13.0f` |
+| `StringSpider.attackSensor.f5` | f32 | `0.25f` |
+| `StringSpider.attackSensor.f6` | f32 | `3.0f` |
+| `StringSpider.calcAndSetBaseMtx.f1` | f32 | `0.063f` |
+| `StringSpider.calcPosture.f1` | f32 | `0.03f` |
 | `StringSpider.cCollisionFullSpeed` | f32 | `15.0f` |
 | `StringSpider.cCollisionMaxVolume` | f32 | `100.0f` |
 | `StringSpider.cMinStringRate` | f32 | `0.333f` |
@@ -21244,11 +24144,77 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StringSpider.cSwing1MinSpeed` | f32 | `2.0f` |
 | `StringSpider.cSwing2MaxSpeed` | f32 | `25.0f` |
 | `StringSpider.cSwing2MinSpeed` | f32 | `5.0f` |
+| `StringSpider.exeAttack.f1` | f32 | `0.25f` |
+| `StringSpider.exeAttack.f2` | f32 | `40.0f` |
+| `StringSpider.exeAttack.f3` | f32 | `0.8f` |
+| `StringSpider.exeDown.f1` | f32 | `0.25f` |
+| `StringSpider.exeDown.f2` | f32 | `230.0f` |
+| `StringSpider.exeDownEnd.f1` | f32 | `0.25f` |
+| `StringSpider.exeDownStart.f1` | f32 | `0.25f` |
+| `StringSpider.exeHit.f1` | f32 | `0.25f` |
+| `StringSpider.exePointerGripped.f1` | f32 | `0.25f` |
+| `StringSpider.exePointerGripped.f2` | f32 | `0.125f` |
+| `StringSpider.exePointerGripped.f3` | f32 | `25.0f` |
+| `StringSpider.exePointerGripped.f4` | f32 | `100.0f` |
+| `StringSpider.exePointerGripped.f5` | f32 | `10.0f` |
+| `StringSpider.exePointerGripped.f6` | f32 | `40.0f` |
+| `StringSpider.exeSearch.f1` | f32 | `0.25f` |
+| `StringSpider.exeSearch.f2` | f32 | `40.0f` |
+| `StringSpider.exeSearch.f3` | f32 | `800.0f` |
+| `StringSpider.exeSearch.f4` | f32 | `0.2f` |
+| `StringSpider.exeSearch.f5` | f32 | `0.05f` |
+| `StringSpider.exeSearch.f6` | f32 | `1600.0f` |
+| `StringSpider.exeSpinned.f1` | f32 | `0.3f` |
+| `StringSpider.exeSpinned.f2` | f32 | `100.0f` |
+| `StringSpider.exeSpinned.f3` | f32 | `24.0f` |
+| `StringSpider.exeSpinned.f4` | f32 | `51.0f` |
+| `StringSpider.exeSpinned.f5` | f32 | `0.6f` |
+| `StringSpider.exeSpinned.f6` | f32 | `0.25f` |
 | `StringSpider.exeTrampleFall.1` | s32 | `5` |
+| `StringSpider.exeTrampleFall.f1` | f32 | `0.25f` |
 | `StringSpider.exeTrampleFall.setBinderRadius.1` | f32 | `10.0f` |
+| `StringSpider.exeUp.f1` | f32 | `0.25f` |
+| `StringSpider.exeUp.f2` | f32 | `5.0f` |
+| `StringSpider.exeWait.f1` | f32 | `0.25f` |
 | `StringSpider.exeWallHitDeath.1` | s32 | `35` |
+| `StringSpider.extendString.f1` | f32 | `100.0f` |
+| `StringSpider.init.f1` | f32 | `80.0f` |
+| `StringSpider.init.f2` | f32 | `80.0f` |
+| `StringSpider.init.f3` | f32 | `13.0f` |
+| `StringSpider.init.f4` | f32 | `13.0f` |
+| `StringSpider.init.f5` | f32 | `80.0f` |
+| `StringSpider.init.f6` | f32 | `80.0f` |
+| `StringSpider.init.f7` | f32 | `80.0f` |
+| `StringSpider.initAfterPlacement.f1` | f32 | `200.0f` |
+| `StringSpider.initAfterPlacement.f2` | f32 | `0.5f` |
+| `StringSpider.reactPointer.f1` | f32 | `20.0f` |
+| `StringSpider.reactPointer.f2` | f32 | `15.0f` |
+| `StringSpider.reactStringForce.f1` | f32 | `1000.0f` |
+| `StringSpider.reactStringForce.f2` | f32 | `0.25f` |
+| `StringSpider.reactStringForce.f3` | f32 | `0.1f` |
+| `StringSpider.receiveMsgPlayerAttack.f1` | f32 | `10.0f` |
+| `StringSpider.receiveMsgPlayerAttack.f2` | f32 | `13.0f` |
+| `StringSpider.receiveMsgPush.f1` | f32 | `0.5f` |
+| `StringSpider.startSwingLevelSound.f1` | f32 | `100.0f` |
+| `StringSpider.startSwingLevelSound.f2` | f32 | `100.0f` |
+| `Takobo.attackSensor.f1` | f32 | `0.25f` |
+| `Takobo.control.f1` | f32 | `5.0f` |
 | `Takobo.exeAttack.setBckRate.1` | f32 | `1.0f` |
+| `Takobo.exeMove.f1` | f64 | `1.3` |
 | `Takobo.exeStunStart.setBckRate.1` | f32 | `2.0f` |
+| `Takobo.generateCoin.f1` | f32 | `80.0f` |
+| `Takobo.init.f1` | f32 | `80.0f` |
+| `Takobo.init.f2` | f32 | `60.0f` |
+| `Takobo.init.f3` | f32 | `70.0f` |
+| `Takobo.init.f4` | f32 | `1.5f` |
+| `Takobo.init.f5` | f32 | `20.0f` |
+| `Takobo.init.f6` | f32 | `35.0f` |
+| `Takobo.init.f7` | f32 | `110.0f` |
+| `Takobo.init.f8` | f32 | `80.0f` |
+| `Takobo.initSensor.f1` | f32 | `70.0f` |
+| `Takobo.initSensor.f2` | f32 | `80.0f` |
+| `Takobo.initSensor.f3` | f32 | `10.0f` |
+| `Takobo.initSensor.f4` | f32 | `2.0f` |
 | `Takobo.sAttackAimRadian` | f32 | `0.1f` |
 | `Takobo.sAttackDistance` | f32 | `250.0f` |
 | `Takobo.sAttackHitEnd` | s32 | `90` |
@@ -21258,6 +24224,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Takobo.sTurnRadian` | f32 | `0.05f` |
 | `TakoHei.exePunchDown.1` | s32 | `5` |
 | `TakoHei.exePursue.isNearPlayer.1` | f32 | `700.0f` |
+| `TakoHei.isFallNextMove.f1` | f32 | `150.0f` |
+| `TakoHei.isFallNextMove.f2` | f32 | `90.0f` |
+| `TakoHei.isFallNextMove.f3` | f32 | `2.0f` |
+| `TakoHei.isFallNextMove.f4` | f32 | `150.0f` |
+| `TakoHei.kill.f1` | f32 | `10.0f` |
+| `TakoHei.kill.f2` | f32 | `40.0f` |
 | `TakoHei.sActiveDistance` | f32 | `3000.0f` |
 | `TakoHei.sAttackDistanceFar` | f32 | `750.0f` |
 | `TakoHei.sAttackDistanceNear` | f32 | `650.0f` |
@@ -21307,6 +24279,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TakoHei.updateNormalVelocity.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TakoHei.updateNormalVelocity.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TakoHei.updateNormalVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `TakoHei.updatePose.f1` | f32 | `0.1f` |
+| `TakoHei.updatePose.f2` | f32 | `0.2f` |
 | `TakoHei.updateSwoonVelocity.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TakoHei.updateSwoonVelocity.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TakoHei.updateSwoonVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -21316,26 +24290,77 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TakoHeiInk.sNormalFric` | f32 | `0.99f` |
 | `TakoHeiInkHolder.sMaxTakoHeiInk` | s32 | `16` |
 | `Teresa.addDriftVelocity.1` | s32 | `35` |
+| `Teresa.addDriftVelocity.f1` | f32 | `0.12f` |
+| `Teresa.addDriftVelocity.f2` | f32 | `1.25f` |
+| `Teresa.blendTeresaQuat.f1` | f32 | `0.1f` |
+| `Teresa.blendTeresaQuat.f2` | f32 | `0.2f` |
+| `Teresa.control.f1` | f32 | `0.95f` |
+| `Teresa.control.f2` | f32 | `0.9f` |
+| `Teresa.exeAttackSuccess.f1` | f32 | `0.99f` |
+| `Teresa.exeChase.f1` | f32 | `0.999f` |
+| `Teresa.exeChase.f2` | f32 | `0.75f` |
+| `Teresa.exeDrift.f1` | f32 | `0.96f` |
+| `Teresa.exeLoveChase.f1` | f32 | `0.999f` |
+| `Teresa.exeLoveChase.f2` | f32 | `0.75f` |
+| `Teresa.exeLoveFind.f1` | f32 | `0.98f` |
+| `Teresa.exeRailTurn.f1` | f32 | `0.9997f` |
+| `Teresa.exeRailTurn.f2` | f32 | `0.1f` |
+| `Teresa.exeRailWalk.f1` | f32 | `10.0f` |
+| `Teresa.exeRailWalk.f2` | f32 | `0.9995f` |
+| `Teresa.exeRailWalk.f3` | f32 | `0.35f` |
 | `Teresa.exeRailWalk.moveCoord.1` | f32 | `10.0f` |
+| `Teresa.exeShay.f1` | f32 | `0.5f` |
+| `Teresa.exeWalk.f1` | f32 | `0.9995f` |
+| `Teresa.exeWalk.f2` | f32 | `0.2f` |
+| `Teresa.init.f1` | f32 | `3000.0f` |
+| `Teresa.initBind.f1` | f32 | `60.0f` |
+| `Teresa.initSensor.f1` | f32 | `70.0f` |
+| `Teresa.initSensor.f2` | f32 | `85.0f` |
+| `Teresa.initSensor.f3` | f32 | `85.0f` |
+| `Teresa.receiveMsgPush.f1` | f32 | `0.1f` |
 | `Teresa.requestLoveHit.addVelocitySeparateHV.1` | f32 | `20.0f` |
 | `Teresa.requestLoveHit.addVelocitySeparateHV.2` | f32 | `0.0f` |
 | `Teresa.sChaseDistance` | f32 | `1800.0f` |
+| `Teresa.setTransparency.f1` | f32 | `9.0f` |
 | `Teresa.sFloatHeight` | f32 | `150.0f` |
 | `Teresa.sLoveDistance` | f32 | `1500.0f` |
 | `Teresa.sShadowRadius` | f32 | `80.0f` |
 | `Teresa.sShyDistance` | f32 | `1500.0f` |
 | `Teresa.sWalkEndDistance` | f32 | `200.0f` |
+| `Teresa.Teresa.f1` | f32 | `600.0f` |
 | `Teresa.tryAggressiveEnd.1` | s32 | `75` |
+| `Teresa.tryAscension.f1` | f32 | `10000.0f` |
 | `Teresa.tryDriftEnd.1` | s32 | `50` |
+| `Teresa.tryHideWater.f1` | f32 | `70.0f` |
 | `Teresa.tryWalk.1` | s32 | `192` |
 | `Teresa.updateAppear.attenuateVelocity.1` | f32 | `0.9f` |
+| `Teresa.updateAppear.f1` | f32 | `0.2f` |
+| `Teresa.updateDriftAnimScale.f1` | f32 | `0.30f` |
+| `Teresa.updateDriftAnimScale.f2` | f32 | `3.0f` |
+| `Teresa.updateDriftAnimScale.f3` | f32 | `53.0f` |
+| `Teresa.updateDriftTransparency.f1` | f32 | `4.0f` |
+| `Teresa.updateNormalTransparency.f1` | f32 | `0.02f` |
 | `Teresa.updateNormalVelocity.attenuateVelocity.1` | f32 | `0.9f` |
+| `Teresa.updateNormalVelocity.f1` | f32 | `85.0f` |
+| `Teresa.updateNormalVelocity.f2` | f32 | `0.40f` |
+| `Teresa.updateNormalVelocity.f3` | f32 | `40.0f` |
 | `Teresa.updateNormalVelocity.reboundVelocityFromCollision.1` | f32 | `-0.2f` |
 | `Teresa.updateNormalVelocity.reboundVelocityFromCollision.2` | f32 | `4.0f` |
 | `Teresa.updateNormalVelocity.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `TeresaWater.init.f1` | f32 | `60.0f` |
+| `TeresaWater.init.f2` | f32 | `100.0f` |
+| `TeresaWater.init.f3` | f32 | `100.0f` |
 | `TeresaWater.sDefaultMoveLength` | f32 | `800.0f` |
+| `TeresaWater.sMoveParam` | f32[4] | `0.5f, 0.0f, 0.9f, 1.5f` |
 | `TeresaWater.sSideFriction` | f32 | `0.5f` |
 | `TeresaWater.sTargetRadius` | f32 | `30.0f` |
+| `Unizo.doBreak.f1` | f32 | `10.0f` |
+| `Unizo.doBreak.f2` | f32 | `40.0f` |
+| `Unizo.doFireDown.f1` | f32 | `10.0f` |
+| `Unizo.doFireDown.f2` | f32 | `40.0f` |
+| `Unizo.doJump.f1` | f32 | `2.0f` |
+| `Unizo.exeFireDown.f1` | f32 | `10.0f` |
+| `Unizo.exeFireDown.f2` | f32 | `40.0f` |
 | `Unizo.sAccelerate` | f32 | `0.1f` |
 | `Unizo.sBlinkCycle` | s32 | `200` |
 | `Unizo.sBodyRadius` | f32 | `126.36f` |
@@ -21350,6 +24375,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Unizo.sDamageFloorFrame` | s32 | `50` |
 | `Unizo.sDamageFloorVertical` | f32 | `30.0f` |
 | `Unizo.sDriftSpeedRate` | f32 | `0.02f` |
+| `Unizo.setQuatXYZ.f1` | f32 | `0.5f` |
+| `Unizo.setQuatXYZ.f2` | f32 | `0.5f` |
+| `Unizo.setQuatXYZ.f3` | f32 | `0.5f` |
+| `Unizo.setQuatXYZ.f4` | f32 | `0.5f` |
+| `Unizo.setQuatXYZ.f5` | f32 | `0.5f` |
+| `Unizo.setQuatXYZ.f6` | f32 | `0.5f` |
 | `Unizo.sFireDownAttenuate` | f32 | `1.0f` |
 | `Unizo.sFireDownGravity` | f32 | `1.1f` |
 | `Unizo.sFireDownHorizontal` | f32 | `6.0f` |
@@ -21384,34 +24415,86 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Unizo.sSurfaceEffectMinLimit` | f32 | `40.0f` |
 | `Unizo.sSurfaceEffectMinRunLimit` | f32 | `0.0f` |
 | `Unizo.sSurfaceEffectRunSpeed` | f32 | `5.0f` |
+| `Unizo.startWallHitSound.f1` | f32 | `100.0f` |
+| `Unizo.startWallHitSound.f2` | f32 | `100.0f` |
 | `Unizo.sTotalSpeedMax` | f32 | `12.0f` |
 | `Unizo.sWallHitSoundSpeed` | f32 | `3.0f` |
+| `Unizo.updateInfluence.f1` | f32 | `100.0f` |
+| `Unizo.updateInfluence.f2` | f32 | `100.0f` |
+| `Unizo.updateInfluence.f3` | f32 | `100.0f` |
+| `Unizo.updateInfluence.f4` | f32 | `100.0f` |
 | `Unizo.updateInfluence.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `Unizo.updateInfluence.reboundVelocityFromCollision.2` | f32 | `1.0f` |
 | `Unizo.updateInfluence.reboundVelocityFromCollision.3` | f32 | `0.0f` |
 | `Unizo.updateInfluence.reboundVelocityFromCollision.4` | f32 | `0.0f` |
 | `Unizo.updateInfluence.reboundVelocityFromCollision.5` | f32 | `1.0f` |
+| `Unizo.updateVelocity.f1` | f32 | `180.0f` |
+| `Unizo.updateVelocity.f2` | f32 | `2.0f` |
+| `UnizoLauncher.init.f1` | f32 | `100.0f` |
 | `UnizoLauncher.sUnizoInter` | s32 | `300` |
 | `WalkerStateBindStarPointer.sPointCanceBindTime` | s32 | `5` |
 | `WalkerStateBlowDamage.exeBlow.1` | s32 | `5` |
 | `WalkerStateBlowDamage.sAirFric` | f32 | `0.99f` |
 | `WalkerStateBlowDamage.sAirGravityAccel` | f32 | `1.0f` |
 | `WalkerStateBlowDamage.sDamageTurnLimit` | f32 | `15.0f` |
+| `WalkerStateChase.exeStart.f1` | f32 | `150.0f` |
+| `WalkerStateChase.exeStart.f2` | f32 | `150.0f` |
+| `WalkerStateChase.exeStart.f3` | f32 | `150.0f` |
 | `WalkerStateFindPlayer.exeFindJump.1` | s32 | `5` |
 | `WalkerStateFunction.calcPassiveMovement.reboundVelocityFromEachCollision.1` | f32 | `-1.0f` |
 | `WalkerStateFunction.calcPassiveMovement.reboundVelocityFromEachCollision.2` | f32 | `-1.0f` |
 | `WalkerStateFunction.calcPassiveMovement.reboundVelocityFromEachCollision.3` | f32 | `0.0f` |
 | `WalkerStateFunction.calcPassiveMovement.reboundVelocityFromEachCollision.4` | f32 | `0.0f` |
+| `WalkerStateRunaway.exeWallJump.f1` | f32 | `45.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f1` | f32 | `0.05f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f10` | f32 | `0.9f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f11` | f32 | `1.4f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f12` | f32 | `0.3f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f13` | f32 | `8.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f14` | f32 | `15.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f2` | f32 | `0.9f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f3` | f32 | `0.99f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f4` | f32 | `3.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f5` | f32 | `1100.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f6` | f32 | `1300.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f7` | f32 | `10.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f8` | f32 | `3.0f` |
+| `WalkerStateRunaway.WalkerStateRunawayParam.f9` | f32 | `25.0f` |
 | `WalkerStateStagger.isStaggerStart.1` | s32 | `1` |
 | `WalkerStateStagger.isUpsideDown.1` | s32 | `15` |
+| `WalkerStateStagger.reboundWall.f1` | f32 | `0.9f` |
+| `WalkerStateWander.exeWalk.f1` | f32 | `8.0f` |
+| `WalkerStateWander.exeWalk.f2` | f32 | `150.0f` |
+| `WalkerStateWander.exeWalk.f3` | f32 | `150.0f` |
+| `WalkerStateWander.exeWalk.f4` | f32 | `150.0f` |
+| `WalkerStateWander.WalkerStateWander.f1` | f32 | `500.0f` |
+| `WaterBazooka.aimAtMario.f1` | f32 | `100.0f` |
+| `WaterBazooka.aimAtMario.f2` | f32 | `1.2f` |
+| `WaterBazooka.aimAtMario.f3` | f32 | `15.0f` |
+| `WaterBazooka.aimAtMario.f4` | f32 | `2.0f` |
+| `WaterBazooka.calcGunPointFromCannon.f1` | f32 | `550.0f` |
+| `WaterBazooka.calcNearDropPoint.f1` | f32 | `800.0f` |
 | `WaterBazooka.control.isNearPlayer.1` | f32 | `5000.0f` |
 | `WaterBazooka.cShotInvalidSpinKill` | bool | `false` |
 | `WaterBazooka.exeAim.1` | s32 | `10` |
 | `WaterBazooka.exeDemoAnger.1` | s32 | `20` |
+| `WaterBazooka.exeDemoAnger.f1` | f32 | `600.0f` |
+| `WaterBazooka.exeDemoAnger.f2` | f32 | `25.0f` |
+| `WaterBazooka.exeDemoAnger.f3` | f32 | `40.0f` |
 | `WaterBazooka.exeDemoBreakExplosion.1` | s32 | `53` |
 | `WaterBazooka.exeDemoBreakWait.1` | s32 | `5` |
 | `WaterBazooka.exeDemoCrackCapsule.1` | s32 | `27` |
+| `WaterBazooka.exeDemoCrackCapsule.f1` | f32 | `600.0f` |
+| `WaterBazooka.exeDemoCrackCapsule.f2` | f32 | `25.0f` |
+| `WaterBazooka.exeDemoCrackCapsule.f3` | f32 | `40.0f` |
+| `WaterBazooka.exeStorm.f1` | f32 | `25.0f` |
+| `WaterBazooka.exeStorm.f2` | f32 | `100.0f` |
+| `WaterBazooka.exeStorm.f3` | f32 | `25.0f` |
 | `WaterBazooka.sElectricBulletSpeed` | f32 | `12.0f` |
+| `WaterBazooka.switchShowOrHide.f1` | f32 | `800.0f` |
+| `WaterBazooka.tryJumpBackPlayerFromBazooka.f1` | f32 | `20.0f` |
+| `WaterBazooka.tryShotBullet.f1` | f32 | `40.0f` |
+| `WaterBazookaCapsule.init.f1` | f32 | `50.0f` |
 
 <a id="p-nebula-tunables--gamegameaudio"></a>
 
@@ -21419,6 +24502,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `AudCameraWatcher.movement.f1` | f32 | `20.0f` |
 | `AudTamakoroBgmCtrl.sFirstBarSteps` | s32 | `107` |
 | `AudTamakoroBgmCtrl.sPercTrack` | s32 | `14` |
 | `AudTamakoroBgmCtrl.sPitchRateNormal` | f32 | `1.0f` |
@@ -21441,7 +24525,33 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `ConeGravity.calcOwnGravityVector.f1` | f32 | `0.01f` |
+| `ConeGravity.ConeGravity.f1` | f32 | `360.0f` |
+| `DiskGravity.DiskGravity.f1` | f32 | `2500.0f` |
+| `DiskGravity.DiskGravity.f2` | f32 | `2500.0f` |
+| `DiskGravity.DiskGravity.f3` | f32 | `360.0f` |
+| `DiskGravity.updateLocalParam.f1` | f32 | `0.5f` |
+| `DiskGravity.updateLocalParam.f2` | f32 | `0.5f` |
+| `DiskTorusGravity.DiskTorusGravity.f1` | f32 | `2000.0f` |
+| `DiskTorusGravity.DiskTorusGravity.f2` | f32 | `2000.0f` |
+| `GravityCreator.settingFromPlacementArgs.f1` | f32 | `360.0f` |
+| `GravityCreator.settingFromPlacementArgs.f2` | f32 | `1000.0f` |
+| `GravityCreator.settingFromPlacementArgs.f3` | f32 | `360.0f` |
+| `GravityCreator.settingFromSRT.f1` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f2` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f3` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f4` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f5` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f6` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f7` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f8` | f32 | `500.0f` |
+| `GravityCreator.settingFromSRT.f9` | f32 | `1000.0f` |
+| `ParallelGravity.setBaseDistance.f1` | f32 | `2000.0f` |
+| `PlanetGravity.calcGravity.f1` | f32 | `4000000.0f` |
 | `PlanetGravityManager.sFirstCapacity` | s32 | `128` |
+| `SegmentGravity.SegmentGravity.f1` | f32 | `360.0f` |
+| `SegmentGravity.updateLocalParam.f1` | f32 | `0.5f` |
+| `SegmentGravity.updateLocalParam.f2` | f32 | `0.5f` |
 
 <a id="p-nebula-tunables--gameliveactor"></a>
 
@@ -21450,23 +24560,75 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | Key | Type | Game's value |
 |---|---|---|
 | `ActorPadAndCameraCtrl.sDefaultDistanceInvalid` | f32 | `3000.0f` |
+| `Binder.clear.f1` | f32 | `99999.0f` |
+| `Binder.clear.f2` | f32 | `99999.0f` |
+| `Binder.clear.f3` | f32 | `99999.0f` |
+| `Binder.findBindedPos.f1` | f32 | `35000.0f` |
+| `Binder.findBindedPos.f2` | f32 | `35.0f` |
 | `Binder.hOverlapAddValue` | f32 | `1.2f` |
+| `ClippingActorHolder.findGround.f1` | f32 | `1.25f` |
 | `ClippingActorHolder.sListCapacity` | s32 | `2560` |
 | `ClippingActorHolder.sTableSize` | u32 | `8192` |
+| `ClippingActorInfo.ClippingActorInfo.f1` | f32 | `300.0f` |
 | `ClippingActorInfo.sClipLeaveMargin` | f32 | `150.0f` |
 | `ClippingGroupHolder.sGroupCapacity` | s32 | `0x40` |
+| `ClippingJudge.calcViewingVolumes.f1` | f32 | `360.0f` |
 | `ClippingJudge.cNearClip` | f32 | `500.0f` |
 | `ClippingJudge.cNearClipSubjective` | f32 | `100.0f` |
+| `DynamicJointCtrl.init.f1` | f32 | `100.0f` |
 | `DynamicJointCtrl.sDefaultCtrlTime` | s32 | `10` |
+| `EffectKeeper.initAfterPlacementForAttributeEffect.f1` | f32 | `100.0f` |
 | `FaceJointCtrl.sDefaultDegreeMax` | f32 | `45.0f` |
+| `IKJointCtrl.setEndDirection.f1` | f32 | `0.01f` |
+| `LodCtrl.createFarModel.f1` | f32 | `100.0f` |
 | `LodCtrl.sOff` | bool | `false` |
+| `MaterialCtrl.update.f1` | f32 | `1000000.0f` |
+| `MaterialCtrl.update.f2` | f32 | `1000000.0f` |
+| `MaterialCtrl.update.f3` | f32 | `1000000.0f` |
+| `MirrorActor.init.f1` | f32 | `0.5f` |
+| `MirrorActor.init.f2` | f32 | `0.5f` |
+| `MirrorCamera.updateViewMtx.f1` | f32 | `2.0f` |
+| `MirrorCamera.updateViewMtx.f2` | f32 | `2.0f` |
+| `MirrorCamera.updateViewMtx.f3` | f32 | `2.0f` |
+| `RailRider.syncPosDir.f1` | f32 | `0.1f` |
+| `RailRider.syncPosDir.f2` | f32 | `0.1f` |
 | `ShadowDrawer.cAnchorJumpDistance` | f32 | `300.0f` |
+| `ShadowSurfaceBox.draw.f1` | f32 | `2.0f` |
+| `ShadowSurfaceBox.draw.f2` | f32 | `2.0f` |
 | `ShadowSurfaceCircle.cSegments` | u32 | `20` |
+| `ShadowSurfaceCircle.draw.f1` | f32 | `6.2831855f` |
+| `ShadowSurfaceOval.draw.f1` | f32 | `100.0f` |
+| `ShadowSurfaceOval.draw.f2` | f32 | `0.9f` |
+| `ShadowSurfaceOval.draw.f3` | f32 | `0.9f` |
+| `ShadowVolumeBox.makeVertexBuffer.f1` | f32 | `2.0f` |
+| `ShadowVolumeBox.makeVertexBuffer.f2` | f32 | `2.0f` |
+| `ShadowVolumeCylinder.ShadowVolumeCylinder.f1` | f32 | `100.0f` |
 | `ShadowVolumeCylinder.sModelScale` | f32 | `100.0f` |
 | `ShadowVolumeDrawer.cPartsPerPass` | u32 | `256` |
+| `ShadowVolumeLine.ShadowVolumeLine.f1` | f32 | `100.0f` |
+| `ShadowVolumeLine.ShadowVolumeLine.f2` | f32 | `100.0f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f1` | f32 | `100.0f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f2` | f32 | `0.01f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f3` | f32 | `0.01f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f4` | f32 | `0.01f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f5` | f32 | `0.01f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f6` | f32 | `0.01f` |
+| `ShadowVolumeOval.loadModelDrawMtx.f7` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f1` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f2` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f3` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f4` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f5` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.loadModelDrawMtx.f6` | f32 | `0.01f` |
+| `ShadowVolumeOvalPole.ShadowVolumeOvalPole.f1` | f32 | `100.0f` |
+| `ShadowVolumeOvalPole.ShadowVolumeOvalPole.f2` | f32 | `100.0f` |
+| `ShadowVolumeOvalPole.ShadowVolumeOvalPole.f3` | f32 | `200.0f` |
 | `ShadowVolumeOvalPole.sModelScale` | f32 | `100.0f` |
 | `ShadowVolumeSphere.sModelScale` | f32 | `100.0f` |
 | `SpotMarkLight.control.isNearPlayerAnyTime.1` | f32 | `1000.0f` |
+| `SpotMarkLight.SpotMarkLight.f1` | f32 | `50.0f` |
+| `SpotMarkLight.SpotMarkLight.f2` | f32 | `50.0f` |
+| `SpotMarkLight.SpotMarkLight.f3` | f32 | `1000.0f` |
 | `ViewGroupCtrl.sAllLodCtrlNumMax` | u32 | `0x100` |
 | `ViewGroupCtrl.sInsideHoldSteps` | s32 | `30` |
 
@@ -21476,12 +24638,31 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `Air.Air.f1` | f32 | `70.0f` |
+| `Air.appear.f1` | f32 | `100.0f` |
+| `Air.exeIn.f1` | f32 | `100.0f` |
+| `Air.exeIn.f2` | f32 | `20.0f` |
+| `Air.exeOut.f1` | f32 | `100.0f` |
+| `Air.init.f1` | f32 | `100.0f` |
+| `BezierRail.calcPos.f1` | f32 | `3.0f` |
+| `BezierRail.calcPos.f2` | f32 | `3.0f` |
+| `BezierRail.calcRailDirection.f1` | f32 | `0.5f` |
+| `BezierRail.calcVelocity.f1` | f32 | `2.0f` |
+| `BezierRail.calcVelocity.f2` | f32 | `3.0f` |
 | `BezierRail.cDirectionStep` | f32 | `0.01f` |
 | `BezierRail.cLengthSegments` | s32 | `10` |
 | `BezierRail.cNearestSampleStep` | f32 | `100.0f` |
 | `BezierRail.cParamIterations` | s32 | `5` |
 | `BezierRail.cParamTolerance` | f32 | `0.01f` |
+| `BezierRail.getLength.f1` | f32 | `2.0f` |
+| `BezierRail.getLength.f2` | f64 | `2.0` |
+| `BezierRail.getLength.f3` | f32 | `1024.0f` |
+| `BezierRail.getLength.f4` | f64 | `3.0` |
+| `BezierRail.getLength.f5` | f32 | `4.0f` |
+| `BezierRail.getLength.f6` | f32 | `2.0f` |
+| `BezierRail.getLength.f7` | f32 | `1024.0f` |
 | `Butterfly.exeGotoSleepingMario.checkPassBckFrame.1` | f32 | `0.0f` |
+| `Butterfly.exeGotoSleepingMario.f1` | f32 | `0.05f` |
 | `Butterfly.exeReadyToPerchOnSleepingMario.checkPassBckFrame.1` | f32 | `0.0f` |
 | `Butterfly.sAnimInterpolateRate` | f32 | `0.02f` |
 | `Butterfly.sAppearStarPeaceScreenRadius` | f32 | `10.0f` |
@@ -21495,6 +24676,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Butterfly.sHiveRadius` | f32 | `100.0f` |
 | `Butterfly.sHiveVelMax` | f32 | `2.5f` |
 | `Butterfly.sHomeRadius` | f32 | `200.0f` |
+| `Butterfly.sMarioCapPosOffset` | f32[3] | `0.0f, 50.2f, 24.9f` |
 | `Butterfly.sMoveDistanceMax` | f32 | `500.0f` |
 | `Butterfly.sPerchOnAnimRate` | f32 | `0.7f` |
 | `Butterfly.sPerchOnNearDistance` | f32 | `10.0f` |
@@ -21512,9 +24694,42 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Butterfly.sTurnLimit` | f32 | `0.997f` |
 | `Butterfly.sUpdatePostureMinVel` | f32 | `0.5f` |
 | `Butterfly.sWaitAnimRate` | f32 | `1.0f` |
+| `Butterfly.tryAppearStarPeace.f1` | f32 | `40.0f` |
+| `CollisionCategorizedKeeper.addAndUpdateMinMax.f1` | f32 | `0.1f` |
+| `CollisionCategorizedKeeper.calcMinMaxAndRadius.f1` | f32 | `2.0f` |
+| `CollisionParts.checkStrikeBall.f1` | f32 | `3.0f` |
+| `CollisionParts.checkStrikeBall.f2` | f32 | `35000.0f` |
+| `CollisionParts.checkStrikeBall.f3` | f32 | `35.0f` |
+| `CollisionParts.checkStrikeBallWithThickness.f1` | f32 | `3.0f` |
+| `CollisionParts.checkStrikePoint.f1` | f32 | `3.0f` |
+| `CollisionParts.checkStrikePoint.f2` | f32 | `20.0f` |
+| `CollisionParts.checkStrikePoint.f3` | f32 | `2.0f` |
+| `CollisionParts.makeEqualScale.f1` | f32 | `3.0f` |
+| `CollisionParts.updateBoundingSphereRange.f1` | f32 | `3.0f` |
 | `FileSelectCameraController.cFarFovy` | f32 | `40.0f` |
+| `FileSelectCameraController.cFarPoint` | f32[3] | `0.0f, 0.0f, 15000.0f` |
+| `FileSelectCameraController.cFarTarget` | f32[3] | `0.0f, 800.0f, 0.0f` |
 | `FileSelectCameraController.cNearFovy` | f32 | `50.0f` |
+| `FileSelectCameraController.cNearPointOffset` | f32[3] | `0.0f, 0.0f, 4800.0f` |
+| `FileSelectCameraController.cNearTargetOffset` | f32[3] | `0.0f, 1100.0f, 0.0f` |
 | `FileSelectCameraController.cTitleFovy` | f32 | `60.0f` |
+| `FileSelectCameraController.exeTitle.f1` | f32 | `15000.0f` |
+| `FileSelectCameraController.exeTitle.f2` | f32 | `15000.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f1` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f2` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f3` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f4` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f5` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f6` | f32 | `900.0f` |
+| `FileSelectItem.checkCollisionOfPointAndTriangle.f7` | f32 | `900.0f` |
+| `FileSelectItem.control.f1` | f32 | `30.0f` |
+| `FileSelectItem.control.f2` | f32 | `30.0f` |
+| `FileSelectItem.control.f3` | f32 | `30.0f` |
+| `FileSelectItem.control.f4` | f32 | `30.0f` |
+| `FileSelectItem.control.f5` | f32 | `27.0f` |
+| `FileSelectItem.createMii.f1` | f32 | `27.0f` |
+| `FileSelectItem.createNew.f1` | f32 | `30.0f` |
+| `FileSelectItem.exeBig.f1` | f32 | `1.2f` |
 | `FileSelectItem.exeBlink.1` | s32 | `40` |
 | `FileSelectItem.exeChangeFellow.1` | s32 | `40` |
 | `FileSelectItem.exeChangeFellow.2` | s32 | `40` |
@@ -21526,8 +24741,33 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `FileSelectItem.exeFormat.1` | s32 | `40` |
 | `FileSelectItem.exeFormat.2` | s32 | `40` |
 | `FileSelectItem.exeFormat.3` | s32 | `40` |
+| `FileSelectItem.exeOpen.f1` | f32 | `10.0f` |
+| `FileSelectItem.exeOpen.f2` | f32 | `6.0f` |
 | `FileSelectItem.exeShut.1` | s32 | `10` |
+| `FileSelectItem.exeSleep.f1` | f32 | `2.0f` |
+| `FileSelectItem.exeToBig.f1` | f32 | `1.2f` |
+| `FileSelectItem.init.f1` | f32 | `1000.0f` |
+| `FileSelectItem.init.f2` | f32 | `900.0f` |
+| `FileSelectItem.sDataInfoOffset` | f32[3] | `0.0f, 2150.0f, 0.0f` |
+| `FileSelectItem.updateRotate.f1` | f32 | `180.0f` |
+| `FileSelectItem.updateRotate.f10` | f32 | `0.98f` |
+| `FileSelectItem.updateRotate.f11` | f32 | `0.5f` |
+| `FileSelectItem.updateRotate.f12` | f32 | `0.5f` |
+| `FileSelectItem.updateRotate.f13` | f32 | `0.5f` |
+| `FileSelectItem.updateRotate.f14` | f32 | `0.5f` |
+| `FileSelectItem.updateRotate.f15` | f32 | `360.0f` |
+| `FileSelectItem.updateRotate.f2` | f32 | `360.0f` |
+| `FileSelectItem.updateRotate.f3` | f32 | `900.0f` |
+| `FileSelectItem.updateRotate.f4` | f32 | `900.0f` |
+| `FileSelectItem.updateRotate.f5` | f32 | `2.0f` |
+| `FileSelectItem.updateRotate.f6` | f32 | `900.0f` |
+| `FileSelectItem.updateRotate.f7` | f32 | `0.03f` |
+| `FileSelectItem.updateRotate.f8` | f32 | `25.0f` |
+| `FileSelectItem.updateRotate.f9` | f32 | `25.0f` |
 | `FileSelectModel.sScale` | f32 | `30.0f` |
+| `FileSelector.calcBasePos.f1` | f32 | `2.0f` |
+| `FileSelector.calcBasePos.f2` | f32 | `180.0f` |
+| `FileSelector.calcBasePos.f3` | f32 | `180.0f` |
 | `FileSelector.cBgmFarState` | s32 | `5` |
 | `FileSelector.cBgmFarStateChangeFrames` | u32 | `60` |
 | `FileSelector.cBgmNearState` | s32 | `6` |
@@ -21535,10 +24775,28 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `FileSelector.cIndexOrder` | s32[6] | `1, 2, 4, 6, 5, 3` |
 | `FileSelector.cItemPosRadius` | f32 | `5000.0f` |
 | `FileSelector.cItemThetaOffset` | f32[6] | `10.0f, -10.0f, 0.0f, 0.0f, 0.0f, 0.0f` |
+| `FileSelector.control.f1` | f32 | `0.05f` |
+| `FileSelector.control.f2` | f32 | `0.95f` |
+| `FileSelector.createSelectEffect.f1` | f32 | `0.4f` |
 | `FileSelector.cSelectEffectOffset` | f32 | `1000.0f` |
 | `FileSelector.cSlopeDegree` | f32 | `20.0f` |
+| `FileSelector.goToNearPoint.f1` | f32 | `16000.0f` |
+| `FileSelector.initStep.f1` | f32 | `500.0f` |
+| `FileSelector.offerFilesToMenuFocus.f1` | f32 | `900.0f` |
 | `FileSelectSky.cAngleIncY` | f32 | `0.001f` |
 | `FileSelectSky.cCycleX` | f32 | `3000.0f` |
+| `FileSelectSky.exeWait.f1` | f32 | `0.5f` |
+| `FileSelectSky.exeWait.f2` | f32 | `3.0f` |
+| `FileSelectSky.exeWait.f3` | f32 | `4.0f` |
+| `FileSelectSky.init.f1` | f32 | `0.8f` |
+| `FileSelectSky.init.f2` | f32 | `0.8f` |
+| `FileSelectSky.init.f3` | f32 | `0.8f` |
+| `FishGroup.control.f1` | f32 | `0.1f` |
+| `FishGroup.control.f2` | f32 | `0.1f` |
+| `FishGroup.control.f3` | f32 | `100.0f` |
+| `FishGroup.exeApproach.f1` | f32 | `0.01f` |
+| `FishGroup.init.f1` | f32 | `100.0f` |
+| `FishGroup.init.f2` | f32 | `500.0f` |
 | `FishGroup.sAnimFrameRate` | f32 | `0.2f` |
 | `FishGroup.sApproachAccel` | f32 | `5.0f` |
 | `FishGroup.sDefaultFishNum` | s32 | `10` |
@@ -21560,6 +24818,29 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `FishGroup.sTimeToSearchPlayerMax` | s32 | `10` |
 | `FishGroup.sTimeToSearchPlayerMin` | s32 | `5` |
 | `FishGroup.sWanderAccel` | f32 | `1.0f` |
+| `Flag.init.f1` | f32 | `1000.0f` |
+| `Flag.init.f10` | f32 | `500.0f` |
+| `Flag.init.f11` | f32 | `0.5f` |
+| `Flag.init.f12` | f32 | `0.85f` |
+| `Flag.init.f13` | f32 | `0.01f` |
+| `Flag.init.f14` | f32 | `0.5f` |
+| `Flag.init.f15` | f32 | `1.5f` |
+| `Flag.init.f16` | f32 | `500.0f` |
+| `Flag.init.f17` | f32 | `400.0f` |
+| `Flag.init.f18` | f32 | `500.0f` |
+| `Flag.init.f19` | f32 | `400.0f` |
+| `Flag.init.f2` | f32 | `500.0f` |
+| `Flag.init.f20` | f32 | `500.0f` |
+| `Flag.init.f21` | f32 | `500.0f` |
+| `Flag.init.f22` | f32 | `0.5f` |
+| `Flag.init.f3` | f32 | `450.0f` |
+| `Flag.init.f4` | f32 | `275.0f` |
+| `Flag.init.f5` | f32 | `450.0f` |
+| `Flag.init.f6` | f32 | `112.5f` |
+| `Flag.init.f7` | f32 | `170.0f` |
+| `Flag.init.f8` | f32 | `145.0f` |
+| `Flag.init.f9` | f32 | `200.0f` |
+| `Flag.loadMaterial.f1` | f32 | `255.0f` |
 | `Flag.sClippingRadiusOffset` | f32 | `300.0f` |
 | `Flag.sDefaultAlphaDistanceFar` | f32 | `2000.0f` |
 | `Flag.sDefaultAlphaDistanceNear` | f32 | `1000.0f` |
@@ -21586,18 +24867,73 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Flag.sWindPosRateU` | f32 | `10.0f` |
 | `Flag.sWindPosRateV` | f32 | `10.0f` |
 | `Flag.sWindTimeSpeed` | f32 | `5.0f` |
+| `Flag.updateFlag.f1` | f32 | `255.0f` |
+| `Flag.updateFlag.f2` | f32 | `255.0f` |
 | `GravityDust.sFrictionRate` | f32 | `0.995f` |
 | `GravityDust.sGravity` | f32 | `1.0f` |
+| `Halo.init.f1` | f32 | `100.0f` |
+| `Halo.isDistanceAppear.f1` | f32 | `20.0f` |
+| `Halo.isDistanceAppear.f2` | f32 | `100.0f` |
+| `Halo.isDistanceAppear.f3` | f32 | `100.0f` |
+| `Halo.isDistanceDisappear.f1` | f32 | `20.0f` |
+| `Halo.isDistanceDisappear.f2` | f32 | `100.0f` |
+| `Halo.isDistanceDisappear.f3` | f32 | `100.0f` |
+| `KCollision.checkArrow.f1` | f32 | `1.0e9f` |
+| `KCollision.checkArrow.f2` | f32 | `1.0e9f` |
+| `KCollision.checkArrow.f3` | f32 | `1.0e9f` |
 | `KCollision.cHitPartByEdges` | u8[8] | `1, 2, 3, 5, 4, 7, 6, 1` |
+| `KCollision.KCHitArrow.f1` | f32 | `0.01f` |
+| `KCollision.KCHitArrow.f2` | f32 | `0.01f` |
+| `KCollision.KCHitArrow.f3` | f32 | `0.01f` |
+| `KCollision.KCHitArrow.f4` | f32 | `0.01f` |
+| `KCollision.KCHitArrow.f5` | f32 | `0.01f` |
+| `KCollision.KCHitArrow.f6` | f32 | `0.01f` |
+| `KoopaBattleMapCoinPlate.init.f1` | f32 | `250.0f` |
+| `KoopaBattleMapCoinPlate.init.f2` | f32 | `150.0f` |
+| `KoopaBattleMapCoinPlate.init.f3` | f32 | `2.5f` |
 | `KoopaBattleMapCoinPlate.sHopSpeed` | f32 | `30.0f` |
 | `KoopaBattleMapCoinPlate.sSideSpeed` | f32 | `30.0f` |
+| `KoopaBattleMapDamagePlate.init.f1` | f32 | `250.0f` |
+| `KoopaBattleMapDamagePlate.init.f2` | f32 | `150.0f` |
+| `KoopaBattleMapDamagePlate.init.f3` | f32 | `3.0f` |
+| `KoopaBattleMapPlanet.createPlate.f1` | f32 | `180.0f` |
+| `KoopaBattleMapPlanet.createPlate.f10` | f32 | `135.0f` |
+| `KoopaBattleMapPlanet.createPlate.f11` | f32 | `55.0f` |
+| `KoopaBattleMapPlanet.createPlate.f12` | f32 | `225.0f` |
+| `KoopaBattleMapPlanet.createPlate.f13` | f32 | `125.0f` |
+| `KoopaBattleMapPlanet.createPlate.f14` | f32 | `315.0f` |
+| `KoopaBattleMapPlanet.createPlate.f15` | f32 | `1200.0f` |
+| `KoopaBattleMapPlanet.createPlate.f16` | f32 | `125.0f` |
+| `KoopaBattleMapPlanet.createPlate.f17` | f32 | `45.0f` |
+| `KoopaBattleMapPlanet.createPlate.f18` | f32 | `55.0f` |
+| `KoopaBattleMapPlanet.createPlate.f19` | f32 | `135.0f` |
+| `KoopaBattleMapPlanet.createPlate.f2` | f32 | `90.0f` |
+| `KoopaBattleMapPlanet.createPlate.f20` | f32 | `125.0f` |
+| `KoopaBattleMapPlanet.createPlate.f21` | f32 | `225.0f` |
+| `KoopaBattleMapPlanet.createPlate.f22` | f32 | `55.0f` |
+| `KoopaBattleMapPlanet.createPlate.f23` | f32 | `315.0f` |
+| `KoopaBattleMapPlanet.createPlate.f24` | f32 | `1230.0f` |
+| `KoopaBattleMapPlanet.createPlate.f3` | f32 | `270.0f` |
+| `KoopaBattleMapPlanet.createPlate.f4` | f32 | `90.0f` |
+| `KoopaBattleMapPlanet.createPlate.f5` | f32 | `270.0f` |
+| `KoopaBattleMapPlanet.createPlate.f6` | f32 | `1180.0f` |
+| `KoopaBattleMapPlanet.createPlate.f7` | f32 | `55.0f` |
+| `KoopaBattleMapPlanet.createPlate.f8` | f32 | `45.0f` |
+| `KoopaBattleMapPlanet.createPlate.f9` | f32 | `125.0f` |
 | `KoopaBattleMapPlanet.exeDemoGrandStarAppear.1` | s32 | `151` |
+| `KoopaBattleMapPlanet.init.f1` | f32 | `100.0f` |
 | `KoopaBattleMapPlanet.sRotateFriction` | f32 | `0.995f` |
+| `KoopaBattleMapPlate.init.f1` | f32 | `250.0f` |
+| `KoopaBattleMapPlate.init.f2` | f32 | `150.0f` |
+| `KoopaBattleMapPlate.init.f3` | f32 | `3.0f` |
+| `KoopaBattleMapPlate.receiveOtherMsg.f1` | f32 | `30.0f` |
+| `KoopaBattleMapPlate.receiveOtherMsg.f2` | f32 | `50.0f` |
 | `KoopaBattleMapStair.cBigClippingRadius` | f32 | `800.0f` |
 | `KoopaBattleMapStair.cBigHalfWidthX` | f32 | `600.0f` |
 | `KoopaBattleMapStair.cBigHalfWidthZ` | f32 | `400.0f` |
 | `KoopaBattleMapStair.cClippingRadius` | f32 | `500.0f` |
 | `KoopaBattleMapStair.cDisappearBrkRate` | f32 | `0.25f` |
+| `KoopaBattleMapStair.cEdgeOffset` | f32[16] | `0.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, -1.0f, 1.0f, -1.0f, 0.0f, -1.0f, -1.0f` |
 | `KoopaBattleMapStair.cFallGravity` | f32 | `0.03f` |
 | `KoopaBattleMapStair.cFallSpeedMax` | f32 | `1.5f` |
 | `KoopaBattleMapStair.cHalfHeight` | f32 | `100.0f` |
@@ -21608,7 +24944,19 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `LavaShellTower.exeDemo.1` | s32 | `1` |
 | `LavaShellTower.sCamShakeIntensity` | f32 | `0.1f` |
 | `LavaShellTower.sCamShakeSpeed` | f32 | `2.2f` |
+| `LavaSunPlanet.init.f1` | f32 | `100.0f` |
+| `LightFunction.loadLightInfoCoin.f1` | f32 | `2.0f` |
+| `LightFunction.loadLightInfoCoin.f2` | f32 | `2.0f` |
+| `LightPointCtrl.blendPointLight.f1` | f32 | `0.95f` |
+| `LightPointCtrl.blendPointLight.f2` | f32 | `0.95f` |
+| `LightPointCtrl.clearPointLight.f1` | f32 | `0.001f` |
+| `LightPointCtrl.requestPointLight.f1` | f32 | `0.95f` |
+| `LightPointCtrl.requestPointLight.f2` | f32 | `0.999999f` |
 | `LightPointCtrl.sDefaultDistRef` | f32 | `15.0f` |
+| `OceanBowl.calcWaterInfo.f1` | f32 | `0.5f` |
+| `OceanBowl.init.f1` | f32 | `100.0f` |
+| `OceanBowl.loadMaterial.f1` | f32 | `2.0f` |
+| `OceanBowl.loadMaterial.f2` | f32 | `2.0f` |
 | `OceanBowl.sClippingDistance` | f32 | `1000.0f` |
 | `OceanBowl.sIndirectScale` | f32 | `0.1f` |
 | `OceanBowl.sMaskExtent` | f32 | `4800.0f` |
@@ -21626,17 +24974,36 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OceanBowl.sTexSpeedV2` | f32 | `-0.001f` |
 | `OceanBowl.sWaveSpeed0` | f32 | `-0.04f` |
 | `OceanBowl.sWaveSpeed1` | f32 | `-0.04f` |
+| `OceanBowlPoint.reset.f1` | f32 | `255.0f` |
 | `OceanBowlPoint.sHeight0` | f32 | `40.0f` |
 | `OceanBowlPoint.sHeight1` | f32 | `30.0f` |
 | `OceanBowlPoint.sSinRate0` | f32 | `0.003f` |
 | `OceanBowlPoint.sSinRate1` | f32 | `0.003f` |
 | `OceanBowlPoint.sSinRate2` | f32 | `0.003f` |
+| `OceanRing.calcClippingBox.f1` | f32 | `100.0f` |
+| `OceanRing.calcClippingBox.f2` | f32 | `200.0f` |
+| `OceanRing.calcClippingBox.f3` | f32 | `0.5f` |
+| `OceanRing.calcClippingBox.f4` | f32 | `100.0f` |
+| `OceanRing.calcCurrentFlowSpeedRate.f1` | f32 | `100.0f` |
+| `OceanRing.calcCurrentFlowSpeedRate.f2` | f32 | `100.0f` |
+| `OceanRing.calcCurrentFlowSpeedRate.f3` | f32 | `100.0f` |
+| `OceanRing.calcCurrentWidthRate.f1` | f32 | `12.0f` |
+| `OceanRing.calcCurrentWidthRate.f2` | f32 | `12.0f` |
+| `OceanRing.calcCurrentWidthRate.f3` | f32 | `12.0f` |
+| `OceanRing.calcStreamVec.f1` | f32 | `10.0f` |
+| `OceanRing.calcWaterInfo.f1` | f32 | `0.5f` |
 | `OceanRing.cCenterPoint` | s32 | `7` |
 | `OceanRing.cFadeSegs` | s32 | `3` |
 | `OceanRing.cNormalSampleOffset` | f32 | `10.0f` |
 | `OceanRing.cPointsAcross` | s32 | `15` |
 | `OceanRing.cPointSpacing` | f32 | `171.42857f` |
 | `OceanRing.cUpdateSegsBehind` | s32 | `8` |
+| `OceanRing.init.f1` | f32 | `20.0f` |
+| `OceanRing.init.f2` | f32 | `30.0f` |
+| `OceanRing.init.f3` | f32 | `50.0f` |
+| `OceanRing.init.f4` | f32 | `80.0f` |
+| `OceanRing.OceanRing.f1` | f32 | `80.0f` |
+| `OceanRing.OceanRing.f2` | f32 | `100.0f` |
 | `OceanRing.sDefaultWidth` | f32 | `1200.0f` |
 | `OceanRing.sEdgePointNum` | f32 | `2.0f` |
 | `OceanRing.sPointIntervalLine` | f32 | `200.0f` |
@@ -21646,6 +25013,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OceanRingDrawer.cPartsPerDrawer` | u32 | `256` |
 | `OceanRingDrawer.cTexStep01` | f32 | `0.05f` |
 | `OceanRingDrawer.cTexStep2` | f32 | `0.1f` |
+| `OceanRingDrawer.loadMaterialBloom.f1` | f32 | `0.2f` |
+| `OceanRingDrawer.loadMaterialBloom.f10` | f32 | `105.0f` |
+| `OceanRingDrawer.loadMaterialBloom.f2` | f32 | `0.1f` |
+| `OceanRingDrawer.loadMaterialBloom.f3` | f32 | `0.2f` |
+| `OceanRingDrawer.loadMaterialBloom.f4` | f32 | `0.3f` |
+| `OceanRingDrawer.loadMaterialBloom.f5` | f32 | `150.0f` |
+| `OceanRingDrawer.loadMaterialBloom.f6` | f32 | `300.0f` |
+| `OceanRingDrawer.loadMaterialBloom.f7` | f32 | `150.0f` |
+| `OceanRingDrawer.loadMaterialBloom.f8` | f32 | `150.0f` |
+| `OceanRingDrawer.loadMaterialBloom.f9` | f32 | `150.0f` |
 | `OceanRingDrawer.sBloomCameraOffsetZ` | f32 | `3000.0f` |
 | `OceanRingDrawer.sDistancePartDrawBloom` | f32 | `4000.0f` |
 | `OceanRingDrawer.sDistancePartMesh` | f32 | `13000.0f` |
@@ -21655,6 +25032,20 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OceanRingDrawer.sTexSpeed1U` | f32 | `-0.002f` |
 | `OceanRingDrawer.sTexSpeed1V` | f32 | `0.001f` |
 | `OceanRingDrawer.sTexSpeed2V` | f32 | `0.003f` |
+| `OceanRingPipe.init.f1` | f32 | `300.0f` |
+| `OceanRingPipe.init.f2` | f32 | `200.0f` |
+| `OceanRingPipe.init.f3` | f32 | `500.0f` |
+| `OceanRingPipe.init.f4` | f32 | `0.9f` |
+| `OceanRingPipe.initPoints.f1` | f32 | `300.0f` |
+| `OceanRingPipe.initPoints.f10` | f32 | `2.0f` |
+| `OceanRingPipe.initPoints.f2` | f32 | `100.0f` |
+| `OceanRingPipe.initPoints.f3` | f32 | `100.0f` |
+| `OceanRingPipe.initPoints.f4` | f32 | `100.0f` |
+| `OceanRingPipe.initPoints.f5` | f32 | `0.0001f` |
+| `OceanRingPipe.initPoints.f6` | f32 | `300.0f` |
+| `OceanRingPipe.initPoints.f7` | f32 | `300.0f` |
+| `OceanRingPipe.initPoints.f8` | f32 | `2.0f` |
+| `OceanRingPipe.initPoints.f9` | f32 | `2.0f` |
 | `OceanRingPipeInside.sIndirectScale` | f32 | `0.3f` |
 | `OceanRingPipeInside.sTexRateU0` | f32 | `0.08f` |
 | `OceanRingPipeInside.sTexRateU1` | f32 | `0.04f` |
@@ -21669,11 +25060,48 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OceanRingPipeOutside.sTexRateU` | f32 | `0.08f` |
 | `OceanRingPipeOutside.sTexRateV` | f32 | `1.0f` |
 | `OceanRingPipeOutside.sTexSpeedU` | f32 | `-0.004f` |
+| `OceanSphere.appear.f1` | f32 | `1000.0f` |
+| `OceanSphere.calcWaterInfo.f1` | f32 | `2.0f` |
+| `OceanSphere.control.f1` | f32 | `0.1f` |
+| `OceanSphere.control.f2` | f32 | `0.1f` |
+| `OceanSphere.control.f3` | f32 | `10000.0f` |
+| `OceanSphere.control.f4` | f32 | `0.0008f` |
+| `OceanSphere.control.f5` | f32 | `0.0008f` |
+| `OceanSphere.exeRiseUp.f1` | f32 | `1000.0f` |
+| `OceanSphere.exeRiseUp.f2` | f32 | `1000.0f` |
+| `OceanSphere.init.f1` | f32 | `100.0f` |
+| `OceanSphere.initPoints.f1` | f32 | `300.0f` |
+| `OceanSphere.initPoints.f10` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f11` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f12` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f13` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f14` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f15` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f2` | f32 | `500.0f` |
+| `OceanSphere.initPoints.f3` | f32 | `1000.0f` |
+| `OceanSphere.initPoints.f4` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f5` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f6` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f7` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f8` | f32 | `0.5f` |
+| `OceanSphere.initPoints.f9` | f32 | `0.5f` |
+| `OceanSphere.loadMaterialBack.f1` | f32 | `0.779175f` |
+| `OceanSphere.OceanSpherePlane.f1` | f32 | `0.5f` |
+| `OceanSphere.OceanSpherePlane.f2` | f32 | `0.5f` |
+| `OceanSphere.OceanSpherePlane.f3` | f32 | `2.0f` |
+| `OceanSphere.OceanSpherePlaneEdge.f1` | f32 | `2.0f` |
+| `OceanSpherePoint.calcHeight.f1` | f32 | `0.8f` |
+| `OceanSpherePoint.calcHeight.f2` | f32 | `10.0f` |
+| `OceanSpherePoint.calcHeight.f3` | f32 | `5.0f` |
+| `PlanetMap.initBloomModel.f1` | f32 | `500.0f` |
+| `PlanetMap.initClipping.f1` | f32 | `100.0f` |
 | `QuakeEffectGenerator.sCamShakeFrame` | s32 | `120` |
 | `QuakeEffectGenerator.sCamShakeIntensity` | f32 | `0.05f` |
 | `QuakeEffectGenerator.sCamShakeSpeed` | f32 | `1.5f` |
 | `QuakeEffectGenerator.sQuakeInterval` | s32 | `400` |
 | `RaceManager.exeIntro.1` | s32 | `110` |
+| `RaceManager.isPlayCountAnim.f1` | f32 | `180.0f` |
+| `RaceManager.playGo.f1` | f32 | `180.0f` |
 | `RaceManager.sBgmStartStep` | s32 | `166` |
 | `RaceRail.cGoalReach` | f32 | `100.0f` |
 | `RaceRail.cGroundCheckLength` | f32 | `1000.0f` |
@@ -21682,6 +25110,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `RaceRail.cWaterCheckLength` | f32 | `1000.0f` |
 | `RaceRail.cWaterSinkDepth` | f32 | `15.0f` |
 | `RailGraph.cInitialCapacity` | s32 | `0x100` |
+| `RailPart.init.f1` | f32 | `0.1f` |
+| `RailPart.init.f2` | f32 | `0.1f` |
 | `ScenarioSelectStar.cAppearDelayFrame` | s32 | `15` |
 | `ScenarioSelectStar.cAppearFrame` | s32 | `60` |
 | `ScenarioSelectStar.cEndPointingFrame` | s32 | `10` |
@@ -21697,6 +25127,32 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `ScenarioSelectStar.cSelectedRotateSpeedZ` | f32 | `20.0f` |
 | `ScenarioSelectStar.cSelectedWaitFrame` | s32 | `40` |
 | `ScenarioSelectStar.cStartPointingFrame` | s32 | `20` |
+| `ScenarioSelectStar.exeNotSelected.f1` | f32 | `150.0f` |
+| `ScenarioSelectStar.exePointing.f1` | f32 | `1.5f` |
+| `ScenarioSelectStar.exePointing.f2` | f32 | `0.25f` |
+| `ScenarioSelectStar.setup.f1` | f32 | `150.0f` |
+| `ScenarioSelectStar.updatePos.f1` | f32 | `360.0f` |
+| `ScenarioSelectStar.updatePos.f2` | f32 | `360.0f` |
+| `SeaGull.control.f1` | f32 | `0.99f` |
+| `SeaGull.control.f2` | f32 | `10.0f` |
+| `SeaGull.control.f3` | f32 | `10.0f` |
+| `SeaGull.control.f4` | f32 | `200.0f` |
+| `SeaGull.exeHoverFront.f1` | f32 | `0.995f` |
+| `SeaGull.exeHoverFront.f2` | f32 | `500.0f` |
+| `SeaGull.exeHoverLeft.f1` | f32 | `0.1f` |
+| `SeaGull.exeHoverRight.f1` | f32 | `0.1f` |
+| `SeaGull.init.f1` | f32 | `500.0f` |
+| `SeaGull.init.f2` | f32 | `500.0f` |
+| `SeaGull.updateHover.f1` | f32 | `0.01f` |
+| `SeaGull.updateHover.f2` | f32 | `30.0f` |
+| `SeaGull.updateHover.f3` | f32 | `30.0f` |
+| `SeaGull.updateHover.f4` | f32 | `0.01f` |
+| `SeaGull.updateHover.f5` | f32 | `0.05f` |
+| `SeaGull.updateHover.f6` | f32 | `0.04f` |
+| `SeaGull.updateHover.f7` | f32 | `0.005f` |
+| `SeaGull.updateHover.f8` | f32 | `500.0f` |
+| `SeaGull.updateHover.f9` | f32 | `500.0f` |
+| `SphereSelector.isMoveClickedPos.f1` | f32 | `80.0f` |
 | `SphereSelectorHandle.cBgmAppearFrames` | s32 | `60` |
 | `SphereSelectorHandle.cBgmAppearState` | s32 | `2` |
 | `SphereSelectorHandle.cBgmConfirmFrames` | s32 | `60` |
@@ -21722,6 +25178,11 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SphereSelectorHandle.cRotateSpeedMaxX` | f32 | `2.0f` |
 | `SphereSelectorHandle.cRotateSpeedMaxY` | f32 | `5.0f` |
 | `SphereSelectorHandle.cSpinReduceRate` | f32 | `0.95f` |
+| `SphereSelectorHandle.playRotateSE.f1` | f32 | `2.0f` |
+| `SphereSelectorHandle.playRotateSE.f2` | f32 | `5.0f` |
+| `SphereSelectorHandle.playRotateSE.f3` | f32 | `100.0f` |
+| `SphereSelectorHandle.playRotateSE.f4` | f32 | `4.0f` |
+| `SphereSelectorHandle.playRotateSE.f5` | f32 | `1.6f` |
 | `WaterPlant.cDefaultAreaRadius` | f32 | `500.0f` |
 | `WaterPlant.cDefaultHalfWidth` | f32 | `20.0f` |
 | `WaterPlant.cDefaultPlantNum` | s32 | `16` |
@@ -21745,12 +25206,34 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `WaterPlant.cSwingSpeed` | f32 | `0.03f` |
 | `WaterPlant.cSwingWidth` | f32 | `20.0f` |
 | `WaterPlant.cTexCoords` | f32[16] | `0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.2f, 1.0f, 0.2f, 0.0f, 0.5f, 1.0f, 0.5f, 0.0f, 1.0f, 1.0f, 1.0f` |
+| `WaterPlant.init.f1` | f32 | `2.0f` |
+| `WaterPlant.initPlantAfterPlacement.f1` | f32 | `2.0f` |
+| `WaterPlant.movement.f1` | f32 | `180.0f` |
+| `WaterPoint.initAfterPlacement.f1` | f32 | `2.0f` |
+| `WaterPoint.initAfterPlacement.f2` | f32 | `2.0f` |
+| `WaterPoint.initAfterPlacement.f3` | f32 | `255.0f` |
+| `WaterPoint.initAfterPlacement.f4` | f32 | `255.0f` |
 | `WaterPoint.sAlphaMin` | f32 | `30.0f` |
 | `WaterPoint.sMapCheckHeight` | f32 | `400.0f` |
 | `WaterPoint.sMapWaveRateMin` | f32 | `0.1f` |
 | `WaterPoint.sSinRate0` | f32 | `0.003f` |
 | `WaterPoint.sSinRate1` | f32 | `0.0003f` |
 | `WaterPoint.sSinRate2` | f32 | `0.0025f` |
+| `WaterRoad.drawDirect.f1` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f10` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f11` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f12` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f2` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f3` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f4` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f5` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f6` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f7` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f8` | f32 | `16384.0f` |
+| `WaterRoad.drawDirect.f9` | f32 | `16384.0f` |
+| `WaterRoad.exeDisappear.f1` | f32 | `255.0f` |
+| `WaterRoad.initPoints.f1` | f32 | `360.0f` |
+| `WaterRoad.roadMaterial.f1` | f32 | `255.0f` |
 | `WaterRoad.sClippingRadiusOffset` | f32 | `100.0f` |
 | `WaterRoad.sDefaultRadius` | f32 | `500.0f` |
 | `WaterRoad.sDistanceToLow` | f32 | `10000.0f` |
@@ -21777,6 +25260,31 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `WaterRoad.sTexSpeedV0` | f32 | `-0.005f` |
 | `WaterRoad.sTexSpeedV1` | f32 | `-0.005f` |
 | `WaterRoad.sTexSpeedV2` | f32 | `-0.005f` |
+| `WhirlPoolAccelerator.calcInfo.f1` | f32 | `3.0f` |
+| `WhirlPoolAccelerator.draw.f1` | f32 | `6.0f` |
+| `WhirlPoolAccelerator.draw.f2` | f32 | `6.0f` |
+| `WhirlPoolAccelerator.drawPlane.f1` | f32 | `30.0f` |
+| `WhirlPoolAccelerator.drawPlane.f2` | f32 | `25.0f` |
+| `WhirlPoolAccelerator.drawPlane.f3` | f32 | `0.02f` |
+| `WhirlPoolAccelerator.init.f1` | f32 | `100.0f` |
+| `WhirlPoolAccelerator.init.f2` | f32 | `100.0f` |
+| `WhirlPoolAccelerator.init.f3` | f32 | `2.0f` |
+| `WhirlPoolAccelerator.init.f4` | f32 | `2.0f` |
+| `WhirlPoolAccelerator.initPoints.f1` | f32 | `50.0f` |
+| `WhirlPoolAccelerator.initPoints.f10` | f32 | `360.0f` |
+| `WhirlPoolAccelerator.initPoints.f11` | f32 | `10.0f` |
+| `WhirlPoolAccelerator.initPoints.f2` | f32 | `10.0f` |
+| `WhirlPoolAccelerator.initPoints.f3` | f32 | `360.0f` |
+| `WhirlPoolAccelerator.initPoints.f4` | f32 | `50.0f` |
+| `WhirlPoolAccelerator.initPoints.f5` | f32 | `0.6f` |
+| `WhirlPoolAccelerator.initPoints.f6` | f32 | `50.0f` |
+| `WhirlPoolAccelerator.initPoints.f7` | f32 | `205.0f` |
+| `WhirlPoolAccelerator.initPoints.f8` | f32 | `50.0f` |
+| `WhirlPoolAccelerator.initPoints.f9` | f32 | `205.0f` |
+| `WhirlPoolAccelerator.movement.f1` | f32 | `10.0f` |
+| `WhirlPoolAccelerator.movement.f2` | f32 | `360.0f` |
+| `WhirlPoolAccelerator.movement.f3` | f32 | `0.01f` |
+| `WhirlPoolAccelerator.movement.f4` | f32 | `0.025f` |
 
 <a id="p-nebula-tunables--gamemapobj"></a>
 
@@ -21789,17 +25297,47 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `AirBubble.cHitSensorRadius` | f32 | `130.0f` |
 | `AirBubble.cMoveStartAccel` | f32 | `7.0f` |
 | `AirBubble.cSwingRange` | f32 | `250.0f` |
+| `AirBubble.exeMove.f1` | f32 | `0.1f` |
+| `AirBubble.exeMove.f2` | f32 | `0.3f` |
+| `AirBubble.exeMove.f3` | f32 | `0.85f` |
+| `AirBubble.exeWait.f1` | f32 | `2.0f` |
 | `AirBubbleGenerator.sGenerateOffsetY` | f32 | `120.0f` |
 | `AirBubbleGenerator.sGenerateTime` | s32 | `6` |
 | `AirBubbleHolder.sCreateAirBubbleNum` | s32 | `32` |
+| `ArrowSwitch.exeRotate.f1` | f32 | `180.0f` |
+| `ArrowSwitch.exeRotate.f2` | f32 | `360.0f` |
+| `ArrowSwitch.exeRotate.f3` | f32 | `180.0f` |
+| `ArrowSwitch.exeRotate.f4` | f32 | `360.0f` |
+| `ArrowSwitch.init.f1` | f32 | `100.0f` |
+| `ArrowSwitch.init.f2` | f32 | `50.0f` |
+| `ArrowSwitch.init.f3` | f32 | `250.0f` |
+| `ArrowSwitch.init.f4` | f32 | `100.0f` |
+| `ArrowSwitch.init.f5` | f32 | `50.0f` |
+| `ArrowSwitch.init.f6` | f32 | `250.0f` |
 | `ArrowSwitch.sPunchSpeed` | f32 | `6.0f` |
 | `ArrowSwitch.sRotYTargetList` | f32[4] | `0.0f, 90.0f, 180.0f, -90.0f` |
 | `ArrowSwitch.sRotYTargetNum` | s32 | `4` |
 | `ArrowSwitch.sScale` | f32 | `1.0f` |
+| `ArrowSwitchMulti.exeRotate.f1` | f32 | `180.0f` |
+| `ArrowSwitchMulti.exeRotate.f2` | f32 | `360.0f` |
+| `ArrowSwitchMulti.exeRotate.f3` | f32 | `180.0f` |
+| `ArrowSwitchMulti.exeRotate.f4` | f32 | `360.0f` |
+| `ArrowSwitchMulti.init.f1` | f32 | `100.0f` |
+| `ArrowSwitchMulti.init.f2` | f32 | `50.0f` |
+| `ArrowSwitchMulti.init.f3` | f32 | `250.0f` |
+| `ArrowSwitchMulti.init.f4` | f32 | `100.0f` |
+| `ArrowSwitchMulti.init.f5` | f32 | `50.0f` |
+| `ArrowSwitchMulti.init.f6` | f32 | `250.0f` |
 | `ArrowSwitchMulti.sPunchSpeed` | f32 | `6.0f` |
 | `ArrowSwitchMulti.sRotYTargetList` | f32[4] | `0.0f, 90.0f, 180.0f, -90.0f` |
 | `ArrowSwitchMulti.sRotYTargetNum` | s32 | `4` |
 | `ArrowSwitchMultiHolder.sMaxArrowSwitchMulti` | s32 | `16` |
+| `AssemblyBlock.init.f1` | f32 | `1000.0f` |
+| `AssemblyBlock.init.f2` | f32 | `1000.0f` |
+| `AssemblyBlock.init.f3` | f32 | `0.5f` |
+| `AssemblyBlock.init.f4` | f32 | `0.5f` |
+| `AssemblyBlock.init.f5` | f32 | `0.5f` |
+| `AssemblyBlock.init.f6` | f32 | `2.0f` |
 | `AssemblyBlock.sFlashTime` | s32 | `100` |
 | `AssemblyBlock.sFloatRotSpeedNoSign` | f32 | `0.1f` |
 | `AssemblyBlock.sReturnOffset` | f32 | `50.0f` |
@@ -21807,20 +25345,32 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `AssemblyBlock.sStepForReturn` | s32 | `10` |
 | `AstroCore.sGrowTimeLag` | s32 | `40` |
 | `AstroCore.sSensorSizeTable` | f32[8] | `100.0f, 300.0f, 350.0f, 420.0f, 480.0f, 540.0f, 600.0f, 0.0f` |
+| `AstroCountDownPlate.exeCountToZero.f1` | f32 | `0.1f` |
+| `AstroCountDownPlate.exeCountToZero.f2` | f32 | `0.3f` |
+| `AstroCountDownPlate.exeCountToZero.f3` | f32 | `4.0f` |
+| `AstroCountDownPlate.setNumLeftStar.f1` | f32 | `0.1f` |
+| `AstroCountDownPlate.setNumLeftStar.f2` | f32 | `0.1f` |
 | `AstroCountDownPlate.sStepForCountToZero` | s32 | `50` |
 | `AstroDomeAsteroid.cBckRate` | f32 | `1.0f` |
 | `AstroDomeBlueStar.cBindTractionFrame` | s32 | `90` |
 | `AstroDomeBlueStar.cBubbleGrowFrame` | s32 | `30` |
 | `AstroDomeBlueStar.cBubbleMaxRadius` | f32 | `150.0f` |
 | `AstroDomeBlueStar.cTryStartBindFrame` | s32 | `30` |
+| `AstroDomeBlueStar.cZoomInOffset` | f32[3] | `400.0f, 2550.0f, -7600.0f` |
 | `AstroDomeBlueStar.exePointing.setBckRate.1` | f32 | `1.0f` |
 | `AstroDomeBlueStar.exeWait.setBckRate.1` | f32 | `0.5f` |
+| `AstroDomeBlueStar.init.f1` | f32 | `80.0f` |
+| `AstroDomeBlueStar.init.f2` | f32 | `200.0f` |
+| `AstroDomeCameraController.cDefaultUp` | f32[3] | `0.0f, 1.0f, 0.0f` |
 | `AstroDomeCameraController.cFovy` | f32 | `60.0f` |
+| `AstroDomeCameraController.cZoomInPos` | f32[3] | `0.0f, 3000.0f, -8500.0f` |
 | `AstroDomeCameraController.cZoomInTargetOffsetY` | f32 | `200.0f` |
 | `AstroDomeCameraController.cZoomOutPosZ` | f32 | `-22000.0f` |
 | `AstroDomeComet.cPointingOffsetY` | f32 | `1500.0f` |
 | `AstroDomeComet.cPointingPosY` | f32 | `2000.0f` |
 | `AstroDomeComet.cPointingRadius` | f32 | `1000.0f` |
+| `AstroDomeDemoAstroGalaxy.init.f1` | f32 | `2.0f` |
+| `AstroDomeOrbit.calcGalaxyPos.f1` | f32 | `360.0f` |
 | `AstroDomeOrbit.cBloomHeight` | f32 | `60.0f` |
 | `AstroDomeOrbit.cBloomWidth` | f32 | `131.0f` |
 | `AstroDomeOrbit.cGalaxyRotateCoordOffset` | f32 | `230.0f` |
@@ -21829,11 +25379,24 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `AstroDomeOrbit.cOutermostIndex` | s32 | `4` |
 | `AstroDomeOrbit.cRadius` | f32[5] | `4000.0f, 6200.0f, 8100.0f, 10300.0f, 12000.0f` |
 | `AstroDomeOrbit.cRadiusLastDome` | f32[4] | `4000.0f, 6700.0f, 9100.0f, 11800.0f` |
+| `AstroDomeOrbit.cRotateOutermost` | f32[3] | `20.0f, 45.0f, 0.0f` |
 | `AstroDomeOrbit.cWidth` | f32 | `100.0f` |
+| `AstroDomeOrbit.drawFlat.f1` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawFlat.f2` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawFlat.f3` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawFlat.f4` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawSide.f1` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawSide.f2` | f32 | `0.5f` |
+| `AstroDomeOrbit.drawSide.f3` | f32 | `0.5f` |
 | `AstroDomeSky.cAppearanceBrkTotalFrame` | s32 | `200` |
 | `AstroDomeSky.cAppearanceRotateSpeed` | f32 | `0.1f` |
+| `AstroDomeSky.cJumpOutDemoRotate` | f32[3] | `347.0f, 0.0f, 0.0f` |
 | `AstroDomeSky.cRotateAppearBrkFrame` | s32 | `59` |
 | `AstroDomeSky.cRotateDisappearBrkFrame` | s32 | `30` |
+| `AstroDomeSky.exeRotateDisappear.f1` | f32 | `20.0f` |
+| `BallOpener.bindHole.f1` | f32 | `0.1f` |
+| `BallOpener.bindHole.f2` | f32 | `0.1f` |
+| `BallOpener.exeSetCenter.f1` | f32 | `0.0001f` |
 | `BallOpener.sBallToCenterEndFreq` | f32 | `0.7f` |
 | `BallOpener.sBallToCenterFreq` | f32 | `0.98f` |
 | `BallOpener.sForceSetStartTime` | s32 | `40` |
@@ -21846,11 +25409,28 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BallOpener.sSetUpTime` | s32 | `45` |
 | `BallRail.exeRun.setRailCoordSpeed.1` | f32 | `0.0f` |
 | `BallRail.exeSetUp.setRailCoordSpeed.1` | f32 | `0.0f` |
+| `BallRail.init.f1` | f32 | `1000.0f` |
+| `BallRail.init.f2` | f32 | `1000.0f` |
 | `BallRail.init.setRailCoordSpeed.1` | f32 | `0.0f` |
 | `BallRail.sMinRunSpeed` | f32 | `6.0f` |
 | `BallRail.sSetUpBlendSteps` | s32 | `15` |
 | `BallRail.sSetUpSpeed` | f32 | `3.0f` |
 | `BallRail.sSetUpSteps` | s32 | `45` |
+| `Banekiti.init.f1` | f32 | `80.0f` |
+| `Banekiti.init.f2` | f32 | `80.0f` |
+| `Banekiti.init.f3` | f32 | `100.0f` |
+| `Banekiti.init.f4` | f32 | `80.0f` |
+| `Banekiti.init.f5` | f32 | `100.0f` |
+| `Banekiti.initStarPointer.f1` | f32 | `120.0f` |
+| `BeamGoRoundPlanet.init.f1` | f32 | `100.0f` |
+| `BeamGoRoundPlanet.init.f2` | f32 | `100.0f` |
+| `BeamGoRoundPlanet.updateHitSensor.f1` | f32 | `2700.0f` |
+| `BeeFlowerHover.init.f1` | f32 | `450.0f` |
+| `BeeFlowerHover.init.f2` | f32 | `100.0f` |
+| `BeeFlowerHover.init.f3` | f32 | `500.0f` |
+| `BeeFlowerHover.init.f4` | f32 | `100.0f` |
+| `BeeFlowerHover.init.f5` | f32 | `100.0f` |
+| `BeeFlowerHover.init.f6` | f32 | `100.0f` |
 | `BeeFlowerHover.sDefaultRotateSpeed` | f32 | `50.0f` |
 | `BenefitItemInvincible.cAirFriction` | f32 | `0.98f` |
 | `BenefitItemInvincible.cAppearThrowFwdSpd` | f32 | `5.0f` |
@@ -21861,6 +25441,13 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BenefitItemInvincible.cFallSpeedMax` | f32 | `20.0f` |
 | `BenefitItemInvincible.cRadius` | f32 | `60.0f` |
 | `BenefitItemInvincible.doEscape.addVelocityToGravity.1` | f32 | `1.0f` |
+| `BenefitItemLifeUp.initModelAndEfx.f1` | f32 | `50.0f` |
+| `BenefitItemLifeUp.initModelAndEfx.f2` | f32 | `50.0f` |
+| `BenefitItemLifeUp.initModelAndEfx.f3` | f32 | `50.0f` |
+| `BenefitItemLifeUp.initModelAndEfx.f4` | f32 | `50.0f` |
+| `BenefitItemObj.calcAndSetBaseMtxInMovement.f1` | f32 | `0.1f` |
+| `BenefitItemObj.calcAndSetBaseMtxInMovement.f2` | f32 | `0.01f` |
+| `BenefitItemObj.calcAndSetBaseMtxInMovement.f3` | f32 | `0.2f` |
 | `BenefitItemObj.cAppearThrowUpSpd` | f32 | `10.0f` |
 | `BenefitItemObj.cAppearThrowUpSpd2` | f32 | `15.0f` |
 | `BenefitItemObj.cBlinkFastLife` | s16 | `60` |
@@ -21881,15 +25468,81 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BenefitItemObj.cGravity` | f32 | `0.5f` |
 | `BenefitItemObj.cReflectWallX` | f32 | `0.3f` |
 | `BenefitItemObj.cShootLandSteps` | s32 | `10` |
+| `BenefitItemObj.init.f1` | f32 | `10.0f` |
+| `BenefitItemObj.init.f2` | f32 | `100.0f` |
+| `BenefitItemObj.init.f3` | f32 | `50.0f` |
+| `BenefitItemObj.init.f4` | f32 | `50.0f` |
+| `BenefitItemObj.initModelAndEfx.f1` | f32 | `50.0f` |
+| `BenefitItemObj.initModelAndEfx.f2` | f32 | `50.0f` |
+| `BenefitItemObj.initModelAndEfx.f3` | f32 | `50.0f` |
+| `BenefitItemObj.initModelAndEfx.f4` | f32 | `50.0f` |
+| `BigBubbleGenerator.initFromPlacementParam.f1` | f32 | `100.0f` |
+| `BigBubbleGenerator.initFromPlacementParam.f2` | f32 | `100.0f` |
 | `BigBubbleGenerator.sActiveDistance` | f32 | `1500.0f` |
 | `BigBubbleGenerator.sGenerateOffsetY` | f32 | `60.0f` |
 | `BigBubbleGenerator.sNonActiveDistance` | f32 | `2000.0f` |
+| `BigBubbleMoveLimitter.init.f1` | f32 | `500.0f` |
+| `BigBubbleMoveLimitter.init.f2` | f32 | `500.0f` |
+| `BigBubbleMoveLimitter.init.f3` | f32 | `500.0f` |
+| `BigBubbleMoveLimitter.init.f4` | f32 | `1000.0f` |
+| `BigFan.init.f1` | f32 | `0.5f` |
+| `BigFan.init.f2` | f32 | `400.0f` |
+| `BigFan.initWindModel.f1` | f32 | `2000.0f` |
 | `BigFan.sBaseWindWidth` | f32 | `400.0f` |
+| `BigFanHolder.calcWindInfo.f1` | f32 | `100.0f` |
 | `BigFanHolder.sMaxBigFan` | s32 | `32` |
+| `BlackHole.exeDisappear.f1` | f32 | `0.5f` |
+| `BlackHole.init.f1` | f32 | `500.0f` |
+| `BlackHole.init.f2` | f32 | `500.0f` |
+| `BlackHole.initCubeBox.f1` | f32 | `0.5f` |
+| `BlackHole.initCubeBox.f10` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f11` | f32 | `0.5f` |
+| `BlackHole.initCubeBox.f12` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f2` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f3` | f32 | `0.5f` |
+| `BlackHole.initCubeBox.f4` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f5` | f32 | `0.5f` |
+| `BlackHole.initCubeBox.f6` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f7` | f32 | `0.5f` |
+| `BlackHole.initCubeBox.f8` | f32 | `1000.0f` |
+| `BlackHole.initCubeBox.f9` | f32 | `0.5f` |
+| `BlackHole.initMapToolInfo.f1` | f32 | `500.0f` |
+| `BlackHole.initMapToolInfo.f2` | f32 | `500.0f` |
+| `BlackHole.initMapToolInfo.f3` | f32 | `1000.0f` |
+| `BlackHole.updateModelScale.f1` | f32 | `0.5f` |
 | `BlueStarCupsulePlanet.exeHitPointer.1` | s32 | `3` |
+| `BlueStarCupsulePlanet.init.f1` | f32 | `600.0f` |
 | `BlueStarCupsulePlanet.isReleaseForce.isNearPlayer.1` | f32 | `0.0f` |
 | `BlueStarCupsulePlanet.sPointableRange` | f32 | `3400.0f` |
+| `BreakableCage.cHitSensorOffsetCage` | f32[3] | `0.0f, 0.0f, 0.0f` |
+| `BreakableCage.cHitSensorOffsetFixation` | f32[3] | `0.0f, 0.0f, 0.0f` |
+| `BreakableCage.exeBreak.f1` | f32 | `150.0f` |
 | `BreakableCage.exeBreak.isNearPlayer.1` | f32 | `1500.0f` |
+| `BreakableCage.exeWait.f1` | f32 | `360.0f` |
+| `BreakableCage.exeWait.f2` | f32 | `360.0f` |
+| `BreakableCage.init.f1` | f32 | `300.0f` |
+| `BreakableCage.init.f2` | f32 | `600.0f` |
+| `BreakableCage.init.f3` | f32 | `425.0f` |
+| `BreakableCage.init.f4` | f32 | `100.0f` |
+| `BreakableCage.initMapToolInfo.f1` | f32 | `0.01f` |
+| `BreakableCage.initModel.f1` | f32 | `150.0f` |
+| `BrightObj.calcScreenPosition.f1` | f32 | `0.5f` |
+| `BrightObj.calcScreenPosition.f2` | f32 | `0.5f` |
+| `BrightObj.calcScreenPosition.f3` | f32 | `0.5f` |
+| `BrightObj.calcScreenPosition.f4` | f32 | `0.5f` |
+| `BrightObj.checkVisibilityOfSphere.f1` | f32 | `4.0f` |
+| `BrightObj.checkVisibilityOfSphere.f2` | f32 | `0.4f` |
+| `BrightObj.checkVisibilityOfSphere.f3` | f32 | `0.9165f` |
+| `BrightObj.checkVisibilityOfSphere.f4` | f32 | `0.5f` |
+| `BrightObj.checkVisibilityOfSphere.f5` | f32 | `4.0f` |
+| `BrightObj.checkVisibilityOfSphere.f6` | f32 | `0.7f` |
+| `BrightObj.checkVisibilityOfSphere.f7` | f32 | `0.7141f` |
+| `BrightObj.control.f1` | f32 | `100000.0f` |
+| `BrightObj.controlSunModel.f1` | f32 | `0.999f` |
+| `BrightObj.controlSunModel.f2` | f32 | `180.0f` |
+| `BrightObj.controlSunModel.f3` | f32 | `57.295776f` |
+| `Candlestand.appearItem.f1` | f32 | `10.0f` |
+| `Candlestand.appearItem.f2` | f32 | `40.0f` |
 | `Candlestand.sAttackRange` | f32 | `50.0f` |
 | `Candlestand.sExtinguishStep` | s32 | `15` |
 | `Candlestand.sFireRange` | f32 | `150.0f` |
@@ -21897,22 +25550,87 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CannonFortressBreakStep.sFallSpeed` | f32 | `15.0f` |
 | `CannonFortressBreakStep.sStepForFall` | s32 | `350` |
 | `CapsuleCage.sStepForStartCamera` | s32 | `50` |
+| `ChipBase.control.f1` | f32 | `100.0f` |
+| `ChipBase.initAfterPlacement.f1` | f32 | `100.0f` |
+| `ChipBase.initShadow.f1` | f32 | `2000.0f` |
 | `ChipBase.sBaseScale` | f32 | `1.0f` |
 | `ChipBase.sBodyHitRadius` | f32 | `80.0f` |
 | `ChipBase.sBodyHitYOffset` | f32 | `0.0f` |
 | `ChipBase.sBubbleHitRadius` | f32 | `150.0f` |
 | `ChipBase.sCannotGetTime` | s32 | `40` |
 | `ChipBase.sShadowRadius` | f32 | `50.0f` |
+| `ChipCounter.control.f1` | f32 | `0.05f` |
+| `ChipCounter.control.f2` | f32 | `0.05f` |
+| `ChipCounter.control.f3` | f32 | `20.0f` |
+| `ChipCounter.init.f1` | f32 | `20.0f` |
+| `ChipGroup.updateUIRange.f1` | f32 | `2000.0f` |
+| `ChipGroup.updateUIRange.f2` | f32 | `2.0f` |
+| `ChooChooTrain.control.f1` | f32 | `0.5f` |
+| `ChooChooTrain.control.f2` | f32 | `532.0f` |
+| `ChooChooTrain.control.f3` | f32 | `0.5f` |
+| `ChooChooTrain.control.f4` | f32 | `532.0f` |
 | `ChooChooTrain.control.moveCoord.1` | f32 | `1080.0f` |
+| `ChooChooTrain.init.f1` | f32 | `80.0f` |
+| `ChooChooTrain.init.f2` | f32 | `100.0f` |
+| `ChooChooTrain.init.f3` | f32 | `500.0f` |
 | `ChooChooTrain.init.moveCoord.1` | f32 | `1080.0f` |
 | `ClipAreaDrop.sExtendsEndTime` | s32 | `15` |
 | `ClipAreaDropHolder.sMaxClipAreaDrop` | s32 | `32` |
+| `ClipAreaDropLaser.ClipAreaDropLaser.f1` | f32 | `20.0f` |
+| `ClipAreaDropLaser.draw.f1` | f32 | `20.0f` |
+| `ClipAreaDropLaser.draw.f2` | f32 | `6.0f` |
+| `ClipAreaDropLaser.init.f1` | f32 | `20.0f` |
 | `ClipAreaHolder.sClipAreaMax` | s32 | `64` |
+| `ClipAreaMovable.init.f1` | f32 | `1400.0f` |
+| `ClipAreaShape.calcVolumeMatrix.f1` | f32 | `0.01f` |
+| `ClipAreaShape.ClipAreaShapeBox.f1` | f32 | `500.0f` |
+| `ClipAreaShape.ClipAreaShapeCone.f1` | f32 | `500.0f` |
+| `ClipAreaShape.ClipAreaShapeCone.f2` | f32 | `1000.0f` |
+| `ClipAreaShape.isInArea.f1` | f32 | `2.0f` |
+| `ClipFieldSwitch.control.f1` | f32 | `5.0f` |
+| `ClipFieldSwitch.init.f1` | f32 | `1000.0f` |
+| `CocoNut.calcSoundLevel.f1` | f32 | `100.0f` |
 | `CocoNut.cMaxFallSpeed` | f32 | `25.0f` |
 | `CocoNut.cMaxSpeed` | f32 | `35.0f` |
 | `CocoNut.cMinSpeed` | f32 | `1.5f` |
+| `CocoNut.emitEffectSpinHit.f1` | f32 | `0.7f` |
 | `CocoNut.exeMove.1` | s32 | `1` |
+| `CocoNut.init.f1` | f32 | `1500.0f` |
+| `CocoNut.initMapToolInfo.f1` | f32 | `55.0f` |
+| `CocoNut.initSensor.f1` | f32 | `65.0f` |
+| `CocoNut.initSensor.f2` | f32 | `2000.0f` |
+| `CocoNut.isOnGround.f1` | f32 | `120.0f` |
 | `CocoNut.isValidPushedFromPlayer.1` | s32 | `15` |
+| `CocoNut.isValidPushedFromPlayer.f1` | f32 | `45.0f` |
+| `CocoNut.processMove.f1` | f32 | `2.5f` |
+| `CocoNut.processMove.f10` | f32 | `0.925f` |
+| `CocoNut.processMove.f2` | f32 | `0.5f` |
+| `CocoNut.processMove.f3` | f32 | `3.0f` |
+| `CocoNut.processMove.f4` | f32 | `0.925f` |
+| `CocoNut.processMove.f5` | f32 | `0.75f` |
+| `CocoNut.processMove.f6` | f32 | `0.75f` |
+| `CocoNut.processMove.f7` | f32 | `2.0f` |
+| `CocoNut.processMove.f8` | f32 | `0.8f` |
+| `CocoNut.processMove.f9` | f32 | `100.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f1` | f32 | `35.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f2` | f32 | `20.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f3` | f32 | `25.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f4` | f32 | `15.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f5` | f32 | `10.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f6` | f32 | `5.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f7` | f32 | `60.0f` |
+| `CocoNut.receiveMsgPlayerAttack.f8` | f32 | `65.0f` |
+| `CocoNut.receiveOtherMsg.f1` | f32 | `1.1f` |
+| `CocoNut.receiveOtherMsg.f2` | f32 | `18.0f` |
+| `CocoNut.receiveOtherMsg.f3` | f32 | `18.0f` |
+| `CocoNut.receiveOtherMsg.f4` | f32 | `0.7f` |
+| `CocoNut.reviseFrontVec.f1` | f32 | `15.0f` |
+| `CocoNut.reviseFrontVec.f2` | f32 | `0.8f` |
+| `CocoNut.tryDisappear.f1` | f32 | `100.0f` |
+| `CocoNut.updateGravity.f1` | f32 | `0.4f` |
+| `CocoNut.updateRotate.f1` | f32 | `180.0f` |
+| `CoconutTree.init.f1` | f32 | `2000.0f` |
+| `CoconutTreeLeaf.init.f1` | f32 | `500.0f` |
 | `CoconutTreeLeaf.sAxisLeanRateY` | f32 | `0.01f` |
 | `CoconutTreeLeaf.sDistanceFar` | f32 | `5000.0f` |
 | `CoconutTreeLeaf.sDistanceNear` | f32 | `1000.0f` |
@@ -21932,7 +25650,11 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CoconutTreeLeaf.sWindRandomAccelFar` | f32 | `0.03f` |
 | `CoconutTreeLeaf.sWindRandomAccelMiddle` | f32 | `0.01f` |
 | `CoconutTreeLeaf.sWindRandomAccelNear` | f32 | `0.005f` |
+| `Coin.attenuateVelocity.f1` | f32 | `0.8f` |
+| `Coin.attenuateVelocity.f2` | f32 | `0.9f` |
+| `Coin.attenuateVelocity.f3` | f32 | `0.995f` |
 | `Coin.cActivateLaunchSpeed` | f32 | `30.0f` |
+| `Coin.calcRebound.f1` | f32 | `100.0f` |
 | `Coin.cBoundSoundMinVolume` | s32 | `5` |
 | `Coin.cBubbleOxygen` | s32 | `8` |
 | `Coin.cBubbleSensorRadius` | f32 | `150.0f` |
@@ -21948,14 +25670,28 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Coin.cShadowRadius` | f32 | `50.0f` |
 | `Coin.cWallRebound` | f32 | `0.6f` |
 | `Coin.cWaterGravityScale` | f32 | `0.3f` |
+| `Coin.init.f1` | f32 | `10.0f` |
+| `CoinBox.exeHit.f1` | f32 | `30.0f` |
+| `CoinBox.exeHit.f2` | f32 | `10.0f` |
+| `CoinBox.init.f1` | f32 | `5.0f` |
 | `CoinGroup.sAppearDelayTime` | s32 | `3` |
+| `CoinHolder.appearCoinCircle.f1` | f32 | `360.0f` |
 | `CoinHolder.sCircleVelHRatio` | f32 | `0.25f` |
 | `CoinHolder.sCircleVelLength` | f32 | `30.0f` |
 | `CoinHolder.sCoinVelVertical` | f32 | `25.0f` |
 | `CoinHolder.sCreateCoinNum` | s32 | `32` |
 | `CoinHolder.sRandomizeVel` | f32 | `4.0f` |
+| `CoinRotater.movement.f1` | f32 | `8.0f` |
+| `CoinRotater.movement.f2` | f32 | `360.0f` |
+| `CoinRotater.movement.f3` | f32 | `4.0f` |
+| `CoinRotater.movement.f4` | f32 | `360.0f` |
+| `CoinRotater.movement.f5` | f32 | `16.0f` |
+| `CoinRotater.movement.f6` | f32 | `360.0f` |
+| `CoinSpot.initSensor.f1` | f32 | `60.0f` |
+| `CollapsePlane.init.f1` | f32 | `200.0f` |
 | `CollapsePlane.sDefaultCollapseTime` | s32 | `140` |
 | `CollapsePlane.sScaleMin` | f32 | `0.7f` |
+| `CollectCounter.setPosition.f1` | f32 | `75.0f` |
 | `CollisionBlocker.cRadius` | f32 | `50.0f` |
 | `CrystalCage.cBinderFallSpeed` | f32 | `2.0f` |
 | `CrystalCage.cBinderLift` | f32 | `50.0f` |
@@ -21973,10 +25709,39 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `CrystalCage.cSmallSensorBottom` | f32 | `-40.0f` |
 | `CrystalCage.cSmallSensorTop` | f32 | `140.0f` |
 | `CrystalCage.cSuperSpinDriverDeadStep` | s32 | `10` |
+| `CrystalCage.exeBreak.f1` | f32 | `2.0f` |
+| `CrystalCage.init.f1` | f32 | `30.0f` |
+| `CrystalCage.init.f2` | f32 | `100.0f` |
+| `CrystalCage.init.f3` | f32 | `30.0f` |
+| `CrystalCage.init.f4` | f32 | `200.0f` |
+| `CrystalCage.init.f5` | f32 | `4.0f` |
+| `CrystalCage.init.f6` | f32 | `50.0f` |
+| `CrystalCage.initAfterPlacement.f1` | f32 | `2.0f` |
+| `CrystalCageMoving.crashMario.f1` | f32 | `30.0f` |
+| `CrystalCageMoving.crashMario.f2` | f32 | `450.0f` |
 | `CrystalCageMoving.exeBreakBig.1` | s32 | `10` |
+| `CrystalCageMoving.exeBreakBig.f1` | f32 | `30.0f` |
 | `CrystalCageMoving.exeDemoTicoChange.setBckRate.1` | f32 | `1.5f` |
 | `CrystalCageMoving.exeDemoTicoStop.setBckRate.1` | f32 | `1.5f` |
+| `CrystalCageMoving.init.f1` | f32 | `350.0f` |
+| `CrystalCageMoving.initDummyModel.f1` | f32 | `3.0f` |
+| `CrystalCageMoving.initDummyModel.f2` | f32 | `3.0f` |
+| `CrystalCageMoving.initDummyModel.f3` | f32 | `3.0f` |
+| `CrystalCageMoving.sDummyModelOffset` | f32[3] | `0.0f, -150.0f, 0.0f` |
+| `CrystalCageMoving.updateHitSensor.f1` | f32 | `450.0f` |
+| `CrystalCageMoving.updateHitSensor.f2` | f32 | `450.0f` |
+| `CrystalSwitch.calcRotSpeed.f1` | f32 | `10.0f` |
+| `CrystalSwitch.calcRotSpeed.f2` | f32 | `1.5f` |
+| `CrystalSwitch.calcRotSpeed.f3` | f32 | `10.0f` |
+| `CrystalSwitch.calcRotSpeed.f4` | f32 | `10.0f` |
+| `CrystalSwitch.calcRotSpeed.f5` | f32 | `10.0f` |
+| `CrystalSwitch.calcRotSpeed.f6` | f32 | `10.0f` |
+| `CrystalSwitch.calcRotSpeed.f7` | f32 | `0.99f` |
+| `CrystalSwitch.exeOn.f1` | f32 | `10.0f` |
 | `CrystalSwitch.exeOn.setBckRate.1` | f32 | `10.0f` |
+| `CrystalSwitch.init.f1` | f32 | `100.0f` |
+| `CrystalSwitch.init.f2` | f32 | `100.0f` |
+| `CrystalSwitch.tryOff.f1` | f32 | `8.0f` |
 | `DashRing.cActiveSteps` | u16 | `15` |
 | `DashRing.cDefaultSpeedScale` | f32 | `2.5f` |
 | `DashRing.cFollowLimit` | f32 | `2000.0f` |
@@ -21985,10 +25750,25 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DashRing.cSpeedScaleArgUnit` | f32 | `100.0f` |
 | `DashRing.cTurnDistance` | f32 | `300.0f` |
 | `DashRing.cTurnRate` | f32 | `0.03f` |
+| `DashRing.init.f1` | f32 | `1000.0f` |
+| `DeadLeaves.exeSpin.f1` | f32 | `10.0f` |
+| `DeadLeaves.exeSpin.f2` | f32 | `40.0f` |
+| `DeadLeaves.init.f1` | f32 | `70.0f` |
+| `DeadLeaves.init.f2` | f32 | `30.0f` |
 | `DesertLandMoveSwitch.cStepOnVelocity` | f32 | `-10.0f` |
 | `DesertLandMoveSwitch.cSwitchDownSteps` | s32 | `6` |
+| `DesertLandMoveSwitch.DesertLandMoveSwitch.f1` | f32 | `0.35f` |
+| `DesertLandMoveSwitch.DesertLandMoveSwitch.f2` | f32 | `0.75f` |
 | `DesertMovingLand.exeMoveSign.shakeCameraInfinity.1` | f32 | `0.15f` |
 | `DesertMovingLand.exeMoveSign.shakeCameraInfinity.2` | f32 | `1.2f` |
+| `DesertMovingLand.init.f1` | f32 | `2000.0f` |
+| `DragonHeadFlower.initFlowerSensors.f1` | f32 | `560.0f` |
+| `DragonHeadFlower.initFlowerSensors.f2` | f32 | `300.0f` |
+| `DragonHeadFlower.initFlowerSensors.f3` | f32 | `650.0f` |
+| `DragonHeadFlower.initFlowerSensors.f4` | f32 | `400.0f` |
+| `DragonHeadFlower.initFlowerSensors.f5` | f32 | `350.0f` |
+| `DragonHeadFlower.initParabola.f1` | f32 | `2.0f` |
+| `DragonHeadFlower.initParabola.f2` | f32 | `1.2f` |
 | `DragonHeadFlower.sBreatheAccel` | f32 | `3.0f` |
 | `DragonHeadFlower.sBreatheFreq` | s32 | `40` |
 | `DragonHeadFlower.sDelayStartToCenter` | s32 | `15` |
@@ -21996,13 +25776,33 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DragonHeadFlower.sGravityAcc` | f32 | `0.94f` |
 | `DragonHeadFlower.sStartForceFixPos` | f32 | `0.0f` |
 | `DragonHeadFlower.sStartLaunchRange` | f32 | `50.0f` |
+| `DriftWood.exeVibrate.f1` | f32 | `30.0f` |
+| `DriftWood.exeVibrate.f2` | f32 | `16.0f` |
+| `DriftWood.exeVibrate.f3` | f32 | `0.1f` |
+| `DriftWood.exeWait.f1` | f32 | `0.05f` |
+| `DriftWood.init.f1` | f32 | `300.0f` |
+| `DriftWood.init.f2` | f32 | `60.0f` |
+| `DriftWood.init.f3` | f32 | `100.0f` |
 | `DriftWood.sAttackRange` | f32 | `140.0f` |
 | `DriftWood.sRailSpeed` | f32 | `3.0f` |
 | `DriftWood.sVibrateStep` | s32 | `45` |
+| `DynamicCollisionObj.createCollision.f1` | f32 | `40.f` |
 | `EarthenPipe.exeHideDown.1` | s32 | `15` |
 | `EarthenPipe.exeHideDown.2` | s32 | `15` |
+| `EarthenPipe.exeHideDown.f1` | f32 | `15.0f` |
 | `EarthenPipe.exeWaitToHideDown.1` | s32 | `40` |
 | `EarthenPipe.exeWaitToShowUp.1` | s32 | `20` |
+| `EarthenPipe.init.f1` | f32 | `50.0f` |
+| `EarthenPipe.init.f2` | f32 | `70.0f` |
+| `EarthenPipe.init.f3` | f32 | `50.0f` |
+| `EarthenPipe.init.f4` | f32 | `200.0f` |
+| `EarthenPipe.init.f5` | f32 | `180.0f` |
+| `EarthenPipe.init.f6` | f32 | `80.0f` |
+| `EarthenPipe.init.f7` | f32 | `50.0f` |
+| `EarthenPipe.init.f8` | f32 | `100.0f` |
+| `EarthenPipe.init.f9` | f32 | `500.0f` |
+| `EarthenPipe.receiveOtherMsg.f1` | f32 | `50.0f` |
+| `EarthenPipe.receiveOtherMsg.f2` | f32 | `5.0f` |
 | `EarthenPipe.sRearmDistance` | f32 | `100.0f` |
 | `ElectricBall.sMoveAngularSpeedDefault` | f32 | `0.01f` |
 | `ElectricBall.sMoveRadiusDefault` | f32 | `750.0f` |
@@ -22018,32 +25818,165 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `ElectricRail.cSeparateInterval` | f32 | `200.0f` |
 | `ElectricRail.cSeparateTexRate` | f32 | `0.5f` |
 | `ElectricRail.cShadowVolumeHeight` | f32 | `300.0f` |
+| `ElectricRail.init.f1` | f32 | `100.0f` |
+| `ElectricRail.init.f2` | f32 | `500.0f` |
 | `ElectricRailHolder.cHitSensorRadius` | f32 | `30.0f` |
 | `ElectricRailHolder.cPartsPerRail` | u32 | `1024` |
+| `ElectricRailMoving.calcPointPos.f1` | f32 | `100.0f` |
+| `ElectricRailMoving.calcPointPos.f2` | f32 | `100.0f` |
+| `ElectricRailMoving.calcPointPos.f3` | f32 | `100.0f` |
+| `ElectricRailMoving.calcPointPos.f4` | f32 | `100.0f` |
 | `ElectricRailMoving.exeDisappear.1` | s32 | `20` |
+| `ElectricRailMoving.exeDisappear.f1` | f32 | `30.0f` |
+| `ElectricRailMoving.init.f1` | f32 | `35.0f` |
+| `ElectricRailMoving.init.f2` | f32 | `35.0f` |
+| `ElectricRailMoving.initMesh.f1` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f2` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f3` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f4` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f5` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f6` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f7` | f32 | `30.0f` |
+| `ElectricRailMoving.initMesh.f8` | f32 | `30.0f` |
+| `ElectricRailMoving.initRail.f1` | f32 | `100.0f` |
+| `ElectricRailMoving.initRail.f2` | f32 | `500.0f` |
+| `ElectricRailMoving.move.f1` | f32 | `100.0f` |
+| `ElectricRailMoving.move.f2` | f32 | `0.25f` |
+| `ElectricRailMoving.move.f3` | f32 | `0.25f` |
+| `ElectricRailMoving.move.f4` | f32 | `100.0f` |
+| `ElectricRailMoving.move.f5` | f32 | `15.0f` |
+| `ElectricRailMoving.move.f6` | f32 | `255.0f` |
+| `ElectricRailMoving.setVertexAttribute.f1` | f32 | `100.0f` |
+| `ElectricRailMoving.setVertexAttribute.f2` | f32 | `100.0f` |
+| `ElectricRailMoving.setVertexAttribute.f3` | f32 | `0.25f` |
+| `ElectricRailMoving.setVertexAttribute.f4` | f32 | `100.0f` |
+| `ElectricRailMoving.setVertexAttribute.f5` | f32 | `100.0f` |
 | `ElectricRailMoving.sRailStep` | f32 | `100.0f` |
+| `ElectricRailMoving.updatePointPos.f1` | f32 | `3.0f` |
 | `ExterminationChecker.exeTryStartDemoAppear.1` | s32 | `5` |
+| `FallDownBridge.calcAndSetBaseMtx.f1` | f32 | `400.0f` |
+| `FallDownBridge.control.f1` | f32 | `9.090277f` |
+| `FallDownBridge.control.f2` | f32 | `0.06f` |
+| `FallDownBridge.control.f3` | f32 | `0.06f` |
+| `FallDownBridge.control.f4` | f32 | `0.5f` |
+| `FallDownBridge.control.f5` | f32 | `0.06f` |
+| `FallDownBridge.control.f6` | f32 | `9.090277f` |
+| `FallDownBridge.control.f7` | f32 | `0.1f` |
+| `FallDownBridge.control.f8` | f32 | `0.06f` |
+| `FallDownBridge.control.f9` | f32 | `0.99f` |
+| `FallDownBridge.init.f1` | f32 | `2600.0f` |
+| `FallDownBridge.receiveOtherMsg.f1` | f32 | `0.1f` |
+| `FallDownBridge.receiveOtherMsg.f2` | f32 | `0.45f` |
+| `FallDownBridge.receiveOtherMsg.f3` | f32 | `0.3f` |
 | `FallDownBridge.sQuakeTime` | s32 | `80` |
 | `FallDownBridge.sShakeCameraNormalVelocity` | f32 | `1.0f` |
 | `FallDownBridge.sShakeCameraWeakVelocity` | f32 | `0.5f` |
+| `FallingSmallRock.init.f1` | f32 | `10.0f` |
+| `FallingSmallRock.init.f2` | f32 | `800.0f` |
+| `FallingSmallRock.init.f3` | f32 | `800.0f` |
+| `FallOutFieldDraw.draw.f1` | f32 | `2.0f` |
+| `FallOutFieldDraw.draw.f2` | f32 | `0.004f` |
+| `FallOutFieldDraw.draw.f3` | f32 | `5.0f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f1` | f32 | `0.5f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f2` | f32 | `0.5f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f3` | f32 | `0.25f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f4` | f32 | `0.25f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f5` | f32 | `0.25f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f6` | f32 | `0.25f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f7` | f32 | `0.25f` |
+| `FallOutFieldDraw.FallOutFieldDraw.f8` | f32 | `0.25f` |
 | `FireBar.controlEmitEffect.isNearPlayerAnyTime.1` | f32 | `5000.0f` |
 | `FireBar.controlEmitEffect.isNearPlayerAnyTime.2` | f32 | `5000.0f` |
+| `FireBar.FireBar.f1` | f32 | `140.0f` |
+| `FireBar.fixFireBarBall.f1` | f32 | `100.0f` |
+| `FireBar.fixFireBarBall.f2` | f32 | `360.0f` |
+| `FireBar.fixFireBarBall.f3` | f32 | `50.0f` |
+| `FireBar.init.f1` | f32 | `100.0f` |
+| `FireBar.init.f10` | f32 | `100.0f` |
+| `FireBar.init.f11` | f32 | `50.0f` |
+| `FireBar.init.f12` | f32 | `100.0f` |
+| `FireBar.init.f13` | f32 | `0.1f` |
+| `FireBar.init.f14` | f32 | `100.0f` |
+| `FireBar.init.f2` | f32 | `55.0f` |
+| `FireBar.init.f3` | f32 | `20.0f` |
+| `FireBar.init.f4` | f32 | `100.0f` |
+| `FireBar.init.f5` | f32 | `30.0f` |
+| `FireBar.init.f6` | f32 | `100.0f` |
+| `FireBar.init.f7` | f32 | `55.0f` |
+| `FireBar.init.f8` | f32 | `100.0f` |
+| `FireBar.init.f9` | f32 | `100.0f` |
+| `FireBar.initFireBarBall.f1` | f32 | `25.0f` |
 | `FireBar.sEffectLeaveMargin` | f32 | `500.0f` |
+| `FireBar.updateHitSensor.f1` | f32 | `50.0f` |
+| `FireBar.updateHitSensor.f2` | f32 | `100.0f` |
+| `FireBar.updateHitSensor.f3` | f32 | `50.0f` |
+| `FireBar.updateHitSensor.f4` | f32 | `360.0f` |
+| `FireBar.updateHitSensor.f5` | f32 | `360.0f` |
+| `FirePressure.calcGunPointFromCannon.f1` | f32 | `200.0f` |
+| `FirePressureBullet.exeFly.f1` | f32 | `3.0f` |
+| `FirePressureBullet.init.f1` | f32 | `100.0f` |
+| `FirePressureBullet.init.f2` | f32 | `100.0f` |
+| `FirePressureBullet.init.f3` | f32 | `75.0f` |
+| `FirePressureRadiate.control.f1` | f32 | `70.0f` |
+| `FirePressureRadiate.control.f2` | f32 | `51.0f` |
 | `FirePressureRadiate.exePrepareToRadiate.1` | s32 | `34` |
 | `FirePressureRadiate.exeRadiate.1` | s32 | `25` |
 | `FirePressureRadiate.exeRadiateMargin.1` | s32 | `50` |
+| `FirePressureRadiate.FirePressureRadiate.f1` | f32 | `500.0f` |
+| `FirePressureRadiate.init.f1` | f32 | `70.0f` |
+| `FirePressureRadiate.init.f2` | f32 | `30.0f` |
+| `FirePressureRadiate.init.f3` | f32 | `70.0f` |
+| `FirePressureRadiate.init.f4` | f32 | `40.0f` |
+| `FirePressureRadiate.init.f5` | f32 | `50.0f` |
+| `FirePressureRadiate.updateHitSensor.f1` | f32 | `50.0f` |
+| `FirePressureRadiate.updateHitSensor.f2` | f32 | `50.0f` |
+| `FlameGun.exeRotate.f1` | f32 | `0.9f` |
+| `FlameGun.init.f1` | f32 | `77.0f` |
+| `FlameGun.init.f2` | f32 | `77.0f` |
+| `FlameGun.init.f3` | f32 | `77.0f` |
+| `FlameGun.initSensor.f1` | f32 | `77.0f` |
+| `FlameGun.initSensor.f2` | f32 | `80.0f` |
+| `FlameGun.updateHitSensor.f1` | f32 | `90.0f` |
+| `FlameGun.updateHitSensor.f2` | f32 | `700.0f` |
+| `FlameGun.updateHitSensor.f3` | f32 | `90.0f` |
+| `FlameGun.updateHitSensor.f4` | f32 | `610.0f` |
+| `FlameGun.updateHitSensor.f5` | f32 | `40.0f` |
+| `FlameGun.updateHitSensor.f6` | f32 | `100.0f` |
+| `FlameGun.updateHitSensor.f7` | f32 | `55.0f` |
 | `FlexibleSphere.cArgScaleUnit` | f32 | `10000.0f` |
 | `FlexibleSphere.cDefaultMaxScale` | f32 | `1.0f` |
 | `FlexibleSphere.cDefaultMinScale` | f32 | `0.1f` |
 | `FlexibleSphere.cDefaultScaleRate` | f32 | `0.002f` |
+| `FlexibleSphere.control.f1` | f32 | `100.0f` |
 | `FlexibleSphere.cQuakeFrames` | u16 | `60` |
 | `FlexibleSphere.cQuakeHearDistance` | f32 | `4000.0f` |
+| `FlexibleSphere.draw.f1` | f32 | `0.05f` |
+| `FlexibleSphere.draw.f2` | f32 | `0.95f` |
+| `FlexibleSphere.init.f1` | f32 | `1000.0f` |
+| `FlexibleSphere.init.f2` | f32 | `3000.0f` |
 | `FlexibleSphere.startQuake.shakeCameraInfinity.1` | f32 | `0.2f` |
 | `FlexibleSphere.startQuake.shakeCameraInfinity.2` | f32 | `3.0f` |
+| `FlipPanel.calcJointMove.f1` | f32 | `25.0f` |
 | `FlipPanel.cObserverGroupSize` | s32 | `0x20` |
 | `FlipPanel.cPanelGroupSize` | s32 | `0x20` |
 | `FlipPanel.exeEndPrepare.1` | s32 | `20` |
+| `FloaterFloatingForceTypeNormal.soundMoveSE.f1` | f32 | `0.1f` |
+| `FloaterFloatingForceTypeNormal.soundMoveSE.f2` | f32 | `0.1f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f1` | f32 | `0.05f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f2` | f32 | `0.0001f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f3` | f32 | `0.05f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f4` | f32 | `0.0001f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f5` | f32 | `0.98f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f6` | f32 | `50.0f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f7` | f32 | `50.0f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f8` | f32 | `10.0f` |
+| `FloaterFloatingForceTypeNormal.updateVelocity.f9` | f32 | `0.8f` |
+| `FloaterFloatingForceTypeSpring.exeMoveReturn.f1` | f32 | `0.1f` |
+| `FloaterFloatingForceTypeSpring.init.f1` | f32 | `0.001f` |
+| `FloaterFloatingForceTypeSpring.init.f2` | f32 | `0.001f` |
+| `FloaterFloatingForceTypeSpring.init.f3` | f32 | `0.1f` |
 | `FloaterFloatingForceTypeSpring.sSpeedMin` | f32 | `0.1f` |
+| `FloaterFloatingForceTypeSpring.updateVelocity.f1` | f32 | `3.0f` |
 | `Fountain.sClippingRadius` | f32 | `3500.0f` |
 | `Fountain.sHitCylinderHeight` | f32 | `280.0f` |
 | `Fountain.sHitCylinderRange` | f32 | `10.0f` |
@@ -22053,7 +25986,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Fountain.sSensorRadius` | f32 | `300.0f` |
 | `FountainBig.exeSign.1` | s32 | `80` |
 | `FountainBig.exeSpout.1` | s32 | `20` |
+| `FountainBig.exeSpout.f1` | f32 | `0.01f` |
 | `FountainBig.exeSpoutEnd.1` | s32 | `10` |
+| `FountainBig.exeSpoutEnd.f1` | f32 | `0.01f` |
+| `FountainBig.init.f1` | f32 | `60.0f` |
+| `FountainBig.init.f2` | f32 | `300.0f` |
+| `FountainBig.init.f3` | f32 | `600.0f` |
+| `FountainBig.updateHitSensor.f1` | f32 | `600.0f` |
+| `GCapture.downTractPower.f1` | f32 | `0.12f` |
+| `GCapture.exeBreak.f1` | f32 | `0.2f` |
+| `GCapture.exeCapture.f1` | f32 | `0.1f` |
 | `GCapture.exeCapture.reboundVelocityFromCollision.1` | f32 | `0.5f` |
 | `GCapture.exeCapture.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `GCapture.exeCapture.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -22066,6 +26008,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `GCapture.exeTraction.reboundVelocityFromCollision.1` | f32 | `0.5f` |
 | `GCapture.exeTraction.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `GCapture.exeTraction.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `GCapture.fillGapBindTrans.f1` | f32 | `0.05f` |
+| `GCapture.init.f1` | f32 | `80.0f` |
 | `GCapture.sBreakSteps` | s32 | `5` |
 | `GCapture.sCaptureCancelSteps` | s32 | `40` |
 | `GCapture.sCoolDownSteps` | s32 | `10` |
@@ -22086,29 +26030,126 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `GCapture.sTractionAccel` | f32 | `0.7f` |
 | `GCapture.sTractionSpinSteps` | s32 | `35` |
 | `GCapture.sTractSpinAccel` | f32 | `0.002f` |
+| `GCapture.upTractPower.f1` | f32 | `0.97f` |
+| `GCaptureRibbon.calcLineWidth.f1` | f32 | `500.0f` |
+| `GCaptureRibbon.calcLineWidth.f2` | f32 | `2000.0f` |
+| `GCaptureRibbon.calcLineWidth.f3` | f32 | `20.0f` |
+| `GCaptureRibbon.calcLineWidth.f4` | f32 | `90.0f` |
 | `GCaptureTarget.exeHitPointer.1` | s32 | `3` |
+| `GCaptureTarget.exeHitPointer.f1` | f32 | `0.2f` |
+| `GCaptureTarget.exePointable.f1` | f32 | `50.0f` |
+| `GCaptureTarget.exePointable.f2` | f32 | `0.05f` |
+| `GCaptureTarget.exePointable.f3` | f32 | `0.5f` |
+| `GCaptureTarget.exePointable.f4` | f32 | `0.5f` |
+| `GCaptureTarget.exeWait.f1` | f32 | `0.05f` |
+| `GCaptureTarget.init.f1` | f32 | `50.0f` |
+| `GCaptureTarget.init.f2` | f32 | `300.0f` |
+| `GCaptureTarget.init.f3` | f32 | `200.0f` |
+| `GravityLight.init.f1` | f32 | `2500.0f` |
+| `GravityLight.init.f2` | f32 | `0.5f` |
+| `GravityLight.init.f3` | f32 | `100.0f` |
+| `GravityLight.init.f4` | f32 | `500.0f` |
+| `GravityLight.init.f5` | f32 | `0.5f` |
+| `GravityLightRoad.init.f1` | f32 | `2500.0f` |
+| `GravityLightRoad.init.f2` | f32 | `250.0f` |
+| `GravityLightRoad.init.f3` | f32 | `0.5f` |
+| `GravityLightRoad.init.f4` | f32 | `0.5f` |
 | `GravityLightRoad.sAccel` | f32 | `2.0f` |
 | `GravityLightRoad.sBaseInterpoleRate` | f32 | `0.2f` |
 | `GravityLightRoad.sSpeedMax` | f32 | `20.0f` |
+| `GreenCaterpillarBig.calcBodyDir.f1` | f32 | `300.0f` |
+| `GreenCaterpillarBig.calcBodyDir.f2` | f32 | `0.1f` |
+| `GreenCaterpillarBig.exeWriggle.f1` | f32 | `2.0f` |
 | `GreenCaterpillarBig.exeWriggle.moveCoordAndFollowTrans.1` | f32 | `50.0f` |
+| `GreenCaterpillarBig.initBodyParts.f1` | f32 | `300.0f` |
+| `GreenCaterpillarBig.tryGenerateBodyParts.f1` | f32 | `300.0f` |
+| `HatchWaterPlanet.init.f1` | f32 | `100.0f` |
+| `HipDropMoveObj.init.f1` | f32 | `225.0f` |
+| `HipDropMoveObj.init.f2` | f32 | `100.0f` |
+| `HipDropRock.appearItem.f1` | f32 | `10.0f` |
+| `HipDropRock.appearItem.f2` | f32 | `40.0f` |
+| `HipDropRock.initBreakModel.f1` | f32 | `180.0f` |
 | `HipDropRock.sDefaultStarPeaceNum` | s32 | `6` |
+| `HipDropSwitch.exeOff.f1` | f32 | `10.0f` |
+| `HipDropSwitch.HipDropSwitch.f1` | f32 | `0.2f` |
+| `HipDropSwitch.HipDropSwitch.f2` | f32 | `0.90f` |
+| `HipDropSwitch.initStarPointerTarget.f1` | f32 | `150.0f` |
 | `HipDropSwitch.sOnSomethingAcc` | s32 | `0` |
+| `HipDropTimerSwitch.exeOff.f1` | f32 | `10.0f` |
+| `HipDropTimerSwitch.HipDropTimerSwitch.f1` | f32 | `0.2f` |
+| `HipDropTimerSwitch.HipDropTimerSwitch.f2` | f32 | `0.9f` |
+| `HipDropTimerSwitch.init.f1` | f32 | `150.0f` |
+| `HitWallTimerSwitch.init.f1` | f32 | `50.f` |
+| `IceStep.init.f1` | f32 | `90.0f` |
+| `IceStep.setOn.f1` | f32 | `0.2f` |
+| `IceVolcanoUpDownPlane.tryCalcNearestPosToPlayer.f1` | f32 | `380.0f` |
 | `IronCannonShell.cDefaultBulletSpeed` | f32 | `30.0f` |
 | `IronCannonShell.cGroupClippingNum` | s32 | `32` |
 | `IronCannonShell.cGunPointModelOffset` | f32 | `100.0f` |
 | `IronCannonShell.cGunPointOffset` | f32 | `75.0f` |
 | `IronCannonShell.cShellBaseScale` | f32 | `1.3f` |
 | `IronCannonShell.cShellNum` | s32 | `3` |
+| `ItemAppearStone.init.f1` | f32 | `100.0f` |
 | `ItemBlock.cAppearItemOffsetY` | f32 | `100.0f` |
 | `ItemBlock.cAppearItemStep` | s32 | `1` |
+| `ItemBlock.exeAppearItem.f1` | f32 | `40.0f` |
+| `ItemBlock.exeAppearItemSplash.f1` | f32 | `40.0f` |
 | `ItemBlock.hBrightness` | f32 | `0.998646f` |
 | `ItemBlock.hLastBonusSplashRangeH` | f32 | `10.0f` |
 | `ItemBlock.hNumTimerLastPiece` | s32 | `11` |
 | `ItemBlock.hPointLightOffsetY` | f32 | `100.0f` |
+| `ItemBlock.init.f1` | f32 | `150.0f` |
+| `ItemBlock.init.f2` | f32 | `150.0f` |
+| `ItemBlock.init.f3` | f32 | `150.0f` |
+| `ItemBlock.init.f4` | f32 | `77.0f` |
+| `ItemBlock.initBlock.f1` | f32 | `100.0f` |
+| `ItemBlock.initBlock.f2` | f32 | `100.0f` |
+| `ItemBlock.receiveMsgPlayerAttack.f1` | f32 | `0.25f` |
 | `ItemBubble.cHitSensorRadius` | f32 | `120.f` |
 | `ItemBubble.cShootStarSpeed` | f32 | `24.0f` |
 | `ItemBubble.cSwingRange` | f32 | `120.0f` |
+| `ItemBubble.exeWait.f1` | f32 | `2.0f` |
+| `ItemBubble.exeWait.f2` | f32 | `30.0f` |
+| `ItemBubble.exeWait.f3` | f32 | `0.1f` |
+| `ItemBubble.exeWait.f4` | f32 | `8.0f` |
+| `ItemBubble.init.f1` | f32 | `1.2f` |
+| `ItemBubble.init.f10` | f32 | `67.379997f` |
+| `ItemBubble.init.f11` | f32 | `130.37f` |
+| `ItemBubble.init.f12` | f32 | `60.0f` |
+| `ItemBubble.init.f13` | f32 | `60.0f` |
+| `ItemBubble.init.f14` | f32 | `100.0f` |
+| `ItemBubble.init.f15` | f32 | `500.0f` |
+| `ItemBubble.init.f2` | f32 | `67.379997f` |
+| `ItemBubble.init.f3` | f32 | `55.66f` |
+| `ItemBubble.init.f4` | f32 | `92.290001f` |
+| `ItemBubble.init.f5` | f32 | `55.66f` |
+| `ItemBubble.init.f6` | f32 | `43.950001f` |
+| `ItemBubble.init.f7` | f32 | `19.040001f` |
+| `ItemBubble.init.f8` | f32 | `55.66f` |
+| `ItemBubble.init.f9` | f32 | `130.37f` |
+| `JetTurtle.appear.f1` | f32 | `100.0f` |
+| `JetTurtle.appear.f2` | f32 | `60.0f` |
+| `JetTurtle.attackSensor.f1` | f32 | `0.2f` |
+| `JetTurtle.boundDrop.f1` | f32 | `5.0f` |
+| `JetTurtle.boundDrop.f2` | f32 | `0.9f` |
+| `JetTurtle.boundDrop.f3` | f32 | `0.8f` |
+| `JetTurtle.boundDrop.f4` | f32 | `0.9f` |
 | `JetTurtle.exeDrop.addVelocityToGravity.1` | f32 | `1.0f` |
+| `JetTurtle.exeDrop.f1` | f32 | `10.0f` |
+| `JetTurtle.exeDrop.f2` | f32 | `10.0f` |
+| `JetTurtle.exeTakenReserve.f1` | f32 | `50.0f` |
+| `JetTurtle.exeTakenReserve.f2` | f32 | `0.5f` |
+| `JetTurtle.exeTakenReserve.f3` | f32 | `0.25f` |
+| `JetTurtle.exeThrowing.f1` | f32 | `0.2f` |
+| `JetTurtle.exeThrowing.f2` | f32 | `57.295776f` |
+| `JetTurtle.exeWait.f1` | f32 | `120.0f` |
+| `JetTurtle.init2.f1` | f32 | `1000.0f` |
+| `JetTurtle.init2.f2` | f32 | `50.0f` |
+| `JetTurtle.init2.f3` | f32 | `1000.0f` |
+| `JetTurtle.init2.f4` | f32 | `50.0f` |
+| `JetTurtle.init2.f5` | f32 | `50.0f` |
+| `JetTurtle.init2.f6` | f32 | `35.0f` |
+| `JetTurtle.init2.f7` | f32 | `20.0f` |
 | `JetTurtle.sBounceRateFloor` | f32 | `0.8f` |
 | `JetTurtle.sBounceRateWall` | f32 | `0.9f` |
 | `JetTurtle.sFlightMaxDistance` | f32 | `10000.0f` |
@@ -22120,6 +26161,10 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `JetTurtle.sReviveStep` | s32 | `45` |
 | `JetTurtle.sThrowSpdHoming` | f32[3] | `24.0f, 20.0f, 24.0f` |
 | `JetTurtle.sThrowSpdStraight` | f32[3] | `30.0f, 20.0f, 30.0f` |
+| `JumpHole.bindHole.f1` | f32 | `0.1f` |
+| `JumpHole.bindHole.f2` | f32 | `0.1f` |
+| `JumpHole.exeSetCenter.f1` | f32 | `0.0001f` |
+| `JumpHole.initParabola.f1` | f32 | `2.0f` |
 | `JumpHole.sBallToCenterEndFreq` | f32 | `0.7f` |
 | `JumpHole.sBallToCenterFreq` | f32 | `0.98f` |
 | `JumpHole.sForceSetStartTime` | s32 | `40` |
@@ -22130,18 +26175,62 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `JumpHole.sLaunchFixTime` | s32 | `10` |
 | `JumpHole.sLaunchValidHeight` | f32 | `160.0f` |
 | `JumpHole.sSetUpTime` | s32 | `45` |
+| `JumpStand.endBindAndShootUp.f1` | f32 | `0.1f` |
+| `JumpStand.endBindAndShootUp.f2` | f32 | `3.0f` |
 | `JumpStand.exeHipDropBound.1` | s32 | `15` |
 | `JumpStand.exeHipDropBound.2` | s32 | `15` |
 | `JumpStand.exeHipDropBound.3` | s32 | `20` |
+| `JumpStand.exeHipDropBound.f1` | f32 | `6.0f` |
+| `JumpStand.exeHipDropBound.f2` | f32 | `43.0f` |
 | `JumpStand.exeTrampleBound.1` | s32 | `5` |
 | `JumpStand.exeTrampleBound.2` | s32 | `5` |
 | `JumpStand.exeTrampleBound.3` | s32 | `10` |
+| `JumpStand.exeTrampleBound.f1` | f32 | `32.0f` |
+| `JumpStand.exeTrampleBound.f2` | f32 | `26.0f` |
+| `JumpStand.init.f1` | f32 | `100.0f` |
+| `JumpStand.init.f2` | f32 | `200.0f` |
+| `JumpStand.updateBindActorMtx.f1` | f32 | `0.40f` |
 | `KeySwitch.exeAppear.addVelocityToGravity.1` | f32 | `2.0f` |
+| `KeySwitch.exeAppear.f1` | f32 | `40.0f` |
+| `KeySwitch.exeAppear.f2` | f32 | `3.0f` |
+| `KeySwitch.exeAppear.f3` | f32 | `1.5f` |
+| `KeySwitch.exeAppear.f4` | f32 | `10.0f` |
+| `KeySwitch.exeAppear.f5` | f32 | `0.60f` |
+| `KeySwitch.exeAppear.f6` | f32 | `0.7f` |
 | `KeySwitch.exeWait.setBckRate.1` | f32 | `1.0f` |
+| `KeySwitch.init.f1` | f32 | `105.0f` |
+| `KeySwitch.init.f2` | f32 | `105.0f` |
+| `KeySwitch.init.f3` | f32 | `105.0f` |
+| `KeySwitch.init.f4` | f32 | `105.0f` |
+| `KeySwitch.init.f5` | f32 | `90.0f` |
+| `KeySwitch.tryAvoid.f1` | f32 | `10.0f` |
 | `KillerGunnerSingle.exeShoot.1` | s32 | `40` |
+| `KillerGunnerSingle.exeShoot.f1` | f32 | `500.0f` |
+| `KillerGunnerSingle.exeShoot.f2` | f32 | `1000.0f` |
+| `KillerGunnerSingle.init.f1` | f32 | `250.0f` |
+| `KillerGunnerSingle.init.f2` | f32 | `100.0f` |
+| `KillerGunnerSingle.sShellPos` | f32[3] | `0.0f, 0.0f, 700.0f` |
+| `LargeChain.createChainParts.f1` | f32 | `90.0f` |
+| `LargeChain.createChainParts.f2` | f32 | `180.0f` |
+| `LargeChain.createChainParts.f3` | f32 | `200.0f` |
 | `LargeChain.sBreakInterval` | s32 | `5` |
 | `LargeChain.sPartsLength` | f32 | `200.0f` |
+| `LavaBallRisingPlanetLava.exeScaleDown.f1` | f32 | `1.1f` |
+| `LavaBallRisingPlanetLava.exeScaleUp.f1` | f32 | `1.1f` |
+| `LavaBreakColumn.control.f1` | f32 | `1000.0f` |
 | `LavaBreakColumn.sEffectPosOffsetY` | f32 | `5000.0f` |
+| `LavaFloater.init.f1` | f32 | `100.0f` |
+| `LavaFloater.initAfterPlacement.f1` | f32 | `1000.0f` |
+| `LavaGalaxyParts.init.f1` | f32 | `100.0f` |
+| `LavaGeyser.init.f1` | f32 | `100.0f` |
+| `LavaGeyser.init.f2` | f32 | `100.0f` |
+| `LavaGeyser.updateHitSensor.f1` | f32 | `100.f` |
+| `LavaHomeSeesaw.init.f1` | f32 | `100.0f` |
+| `LavaHomeSeesaw.init.f2` | f32 | `0.1f` |
+| `LavaHomeSeesaw.initAfterPlacement.f1` | f32 | `1000.0f` |
+| `LavaHomeSeesawRotator.addForceHipDrop.f1` | f32 | `0.1f` |
+| `LavaHomeSeesawRotator.getDistanceFromRotAxis.f1` | f32 | `0.001f` |
+| `LavaHomeSeesawRotator.init.f1` | f32 | `0.01f` |
 | `LavaHomeSeesawRotator.sAngularAccelHipDrop` | f32 | `40.0f` |
 | `LavaHomeSeesawRotator.sAngularSpeedMin` | f32 | `0.01f` |
 | `LavaHomeSeesawRotator.sAngularVelocityFric` | f32 | `0.99f` |
@@ -22151,12 +26240,36 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `LavaHomeSeesawRotator.sGroundOnReboundTime` | s32 | `8` |
 | `LavaHomeSeesawRotator.sInertiaConstDefault` | f32 | `1000.0f` |
 | `LavaHomeSeesawRotator.sMoveStartFrame` | s32 | `2` |
+| `LavaHomeSeesawRotator.start.f1` | f32 | `1.05f` |
+| `LavaHomeSeesawRotator.updateRestoreForce.f1` | f32 | `0.01f` |
+| `LavaHomeSeesawRotator.updateRestoreForce.f2` | f32 | `0.1f` |
+| `LavaHomeSeesawRotator.updateVelocity.f1` | f32 | `0.1f` |
+| `LavaHomeVolcanoFlow.init.f1` | f32 | `100.0f` |
+| `LavaJamboSunPlanet.exeMove.f1` | f32 | `0.1f` |
+| `LavaJamboSunPlanet.init.f1` | f32 | `100.0f` |
+| `LavaJamboSunPlanet.init.f2` | f32 | `500.0f` |
+| `LavaJamboSunPlanet.init.f3` | f32 | `100.0f` |
+| `LavaProminence.exeMoveEndExtra.f1` | f32 | `90000.0f` |
+| `LavaProminence.exeMoveStart.f1` | f32 | `300.0f` |
+| `LavaProminence.exeMoveStartExtra.f1` | f32 | `300.0f` |
+| `LavaProminence.exeMoveStartExtra.f2` | f32 | `300.0f` |
+| `LavaProminence.init.f1` | f32 | `120.0f` |
+| `LavaProminence.init.f2` | f32 | `300.0f` |
+| `LavaProminence.init.f3` | f32 | `300.0f` |
+| `LavaProminence.init.f4` | f32 | `100.0f` |
 | `LavaProminence.sDefaultMoveSpeed` | f32 | `20.0f` |
 | `LavaProminence.sDropClipLeaveMargin` | f32 | `150.0f` |
+| `LavaProminenceTriple.control.f1` | f32 | `100.0f` |
+| `LavaProminenceTriple.init.f1` | f32 | `80.0f` |
 | `LavaProminenceTriple.sDropClipLeaveMargin` | f32 | `150.0f` |
 | `LavaProminenceTriple.sEnvironmentRadius` | f32 | `2100.0f` |
 | `LavaProminenceTriple.sInitRotateVel` | f32 | `100.0f` |
+| `LavaProminenceTriple.sNoSensorTable` | f32[7] | `0.0f, 59.765598f, 134.2f, 176.045f, 222.6f, 278.26199f, 360.0f` |
 | `LavaProminenceTriple.sToSensorRadius` | f32 | `1900.0f` |
+| `LavaProminenceTriple.updateHitSensor.f1` | f32 | `2.0f` |
+| `LavaProminenceTriple.updateHitSensor.f2` | f32 | `360.0f` |
+| `LavaSteam.attackSensor.f1` | f32 | `0.7f` |
+| `LavaSteam.exeWait.f1` | f32 | `0.001f` |
 | `LavaSteam.sAppearTime` | s32 | `82` |
 | `LavaSteam.sHitCylinderHeight` | f32 | `330.0f` |
 | `LavaSteam.sHitCylinderRange` | f32 | `10.0f` |
@@ -22182,27 +26295,113 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `LotusLeaf.sShakeSpeedAtten` | f32 | `0.95f` |
 | `LotusLeaf.sShakeSpeedMin` | f32 | `0.005f` |
 | `LotusLeaf.sSinkDepthMax` | f32 | `25.0f` |
+| `MagicBell.exeRing.f1` | f32 | `0.99f` |
+| `MagicBell.exeRing.f2` | f32 | `0.1f` |
+| `MagicBell.exeRing.f3` | f32 | `0.1f` |
+| `MagicBell.init.f1` | f32 | `70.0f` |
+| `MagicBell.init.f10` | f32 | `0.3f` |
+| `MagicBell.init.f11` | f32 | `0.95f` |
+| `MagicBell.init.f2` | f32 | `80.0f` |
+| `MagicBell.init.f3` | f32 | `100.0f` |
+| `MagicBell.init.f4` | f32 | `100.0f` |
+| `MagicBell.init.f5` | f32 | `80.0f` |
+| `MagicBell.init.f6` | f32 | `100.0f` |
+| `MagicBell.init.f7` | f32 | `0.60f` |
+| `MagicBell.init.f8` | f32 | `0.99f` |
+| `MagicBell.init.f9` | f32 | `50.0f` |
+| `MagicBell.receiveMsgPlayerAttack.f1` | f32 | `100.0f` |
+| `MagicBell.receiveMsgPlayerAttack.f2` | f32 | `200.0f` |
 | `MagicBell.sClapperTouchCos` | f32 | `0.95f` |
 | `MagicBell.sPointerFlickSpeedSq` | f32 | `64.0f` |
 | `MagicBell.sRehitStep` | s32 | `10` |
+| `MagicBell.startRing.f1` | f32 | `5.0f` |
 | `ManholeCover.sRattleTime` | s32 | `45` |
 | `ManholeCover.sSensorRadius` | f32 | `150.0f` |
+| `MapObjActor.tryDeleteWaitEffect.f1` | f32 | `4000.0f` |
 | `MapObjActor.tryDeleteWaitEffect.isNearPlayer.1` | f32 | `4000.0f` |
+| `MapObjActor.tryEmitWaitEffect.f1` | f32 | `4000.0f` |
+| `MapObjActorInitInfo.setupInitInfoTypical.f1` | f32 | `200.0f` |
+| `MapObjActorInitInfo.setupInitInfoTypical.f2` | f32 | `200.0f` |
 | `MapObjConnector.sDepth` | f32 | `500.0f` |
 | `MapObjConnector.sOffset` | f32 | `50.0f` |
+| `MapParts.initModelAndCollision.f1` | f32 | `100.0f` |
+| `MapParts.initModelAndCollision.f2` | f32 | `0.5f` |
+| `MapParts.initModelAndCollision.f3` | f32 | `0.5f` |
+| `MapPartsFloatingForce.exeMove.f1` | f32 | `0.1f` |
+| `MapPartsFloatingForce.exeMove.f2` | f32 | `0.1f` |
+| `MapPartsFloatingForce.exeMoveReturn.f1` | f32 | `0.1f` |
+| `MapPartsFloatingForce.initForSpringMotion.f1` | f32 | `0.001f` |
+| `MapPartsFloatingForce.initForSpringMotion.f2` | f32 | `0.001f` |
+| `MapPartsFloatingForce.initForSpringMotion.f3` | f32 | `0.1f` |
+| `MapPartsFloatingForce.updateVelocity.f1` | f32 | `0.05f` |
+| `MapPartsFloatingForce.updateVelocity.f2` | f32 | `0.0001f` |
+| `MapPartsFloatingForce.updateVelocity.f3` | f32 | `0.05f` |
+| `MapPartsFloatingForce.updateVelocity.f4` | f32 | `0.0001f` |
+| `MapPartsFloatingForce.updateVelocity.f5` | f32 | `0.98f` |
+| `MapPartsFloatingForce.updateVelocity.f6` | f32 | `50.0f` |
+| `MapPartsFloatingForce.updateVelocity.f7` | f32 | `50.0f` |
+| `MapPartsFloatingForce.updateVelocitySpring.f1` | f32 | `3.0f` |
+| `MapPartsRailGuideDrawer.initGuidePoints.f1` | f32 | `200.0f` |
+| `MapPartsRailGuideDrawer.initGuidePoints.f2` | f32 | `2.0f` |
+| `MapPartsRailGuidePoint.init.f1` | f32 | `5000.0f` |
 | `MapPartsRailGuidePoint.sShadowRadius` | f32 | `20.0f` |
+| `MapPartsRailMover.calcMoveSpeed.f1` | f32 | `0.0001f` |
+| `MapPartsRailMover.calcTimeToNextRailPoint.f1` | f32 | `0.0001f` |
+| `MapPartsRailMover.calcTimeToNextRailPoint.f2` | f32 | `0.5f` |
+| `MapPartsRailMover.calcTimeToNextRailPoint.f3` | f32 | `2.0f` |
+| `MapPartsRailMover.exeMove.f1` | f32 | `0.0001f` |
+| `MapPartsRailMover.exeMoveStart.f1` | f32 | `7.0f` |
 | `MapPartsRailMover.exeStopAtPoint.setRailCoordSpeed.1` | f32 | `0.0f` |
 | `MapPartsRailMover.setStateStopAtEndBeforeRotate.setRailCoordSpeed.1` | f32 | `0.0f` |
+| `MapPartsRailRotator.updateHostRotateMtx.f1` | f32 | `180.0f` |
+| `MapPartsRailRotator.updateInfo.f1` | f32 | `0.01f` |
+| `MapPartsRotator.exeRotate.f1` | f32 | `0.00001f` |
+| `MapPartsRotator.exeRotateStart.f1` | f32 | `0.5f` |
+| `MapPartsRotator.initRotateSpeed.f1` | f32 | `0.01f` |
+| `MapPartsRotator.updateBaseHostMtx.f1` | f32 | `180.0f` |
+| `MapPartsRotator.updateVelocity.f1` | f32 | `0.5f` |
+| `MapPartsRotator.updateVelocity.f2` | f32 | `0.5f` |
+| `MapPartsSeesaw1AxisRotator.addForceHipDrop.f1` | f32 | `0.1f` |
+| `MapPartsSeesaw1AxisRotator.getDistanceFromRotAxis.f1` | f32 | `0.001f` |
+| `MapPartsSeesaw1AxisRotator.init.f1` | f32 | `0.01f` |
 | `MapPartsSeesaw1AxisRotator.sAngularAccelHipDrop` | f32 | `40.0f` |
 | `MapPartsSeesaw1AxisRotator.sAngularSpeedMin` | f32 | `0.1f` |
 | `MapPartsSeesaw1AxisRotator.sAngularVelocityFric` | f32 | `0.99f` |
 | `MapPartsSeesaw1AxisRotator.sCollisionEfficiency` | f32 | `-0.5f` |
 | `MapPartsSeesaw1AxisRotator.sInertiaConstDefault` | f32 | `1000.0f` |
 | `MapPartsSeesaw1AxisRotator.sMoveStartFrame` | s32 | `2` |
+| `MapPartsSeesaw1AxisRotator.start.f1` | f32 | `1.05f` |
+| `MapPartsSeesaw1AxisRotator.updateRestoreForce.f1` | f32 | `0.01f` |
+| `MapPartsSeesaw1AxisRotator.updateRestoreForce.f2` | f32 | `0.1f` |
+| `MapPartsSeesaw1AxisRotator.updateVelocity.f1` | f32 | `0.1f` |
+| `MapPartsSeesaw2AxisRotator.getInertiaConst.f1` | f32 | `0.1f` |
+| `MapPartsSeesaw2AxisRotator.restoreMove.f1` | f32 | `0.0001f` |
+| `MapPartsSeesaw2AxisRotator.rotate.f1` | f32 | `0.001f` |
 | `MapPartsSeesaw2AxisRotator.sInertiaConstDefault` | f32 | `500.0f` |
 | `MapPartsSeesaw2AxisRotator.sRestoreForceDefault` | f32 | `100.0f` |
+| `MarblePlanet.attackSensor.f1` | f32 | `440.0f` |
+| `MarblePlanet.control.f1` | f32 | `30.0f` |
+| `MarblePlanet.crashElectron.f1` | f32 | `5.0f` |
+| `MarblePlanet.crashElectron.f2` | f32 | `1.2f` |
+| `MarblePlanet.crashElectron.f3` | f32 | `1.2f` |
+| `MarblePlanet.crashElectron.f4` | f32 | `1.2f` |
+| `MarblePlanet.exeAttack.f1` | f32 | `40.0f` |
 | `MarblePlanet.exeBreakCore.1` | s32 | `1` |
 | `MarblePlanet.exeMove.attenuateVelocity.1` | f32 | `0.99f` |
+| `MarblePlanet.exeMove.f1` | f32 | `13.0f` |
+| `MarblePlanet.exeMove.f2` | f32 | `13.0f` |
+| `MarblePlanet.exeScaleUpCore.f1` | f32 | `0.5f` |
+| `MarblePlanet.exeScaleUpCore.f2` | f32 | `0.5f` |
+| `MarblePlanet.exeScaleUpCore.f3` | f32 | `1.3f` |
+| `MarblePlanet.init.f1` | f32 | `50.0f` |
+| `MarblePlanet.init.f2` | f32 | `100.0f` |
+| `MarblePlanet.init.f3` | f32 | `500.0f` |
+| `MarblePlanet.init.f4` | f32 | `200.0f` |
+| `MarblePlanet.initCoreAndElectron.f1` | f32 | `360.0f` |
+| `MarblePlanet.initCoreAndElectron.f2` | f32 | `1000.0f` |
+| `MarblePlanet.initCoreAndElectron.f3` | f32 | `360.0f` |
+| `MarioLauncher.doAim.f1` | f32 | `2.0f` |
+| `MarioLauncher.doAim.f2` | f32 | `0.5f` |
 | `MarioLauncher.doFlight.reboundVelocityFromEachCollision.1` | f32 | `0.0f` |
 | `MarioLauncher.sCameraYOffset` | f32 | `150.0f` |
 | `MarioLauncher.sCameraZOffset` | f32 | `200.0f` |
@@ -22235,10 +26434,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MarioLauncher.sShellOffset` | f32 | `180.0f` |
 | `MarioLauncher.sShellRadius` | f32 | `80.0f` |
 | `MarioLauncher.sStartActiveFrame` | s32 | `10` |
+| `MarioLauncherAttractor.init.f1` | f32 | `1000.0f` |
 | `MechaKoopaPartsHead.exeDemoBreak.shakeCameraInfinity.1` | f32 | `0.2f` |
 | `MechaKoopaPartsHead.exeDemoBreak.shakeCameraInfinity.2` | f32 | `2.0f` |
 | `MeteoContainer.exeDestroy.1` | s32 | `2` |
 | `MeteoContainer.exeDestroy.2` | s32 | `3` |
+| `MeteoContainer.init.f1` | f32 | `150.0f` |
+| `MeteoContainer.init.f2` | f32 | `150.0f` |
+| `MeteoContainer.init.f3` | f32 | `150.0f` |
 | `MeteorStrike.cBinderRadius` | f32 | `80.0f` |
 | `MeteorStrike.cRotateSpeed` | f32 | `-7.5f` |
 | `MeteorStrike.cRumbleDistance` | f32 | `1000.0f` |
@@ -22246,10 +26449,18 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MeteorStrike.cSensorRadius` | f32 | `90.0f` |
 | `MeteorStrike.cShadowRadius` | f32 | `120.0f` |
 | `MeteorStrike.cShowShadowFrame` | s32 | `150` |
+| `MeteorStrike.exeMove.f1` | f32 | `120.0f` |
+| `MeteorStrike.getSpeed.f1` | f32 | `10.0f` |
+| `MeteorStrike.init.f1` | f32 | `3000.0f` |
+| `MeteorStrike.initAfterPlacement.f1` | f32 | `80.0f` |
+| `MeteorStrike.initAfterPlacement.f2` | f32 | `80.0f` |
+| `MeteorStrike.isInScreen.f1` | f32 | `200.0f` |
+| `MeteorStrikeLauncher.init.f1` | f32 | `4096.0f` |
 | `MeteorStrikeLauncher.sClipRadius` | f32 | `200.0f` |
 | `MiniatureGalaxy.cDigitBase` | s32 | `10` |
 | `MiniatureGalaxy.cDigitTexStep` | f32 | `0.1f` |
 | `MiniatureGalaxy.cInitialRotateY` | f32[5] | `0.0f, 210.0f, 80.0f, 330.0f, 130.0f` |
+| `MiniatureGalaxy.cNamePlateOffset` | f32[3] | `0.0f, 1500.0f, 0.0f` |
 | `MiniatureGalaxy.cOpenBgmFadeFrame` | u32 | `30` |
 | `MiniatureGalaxy.cOpenDisappearStep` | s32 | `75` |
 | `MiniatureGalaxy.cOpenMiniatureAppearStep` | s32 | `45` |
@@ -22262,16 +26473,123 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MiniatureGalaxy.cZoomInReactionFreq` | f32 | `1.5f` |
 | `MiniatureGalaxy.cZoomInScale` | f32 | `1.0f` |
 | `MiniatureGalaxy.cZoomOutScale` | f32 | `0.65f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f1` | f32 | `60.0f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f2` | f32 | `0.8f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f3` | f32 | `0.8f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f4` | f32 | `0.8f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f5` | f32 | `50.0f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f6` | f32 | `0.8f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f7` | f32 | `0.8f` |
+| `MorphItemObjNeo.calcAndSetBaseMtx.f8` | f32 | `0.8f` |
+| `MorphItemObjNeo.control.f1` | f32 | `2.0f` |
+| `MorphItemObjNeo.control.f2` | f32 | `2.0f` |
+| `MorphItemObjNeo.control.f3` | f32 | `2.0f` |
 | `MorphItemObjNeo.cSpiralFrames` | u16 | `60` |
 | `MorphItemObjNeo.cSpiralRadiusMin` | f32 | `30.0f` |
 | `MorphItemObjNeo.cSpiralRadiusPerFrame` | f32 | `2.0f` |
 | `MorphItemObjNeo.cSpiralTurnFrames` | u16 | `30` |
+| `MorphItemObjNeo.exeAppear.f1` | f32 | `25.0f` |
+| `MorphItemObjNeo.exeAppear.f2` | f32 | `0.75f` |
+| `MorphItemObjNeo.exeFly.f1` | f32 | `0.999f` |
+| `MorphItemObjNeo.exeFly.f2` | f32 | `0.2f` |
+| `MorphItemObjNeo.exeSwitchAppear.f1` | f32 | `10.0f` |
+| `MorphItemObjNeo.exeWait.f1` | f32 | `130.0f` |
+| `MorphItemObjNeo.exeWait.f2` | f32 | `190.0f` |
+| `MorphItemObjNeo.exeWait.f3` | f32 | `110.0f` |
+| `MorphItemObjNeo.exeWait.f4` | f32 | `80.0f` |
+| `MorphItemObjNeo.exeWait.f5` | f32 | `60.0f` |
+| `MorphItemObjNeo.exeWait.f6` | f32 | `2.0f` |
+| `MorphItemObjNeo.exeWait.f7` | f32 | `0.5f` |
+| `MorphItemObjNeo.exeWait.f8` | f32 | `0.75f` |
+| `MorphItemObjNeo.init.f1` | f32 | `80.0f` |
+| `MorphItemObjNeo.init.f2` | f32 | `60.0f` |
+| `MorphItemObjNeo.init.f3` | f32 | `80.0f` |
+| `MorphItemObjNeo.init.f4` | f32 | `60.0f` |
+| `MorphItemObjNeo.init.f5` | f32 | `70.0f` |
+| `MorphItemObjNeo.init.f6` | f32 | `60.0f` |
+| `MorphItemObjNeo.init.f7` | f32 | `2000.0f` |
+| `MorphItemObjNeo.init.f8` | f32 | `40.0f` |
+| `MorphItemObjNeo.init.f9` | f32 | `2000.0f` |
+| `MorphItemObjNeo.receiveOtherMsg.f1` | f32 | `50.0f` |
+| `MorphItemObjNeo.receiveOtherMsg.f2` | f32 | `30.0f` |
+| `NeedlePlant.init.f1` | f32 | `180.0f` |
+| `NeedlePlant.init.f2` | f32 | `150.0f` |
+| `NeedlePlant.init.f3` | f32 | `150.0f` |
+| `NeedlePlant.init.f4` | f32 | `150.0f` |
+| `NeedlePlant.kill.f1` | f32 | `10.0f` |
+| `NeedlePlant.kill.f2` | f32 | `40.0f` |
 | `NeedlePlant.sAttackSensorSize` | f32 | `70.0f` |
+| `NormalMapBase.createGradTexture.f1` | f32 | `255.0f` |
+| `NormalMapBase.createGradTexture.f2` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f1` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f2` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f3` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f4` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f5` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f6` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f7` | f32 | `255.0f` |
+| `NormalMapBase.drawMaterialSetting.f8` | f32 | `255.0f` |
+| `NormalMapBase.drawSetting.f1` | f32 | `0.5f` |
+| `NormalMapBase.drawSetting.f2` | f32 | `0.5f` |
+| `NormalMapBase.gradLevel.f1` | f32 | `256.0f` |
+| `NormalMapBase.gradLevel.f2` | f32 | `255.0f` |
+| `NormalMapBase.gradLevel.f3` | f32 | `255.0f` |
+| `NormalMapBase.gradLevel.f4` | f32 | `255.0f` |
+| `NormalMapBase.setStageForObject.f1` | f32 | `2.0f` |
+| `NormalMapBase.setStageForObject.f2` | f32 | `2.0f` |
+| `NormalMapBase.swapColorGB.f1` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f2` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f3` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f4` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f5` | f32 | `127.0f` |
+| `NormalMapBase.swapColorGB.f6` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f7` | f32 | `127.0f` |
+| `NormalMapBase.swapColorGB.f8` | f32 | `128.0f` |
+| `NormalMapBase.swapColorGB.f9` | f32 | `127.0f` |
+| `NormalMapBase.updateLightMtx.f1` | f32 | `100000.0f` |
+| `NormalMapBase.updateLightMtx.f10` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f11` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f2` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f3` | f32 | `1.0077f` |
+| `NormalMapBase.updateLightMtx.f4` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f5` | f32 | `1.0077f` |
+| `NormalMapBase.updateLightMtx.f6` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f7` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f8` | f32 | `0.5f` |
+| `NormalMapBase.updateLightMtx.f9` | f32 | `0.5f` |
+| `Note.init.f1` | f32 | `80.0f` |
+| `Note.init.f2` | f32 | `30.0f` |
 | `Note.sFlyUpSpeed` | f32 | `30.0f` |
 | `Note.sRotateSpeed` | f32 | `8.0f` |
 | `Note.sStepFlyUp` | s32 | `10` |
+| `NoteFairy.exeAppearNote.f1` | f32 | `5.0f` |
+| `NoteFairy.exeAppearNoteBloom.f1` | f32 | `5.0f` |
 | `NoteFairy.exeDemoAppear.1` | s32 | `70` |
 | `NoteFairy.exeDemoAppear.2` | s32 | `130` |
+| `NoteFairy.exeDemoAppear.f1` | f32 | `300.0f` |
+| `NoteFairy.exeDemoAppear.f2` | f32 | `180.0f` |
+| `NoteFairy.exeDemoAppear.f3` | f32 | `90.0f` |
+| `NoteFairy.init.f1` | f32 | `50.0f` |
+| `NoteFairy.init.f2` | f32 | `200.0f` |
+| `NoteFairy.init.f3` | f32 | `800.0f` |
+| `NoteFairy.init.f4` | f32 | `800.0f` |
+| `NoteFairy.init.f5` | f32 | `0.5f` |
+| `NoteFairy.init.f6` | f32 | `0.5f` |
+| `NoteFairy.NoteFairy.f1` | f32 | `13.0f` |
+| `NoteFairy.NoteFairy.f2` | f32 | `150.0f` |
+| `OceanFloaterLandParts.init.f1` | f32 | `100.0f` |
+| `OceanSmallTurtle.boundFloater.f1` | f32 | `7.5f` |
+| `OceanSmallTurtle.boundFloater.f2` | f32 | `9.6f` |
+| `OceanSmallTurtle.exeFloatSignal.f1` | f32 | `3.0f` |
+| `OceanSmallTurtle.exeRailMove.f1` | f32 | `100.0f` |
+| `OceanSmallTurtle.exeRailMove.f2` | f32 | `500.0f` |
+| `OceanSmallTurtle.exeWait.f1` | f32 | `150.0f` |
+| `OceanSmallTurtle.floatFloater.f1` | f32 | `150.0f` |
+| `OceanSmallTurtle.floatFloater.f2` | f32 | `150.0f` |
+| `OceanSmallTurtle.init.f1` | f32 | `100.0f` |
+| `OceanSmallTurtle.init.f2` | f32 | `100.0f` |
+| `OceanSmallTurtle.init.f3` | f32 | `100.0f` |
+| `OceanSmallTurtle.init.f4` | f32 | `500.0f` |
 | `OceanSmallTurtle.sAccelMax` | f32 | `40.0f` |
 | `OceanSmallTurtle.sBoundAmpMax` | f32 | `20.0f` |
 | `OceanSmallTurtle.sCatchRailSpeed` | f32 | `2.0f` |
@@ -22281,12 +26599,41 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `OceanSmallTurtle.sRambleSide` | f32 | `1.0f` |
 | `OceanSmallTurtle.sRisingSpeedAtFloatSignal` | f32 | `0.5f` |
 | `OceanSmallTurtle.sStartFloatPower` | f32 | `1.0f` |
+| `OceanWaveFloater.calcAndSetBaseMtx.f1` | f32 | `180.0f` |
+| `PalmIsland.exeFloat.f1` | f32 | `90.0f` |
+| `PalmIsland.exeFloat.f2` | f32 | `1.44f` |
+| `PalmIsland.exeFloat.f3` | f32 | `1.5f` |
+| `PalmIsland.init.f1` | f32 | `100.0f` |
+| `PhantomShipBoxFloater.floaterIsMoving.f1` | f32 | `0.1f` |
+| `PhantomShipBoxFloater.init.f1` | f32 | `580.0f` |
+| `PhantomShipBoxFloater.init.f2` | f32 | `575.0f` |
+| `PhantomShipBoxFloater.init.f3` | f32 | `380.0f` |
+| `PhantomShipBoxFloater.init.f4` | f32 | `375.0f` |
+| `PhantomShipBoxFloater.init.f5` | f32 | `180.0f` |
+| `PhantomShipBoxFloater.init.f6` | f32 | `175.0f` |
+| `PhantomShipBoxFloater.init.f7` | f32 | `100.0f` |
 | `PhantomShipBridge.exeMoveA.1` | s32 | `55` |
 | `PhantomShipBridge.exeMoveA.2` | s32 | `55` |
 | `PhantomShipBridge.exeMoveB.1` | s32 | `55` |
 | `PhantomShipBridge.exeMoveB.2` | s32 | `55` |
+| `PhantomShipBridge.init.f1` | f32 | `2000.0f` |
+| `PhantomShipHandle.init.f1` | f32 | `0.1f` |
 | `PhantomShipHandle.sClippingRadius` | f32 | `200.0f` |
 | `PhantomTorch.exeExtinguish.1` | s32 | `15` |
+| `PhantomTorch.init.f1` | f32 | `70.0f` |
+| `PhantomTorch.init.f2` | f32 | `50.0f` |
+| `PhantomTorch.init.f3` | f32 | `500.0f` |
+| `PhantomTorch.kill.f1` | f32 | `10.0f` |
+| `PhantomTorch.kill.f2` | f32 | `40.0f` |
+| `PhantomTorch.receiveOtherMsg.f1` | f32 | `350.0f` |
+| `PlantGroup.attackSensor.f1` | f32 | `2.0f` |
+| `PlantGroup.calcBoundingSphereRadius.f1` | f32 | `2.0f` |
+| `PlantGroup.calcBoundingSphereRadius.f2` | f32 | `2.0f` |
+| `PlantGroup.calcBoundingSphereRadius.f3` | f32 | `2.0f` |
+| `PlantGroup.calcBoundingSphereRadius.f4` | f32 | `2.0f` |
+| `PlantGroup.calcBoundingSphereRadius.f5` | f32 | `2.0f` |
+| `PlantGroup.generateItem.f1` | f32 | `10.0f` |
+| `PlantGroup.generateItem.f2` | f32 | `40.0f` |
 | `PlantGroup.hGenerateItemTouch` | s32 | `1` |
 | `PlantGroup.hIsShakableStep` | s32 | `20` |
 | `PlantGroup.hMiddleDist` | f32 | `300.0f` |
@@ -22296,13 +26643,23 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PlantGroup.hStrongRate` | f32 | `1.5f` |
 | `PlantGroup.hWeakDist` | f32 | `500.0f` |
 | `PlantGroup.hWeakRate` | f32 | `0.5f` |
+| `PlantGroup.initMember.f1` | f32 | `100.0f` |
+| `PlantGroup.initPosture.f1` | f32 | `0.01f` |
+| `PlantGroup.placeOnCollisionFormCircle.f1` | f32 | `2.0f` |
+| `PlantGroup.placeOnCollisionFormCircle.f2` | f32 | `100.0f` |
+| `PlantGroup.placeOnCollisionFormCircle.f3` | f32 | `2.0f` |
+| `PlantGroup.placeOnCollisionFormCircle.f4` | f32 | `2.0f` |
 | `PlantGroup.sCheckLineLength` | f32 | `1000.0f` |
 | `PlantGroup.sCoinVel` | f32 | `30.0f` |
 | `PlantGroup.sCollisionRadius` | f32 | `50.0f` |
 | `PlantGroup.sPointerTouchRadius` | f32 | `100.0f` |
 | `PlantGroup.sScratchVel` | f32 | `6.0f` |
 | `PlantGroup.sSize` | f32 | `160.0f` |
+| `PlantRailInfo.calcNearestPointPos.f1` | f32 | `10000000000.0f` |
+| `PomponPlant.sSensorOffset` | f32[3] | `55.0f, 170.0f, -100.0f` |
 | `PomponPlant.sSensorRadius` | f32 | `70.0f` |
+| `PomponPlant.tryGenItem.f1` | f32 | `10.0f` |
+| `PomponPlant.tryGenItem.f2` | f32 | `40.0f` |
 | `PowerStar.cAppearPointGroupMax` | s32 | `16` |
 | `PowerStar.cArcHeightMax` | f32 | `5000.0f` |
 | `PowerStar.cArcHeightMin` | f32 | `300.0f` |
@@ -22326,8 +26683,17 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PowerStar.cWeakNoRotateAngle` | f32 | `45.0f` |
 | `PowerStar.cWeakRotateSpeed` | f32 | `0.3f` |
 | `PowerStar.exeAppearDemoKoopa.1` | s32 | `1` |
+| `PowerStar.exeAppearDemoMove.f1` | f32 | `0.5f` |
+| `PowerStar.exeAppearDemoMove.f2` | f32 | `360.0f` |
+| `PowerStar.exeAppearDemoRise.f1` | f32 | `360.0f` |
 | `PowerStar.exeStageClearDemo.1` | s32 | `1` |
 | `PowerStar.exeWeakToWait.setBrkRate.1` | f32 | `1.0f` |
+| `PowerStar.processWait.f1` | f32 | `360.0f` |
+| `PressureBase.init.f1` | f32 | `70.0f` |
+| `PressureBase.init.f2` | f32 | `30.0f` |
+| `PressureBase.init.f3` | f32 | `70.0f` |
+| `PressureBase.init.f4` | f32 | `40.0f` |
+| `PressureBase.init.f5` | f32 | `75.0f` |
 | `PressureBase.sAimTurnRate` | f32 | `5.0f` |
 | `PressureBase.sBoundAmp` | f32 | `0.2f` |
 | `PressureBase.sBoundFreq` | f32 | `1.0f` |
@@ -22336,14 +26702,36 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PressureBase.sStepForBound` | s32 | `20` |
 | `PressureBase.sStepForChargeToShortShot` | s32 | `54` |
 | `PressureBase.sStepForChargeToShot` | s32 | `16` |
+| `PrizeRing.init.f1` | f32 | `300.0f` |
 | `PrizeRing.sDefaultLifeTime` | s32 | `800` |
 | `PrizeRing.sOnTriggerFlashFrames` | f32[9] | `10.0f, 60.0f, 110.0f, 160.0f, 210.0f, 240.0f, 270.0f, 300.0f, -1.0f` |
 | `PTimerSwitch.exeOn.1` | s32 | `25` |
+| `PTimerSwitch.init.f1` | f32 | `120.0f` |
+| `PTimerSwitch.init.f2` | f32 | `50.0f` |
+| `PunchBox.attackSensor.f1` | f32 | `410.0f` |
+| `PunchBox.init.f1` | f32 | `90.0f` |
+| `PunchBox.init.f2` | f32 | `150.0f` |
+| `PunchBox.init.f3` | f32 | `150.0f` |
+| `PunchBox.init.f4` | f32 | `150.0f` |
+| `PunchBox.init.f5` | f32 | `77.0f` |
+| `PunchBox.init.f6` | f32 | `150.0f` |
+| `PunchBox.kill.f1` | f32 | `10.0f` |
+| `PunchBox.kill.f2` | f32 | `40.0f` |
+| `PunchingKinoko.addVelocityKeepHeight.f1` | f32 | `0.5f` |
+| `PunchingKinoko.addVelocityKeepHeight.f2` | f32 | `60.0f` |
+| `PunchingKinoko.attackSensor.f1` | f32 | `30.0f` |
+| `PunchingKinoko.attackSensor.f2` | f32 | `45.0f` |
+| `PunchingKinoko.attackSensor.f3` | f32 | `70.0f` |
+| `PunchingKinoko.attackSensor.f4` | f32 | `70.0f` |
+| `PunchingKinoko.attackSensor.f5` | f32 | `15.0f` |
+| `PunchingKinoko.attackSensor.f6` | f32 | `1.6f` |
+| `PunchingKinoko.attackSensor.f7` | f32 | `0.3f` |
 | `PunchingKinoko.cHeadHeight` | f32 | `130.0f` |
 | `PunchingKinoko.control.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `PunchingKinoko.control.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `PunchingKinoko.control.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `PunchingKinoko.cSpringRate` | f32 | `0.008f` |
+| `PunchingKinoko.exeCrushed.f1` | f32 | `20.0f` |
 | `PunchingKinoko.exeCrushedEnd.1` | s32 | `10` |
 | `PunchingKinoko.exeCrushedEnd.attenuateVelocity.1` | f32 | `0.94f` |
 | `PunchingKinoko.exeHitted.1` | s32 | `5` |
@@ -22355,8 +26743,38 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PunchingKinoko.exePunchedBrake.1` | s32 | `40` |
 | `PunchingKinoko.exePunchedBrake.attenuateVelocity.1` | f32 | `0.9f` |
 | `PunchingKinoko.exeSwing.attenuateVelocity.1` | f32 | `0.97f` |
+| `PunchingKinoko.exeSwing.f1` | f32 | `20.0f` |
+| `PunchingKinoko.exeSwing.f2` | f32 | `20.0f` |
+| `PunchingKinoko.exeSwing.f3` | f32 | `0.05f` |
+| `PunchingKinoko.exeSwing.f4` | f32 | `40.0f` |
+| `PunchingKinoko.exeSwing.f5` | f32 | `50.0f` |
 | `PunchingKinoko.exeWait.attenuateVelocity.1` | f32 | `0.94f` |
+| `PunchingKinoko.exeWait.f1` | f32 | `5.0f` |
+| `PunchingKinoko.exeWait.f2` | f32 | `35.0f` |
+| `PunchingKinoko.exeWait.f3` | f32 | `0.05f` |
+| `PunchingKinoko.init.f1` | f32 | `70.0f` |
+| `PunchingKinoko.init.f2` | f32 | `70.0f` |
+| `PunchingKinoko.initSensor.f1` | f32 | `70.0f` |
+| `PunchingKinoko.initSensor.f2` | f32 | `30.0f` |
+| `PunchingKinoko.initSensor.f3` | f32 | `30.0f` |
+| `PunchingKinoko.initShadow.f1` | f32 | `10.0f` |
+| `PunchingKinoko.initShadow.f2` | f32 | `70.0f` |
+| `PunchingKinoko.initShadow.f3` | f32 | `10.0f` |
+| `PunchingKinoko.initShadow.f4` | f32 | `10.0f` |
+| `PunchingKinoko.receiveMsgPlayerAttack.f1` | f32 | `15.0f` |
+| `PunchingKinoko.receiveMsgPlayerAttack.f2` | f32 | `15.0f` |
+| `PunchingKinoko.receiveMsgPush.f1` | f32 | `3.0f` |
+| `PunchingKinoko.receiveMsgPush.f2` | f32 | `3.0f` |
+| `PunchingKinoko.requestEnemyBlow.f1` | f32 | `25.0f` |
+| `PunchingKinoko.requestPunch.f1` | f32 | `50.0f` |
+| `PunchingKinoko.requestTrample.f1` | f32 | `5.0f` |
 | `PurpleCoinHolder.sMaxPurpleCoin` | s32 | `256` |
+| `QuestionBoxGalleryObj.init.f1` | f32 | `100.0f` |
+| `QuestionCoin.init.f1` | f32 | `2.0f` |
+| `QuestionCoin.initAfterPlacement.f1` | f32 | `180.0f` |
+| `QuestionCoin.initAfterPlacement.f2` | f32 | `1000.0f` |
+| `QuestionCoin.initAfterPlacement.f3` | f32 | `1500.0f` |
+| `QuestionCoin.initAfterPlacement.f4` | f32 | `2000.0f` |
 | `QuestionCoin.sBindAnimFrame` | s32 | `3` |
 | `QuestionCoin.sBindStartBlendFrame` | s32 | `0` |
 | `QuestionCoin.sHitRadius` | f32 | `150.0f` |
@@ -22366,14 +26784,26 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `QuestionCoin.sShadowRadius` | f32 | `120.0f` |
 | `RailBlock.sAmplitude` | f32 | `30.0f` |
 | `RailBlock.sCycle` | s32 | `3` |
+| `RailCoin.placementMercatorRail.f1` | f32 | `10.0f` |
+| `RailMoveObj.init.f1` | f32 | `100.0f` |
+| `RainCloud.init.f1` | f32 | `150.0f` |
+| `RainCloud.init.f2` | f32 | `80.0f` |
+| `RainCloud.init.f3` | f32 | `0.5f` |
+| `RainCloud.init.f4` | f32 | `100.0f` |
+| `RainCloud.init.f5` | f32 | `500.0f` |
+| `RainCloud.init.f6` | f32 | `0.5f` |
 | `RainCloud.sNoShadowDropLengthMax` | f32 | `2000.0f` |
 | `RainCloud.sRainCylinderBaseLength` | f32 | `1000.0f` |
 | `RainCloud.sSwitchEffectBorder` | f32 | `1500.0f` |
 | `RainCloud.sThunderStep` | s32 | `140` |
+| `RainCloud.updateRainCylinder.f1` | f32 | `0.1f` |
 | `RevolvingWay.sDecay` | f32 | `0.9f` |
 | `RevolvingWay.sDecayHeld` | f32 | `0.98f` |
 | `RevolvingWay.sMomentMax` | f32 | `0.15f` |
 | `RevolvingWay.sStrokeRate` | f32 | `0.04f` |
+| `Rock.appearStarPiece.f1` | f32 | `10.0f` |
+| `Rock.appearStarPiece.f2` | f32 | `40.0f` |
+| `Rock.attackSensor.f1` | f32 | `0.25f` |
 | `Rock.cAppearInvalidBindFrame` | s32 | `45` |
 | `Rock.cAppearMoveFrame` | s32 | `45` |
 | `Rock.cAppearMoveFrameRock` | s32 | `8` |
@@ -22393,6 +26823,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Rock.cGravity` | f32 | `1.5f` |
 | `Rock.cNearClipDistance` | f32 | `400.0f` |
 | `Rock.cNoBindJudgeFrame` | s32 | `20` |
+| `Rock.control.f1` | f32 | `30.0f` |
+| `Rock.control.f2` | f32 | `30.0f` |
 | `Rock.cRollSoundTime` | s32 | `20` |
 | `Rock.cRotateCosineMax` | f32 | `0.999f` |
 | `Rock.cRotateSpeedRate` | f32 | `1.1f` |
@@ -22406,11 +26838,55 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Rock.cStarWandRadius3d` | f32 | `275.0f` |
 | `Rock.cWallBreakDot` | f32 | `-0.5f` |
 | `Rock.cWeakGravity` | f32 | `0.2f` |
+| `Rock.cWeakSensorOffset` | f32[3] | `0.0f, 0.0f, -150.0f` |
 | `Rock.cWeakSensorRadius` | f32 | `125.0f` |
+| `Rock.exeAppear.f1` | f32 | `180.0f` |
+| `Rock.initMapToolInfo.f1` | f32 | `180.0f` |
+| `Rock.initSensor.f1` | f32 | `0.3f` |
+| `Rock.initSensor.f2` | f32 | `0.3f` |
+| `Rock.initSensor.f3` | f32 | `0.3f` |
+| `Rock.isInClippingRange.f1` | f32 | `300.0f` |
+| `Rock.isInClippingRange.f2` | f32 | `250.0f` |
+| `Rock.moveOnRail.f1` | f32 | `2.0f` |
+| `Rock.setBtkForEnvironmentMap.f1` | f32 | `0.5f` |
+| `Rock.setBtkForEnvironmentMap.f2` | f32 | `2.0f` |
+| `Rock.setBtkForEnvironmentMap.f3` | f32 | `2.0f` |
+| `Rock.setBtkForEnvironmentMap.f4` | f32 | `0.9f` |
+| `Rock.setBtkForEnvironmentMap.f5` | f32 | `0.5f` |
+| `Rock.setBtkForEnvironmentMap.f6` | f32 | `2.0f` |
+| `RockCreator.init.f1` | f32 | `100000.0f` |
+| `RockCreator.init.f2` | f32 | `100000.0f` |
+| `RosettaChair.init.f1` | f32 | `1.7f` |
+| `RosettaChair.init.f2` | f32 | `500.0f` |
+| `RosettaPictureBook.init.f1` | f32 | `150.0f` |
 | `RosettaPictureBook.sFadeInFrame` | s32 | `60` |
 | `RosettaPictureBook.sFadeOutFrame` | s32 | `60` |
+| `SandCapsulePressGround.calcMoveVelocity.f1` | f32 | `3.0f` |
+| `SandCapsulePressGround.exeDisappearDemo.f1` | f32 | `2.0f` |
+| `SandCapsulePressGround.exeDisappearDemo.f2` | f32 | `2.0f` |
+| `SandCapsulePressGround.exeDisappearDemo.f3` | f32 | `2.0f` |
 | `SandCapsulePressGround.exeMoveStart.shakeCameraInfinity.1` | f32 | `0.15f` |
 | `SandCapsulePressGround.exeMoveStart.shakeCameraInfinity.2` | f32 | `1.5f` |
+| `SandCapsulePressGround.init.f1` | f32 | `3600.0f` |
+| `Sandstorm.exeTrap.f1` | f32 | `0.5f` |
+| `Sandstorm.exeTrap.f2` | f32 | `30.0f` |
+| `Sandstorm.exeTrap.f3` | f32 | `5.0f` |
+| `Sandstorm.exeTrap.f4` | f32 | `40.0f` |
+| `Sandstorm.exeTrap.f5` | f32 | `5.0f` |
+| `Sandstorm.init.f1` | f32 | `40.0f` |
+| `Sandstorm.init.f10` | f32 | `300.0f` |
+| `Sandstorm.init.f11` | f32 | `100.0f` |
+| `Sandstorm.init.f12` | f32 | `500.0f` |
+| `Sandstorm.init.f2` | f32 | `40.0f` |
+| `Sandstorm.init.f3` | f32 | `500.0f` |
+| `Sandstorm.init.f4` | f32 | `2.0f` |
+| `Sandstorm.init.f5` | f32 | `200.0f` |
+| `Sandstorm.init.f6` | f32 | `2.0f` |
+| `Sandstorm.init.f7` | f32 | `200.0f` |
+| `Sandstorm.init.f8` | f32 | `100.0f` |
+| `Sandstorm.init.f9` | f32 | `100.0f` |
+| `Sandstorm.initSandstormParam.f1` | f32 | `0.0001f` |
+| `Sandstorm.initTrapModel.f1` | f32 | `180.0f` |
 | `Sandstorm.sActiveRadius` | f32 | `7000.0f` |
 | `Sandstorm.sRailSpeed` | f32 | `3.0f` |
 | `Sandstorm.sStepToEnableSpin` | s32 | `15` |
@@ -22418,13 +26894,48 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Sandstorm.sTrapOffsetZ` | f32 | `220.0f` |
 | `Sandstorm.sTrapRotateSpeed` | f32 | `4.0f` |
 | `Sandstorm.sTurnRate` | f32 | `2.0f` |
+| `Sandstorm.updateBindActorMtx.f1` | f32 | `10.0f` |
+| `Sandstorm.updateBindActorMtx.f2` | f32 | `3.0f` |
+| `Sandstorm.updateBindActorMtx.f3` | f32 | `270.0f` |
+| `SandUpDownEffectObj.init.f1` | f32 | `0.5f` |
+| `SandUpDownEffectObj.init.f2` | f32 | `0.5f` |
+| `SandUpDownEffectObj.init.f3` | f32 | `100.0f` |
+| `ScrewSwitch.init.f1` | f32 | `150.0f` |
+| `ScrewSwitch.init.f2` | f32 | `150.0f` |
 | `ScrewSwitch.sStepForAdjust` | s32 | `3` |
 | `ScrewSwitch.sStepForPause` | s32 | `0` |
+| `ScrewSwitchReverse.exeAdjust.f1` | f32 | `3.0f` |
+| `ScrewSwitchReverse.init.f1` | f32 | `130.0f` |
+| `ScrewSwitchReverse.init.f2` | f32 | `120.0f` |
+| `ScrewSwitchReverse.init.f3` | f32 | `10.0f` |
+| `ScrewSwitchReverse.init.f4` | f32 | `100.0f` |
 | `ScrewSwitchReverse.sDefaultShadowLength` | s32 | `1000` |
 | `ScrewSwitchReverse.sJumpPower` | f32 | `28.0f` |
 | `ScrewSwitchReverse.sStepForAdjust` | s32 | `3` |
 | `ScrewSwitchReverse.sStepToRumbleCamera` | s32 | `25` |
+| `SeaBottomTriplePropeller.init.f1` | f32 | `100.0f` |
+| `SeesawMoveNut.autoBackHome.f1` | f32 | `0.5f` |
+| `SeesawMoveNut.autoBackHome.f2` | f32 | `0.02f` |
+| `SeesawMoveNut.exeHalfway.f1` | f32 | `0.01f` |
+| `SeesawMoveNut.exeHalfway.f2` | f32 | `0.001f` |
+| `SeesawMoveNut.exeHalfway.f3` | f32 | `0.1f` |
+| `SeesawMoveNut.exeHalfway.f4` | f32 | `0.2f` |
+| `Shellfish.endBindItem.f1` | f32 | `30.0f` |
+| `Shellfish.exeOpen.f1` | f32 | `0.5f` |
+| `Shellfish.init.f1` | f32 | `400.0f` |
+| `Shellfish.init.f2` | f32 | `120.0f` |
+| `Shellfish.init.f3` | f32 | `170.0f` |
+| `Shellfish.init.f4` | f32 | `30.0f` |
+| `Shellfish.init.f5` | f32 | `5.0f` |
+| `Shellfish.init.f6` | f32 | `260.0f` |
+| `Shellfish.init.f7` | f32 | `130.0f` |
+| `Shellfish.init.f8` | f32 | `50.0f` |
+| `Shellfish.sBodyHitOffset` | f32[3] | `0.0f, 100.0f, 0.0f` |
+| `Shellfish.sChipOffset` | f32[3] | `0.0f, 100.0f, 50.0f` |
+| `Shellfish.sCoinOffset` | f32[3] | `0.0f, 50.0f, 30.0f` |
 | `Shellfish.sHitPushPower` | f32 | `40.0f` |
+| `Shellfish.sKinokoOneUpOffset` | f32[3] | `0.0f, 70.0f, 30.0f` |
+| `Shellfish.sSandHitOffset` | f32[3] | `0.0f, -100.0f, 200.0f` |
 | `Shellfish.sShockToInterpole` | s32 | `2` |
 | `Shellfish.sStepToApperItem` | s32 | `40` |
 | `Shellfish.sStepToCloseSignal` | s32 | `170` |
@@ -22432,10 +26943,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Shellfish.sStepToHitSensorOff` | s32 | `15` |
 | `Shellfish.sStepToHitSensorOn` | s32 | `0` |
 | `Shellfish.sStepToSetPosItem` | s32 | `100` |
+| `ShockWaveGenerator.init.f1` | f32 | `200.0f` |
+| `ShockWaveGenerator.init.f2` | f32 | `1000.0f` |
+| `ShockWaveGenerator.init.f3` | f32 | `100.0f` |
+| `ShockWaveGenerator.isHitCylinder.f1` | f32 | `140.0f` |
 | `ShockWaveGenerator.sEnableCameraStartDistance` | f32 | `2000.0f` |
 | `ShockWaveGenerator.sHitCylinderRadius` | f32 | `400.0f` |
 | `ShockWaveGenerator.sStepForDemoEcho` | s32 | `1` |
 | `ShockWaveGenerator.sStepForGenerate` | s32 | `50` |
+| `ShootingStar.init.f1` | f32 | `100.0f` |
+| `ShootingStar.init.f2` | f32 | `30.0f` |
 | `ShootingStar.sDefaultStarPieceNum` | s32 | `5` |
 | `ShootingStar.sFallHeight` | f32 | `2000.0f` |
 | `ShootingStar.sFallRotateYAngle` | f32 | `10.0f` |
@@ -22443,9 +26960,21 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `ShootingStar.sLaunchHVel` | f32 | `15.0f` |
 | `ShootingStar.sLaunchYVel` | f32 | `40.0f` |
 | `ShootingStar.sPreShootingTime` | s32 | `20` |
+| `SideSpikeMoveStep.init.f1` | f32 | `100.0f` |
+| `SideSpikeMoveStep.init.f2` | f32 | `300.0f` |
+| `SimpleBreakableObj.appearItem.f1` | f32 | `15.0f` |
+| `SimpleBreakableObj.appearItem.f2` | f32 | `10.0f` |
+| `SimpleBreakableObj.appearItem.f3` | f32 | `40.0f` |
+| `SimpleBreakableObj.exeTryStartDemo.f1` | f32 | `1000.0f` |
 | `SimpleBreakableObj.sDefaultBreakOffsetFrame` | s32 | `60` |
 | `SimpleBreakableObj.sDefaultItemNumCoin` | s32 | `1` |
 | `SimpleBreakableObj.sDefaultItemNumStarPiece` | s32 | `5` |
+| `SimpleBreakableObj.setStateBreak.f1` | f32 | `1000.0f` |
+| `SimpleFloaterObj.init.f1` | f32 | `100.0f` |
+| `SimpleNormalMapObj.init.f1` | f32 | `100.0f` |
+| `SmallStone.doBreak.f1` | f32 | `40.0f` |
+| `SmallStone.doBreak.f2` | f32 | `30.0f` |
+| `SmallStone.doBreak.f3` | f32 | `40.0f` |
 | `SmallStone.hBreakOffsetY` | f32 | `120.0f` |
 | `SmallStone.hBreakSize` | f32 | `400.0f` |
 | `SmallStone.hCheckLineLength` | f32 | `1000.0f` |
@@ -22458,18 +26987,59 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SmallStone.hRandomScaleMin` | f32 | `0.75f` |
 | `SmallStone.hSize` | f32 | `100.0f` |
 | `SmallStone.hWindRadius` | f32 | `800.0f` |
+| `SmallStone.init.f1` | f32 | `180.0f` |
+| `SmallStone.init.f2` | f32 | `180.0f` |
+| `SmallStone.init.f3` | f32 | `180.0f` |
+| `SmallStone.initAfterPlacement.f1` | f32 | `0.01f` |
+| `SmallStone.initAfterPlacement.f2` | f32 | `2.0f` |
+| `SmallStone.initAfterPlacement.f3` | f32 | `2.0f` |
+| `SnowFloor.attackSensor.f1` | f32 | `20.0f` |
+| `SnowFloor.attackSensor.f2` | f32 | `20.0f` |
+| `SnowFloor.calcCoverSnow.f1` | f32 | `1.732051f` |
 | `SnowFloor.cFireballDigAmount` | f32 | `200.0f` |
 | `SnowFloor.cHipdropDigAmount` | f32 | `1000.0f` |
 | `SnowFloor.cHipdropDigRadius` | f32 | `50.0f` |
+| `SnowFloor.control.f1` | f32 | `10.0f` |
+| `SnowFloor.control.f2` | f32 | `50.0f` |
+| `SnowFloor.control.f3` | f32 | `100.0f` |
 | `SnowFloor.cPlayerDigAmount` | f32 | `600.0f` |
 | `SnowFloor.cPlayerWalkResist` | f32 | `0.5f` |
 | `SnowFloor.cPointerDigAmount` | f32 | `30.0f` |
+| `SnowFloor.createReduceMap.f1` | f32 | `0.5f` |
+| `SnowFloor.createReduceMap.f2` | f32 | `0.2f` |
 | `SnowFloor.cSnowFallRate` | f32 | `0.2f` |
 | `SnowFloor.cSnowFallRateBottom` | f32 | `30.0f` |
 | `SnowFloor.cSnowFallRateFirst` | f32 | `0.1f` |
 | `SnowFloor.cSnowFallRateQuick` | f32 | `0.5f` |
 | `SnowFloor.cSwingDigAmount` | f32 | `20.0f` |
 | `SnowFloor.cSwingDigRadius` | f32 | `100.0f` |
+| `SnowFloor.digPlayerWalk.f1` | f32 | `50.0f` |
+| `SnowFloor.digPlayerWalk.f2` | f32 | `50.0f` |
+| `SnowFloor.digPlayerWalk.f3` | f32 | `0.5f` |
+| `SnowFloor.digPlayerWalk.f4` | f32 | `0.5f` |
+| `SnowFloor.digPlayerWalk.f5` | f32 | `20.0f` |
+| `SnowFloor.digPlayerWalk.f6` | f32 | `200.0f` |
+| `SnowFloor.digPlayerWalk.f7` | f32 | `0.8f` |
+| `SnowFloor.digPlayerWalk.f8` | f32 | `500.0f` |
+| `SnowFloor.digPointer.f1` | f32 | `250.0f` |
+| `SnowFloor.digPointer.f2` | f32 | `250.0f` |
+| `SnowFloor.digPointer.f3` | f32 | `0.5f` |
+| `SnowFloor.digPointer.f4` | f32 | `0.5f` |
+| `SnowFloor.digPointer.f5` | f32 | `50.0f` |
+| `SnowFloor.digPointer.f6` | f32 | `200.0f` |
+| `SnowFloor.doErase.f1` | f32 | `0.5f` |
+| `SnowFloor.doErase.f2` | f32 | `0.5f` |
+| `SnowFloor.doMove.f1` | f32 | `1.732051f` |
+| `SnowFloor.drawSetup.f1` | f32 | `2.0f` |
+| `SnowFloor.drawSetup.f2` | f32 | `2.0f` |
+| `SnowFloor.init.f1` | f32 | `1.4142f` |
+| `SnowFloor.init.f2` | f32 | `32.0f` |
+| `SnowFloor.init.f3` | f32 | `120.0f` |
+| `SnowFloor.init.f4` | f32 | `80.0f` |
+| `SnowFloor.init.f5` | f32 | `1.414f` |
+| `SnowFloor.init.f6` | f32 | `1024.0f` |
+| `SnowFloor.initLocalPoint.f1` | f32 | `900.0f` |
+| `SnowFloor.initLocalPoint.f2` | f32 | `900.0f` |
 | `SnowFloor.sColorA` | s16 | `64` |
 | `SnowFloor.sColorB` | s16 | `250` |
 | `SnowFloor.sColorG` | s16 | `220` |
@@ -22480,13 +27050,44 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SnowFloor.sColorStepR` | s16 | `-3` |
 | `SnowFloor.sLayerCount` | s16 | `12` |
 | `SnowFloor.sLayerHeight` | s16 | `6` |
+| `SnowFloor.updateCheckList.f1` | f32 | `0.5f` |
+| `SnowFloor.updateCheckList.f2` | f32 | `0.5f` |
+| `SnowFloor.updateCheckList.f3` | f32 | `100.0f` |
+| `SnowFloorTile.attackSensor.f1` | f32 | `200.0f` |
+| `SnowFloorTile.attackSensor.f2` | f32 | `30.0f` |
+| `SnowFloorTile.attackSensor.f3` | f32 | `20.0f` |
+| `SnowFloorTile.attackSensor.f4` | f32 | `20.0f` |
+| `SnowFloorTile.calcLocalPoint.f1` | f32 | `0.5f` |
+| `SnowFloorTile.calcLocalPoint.f2` | f32 | `0.5f` |
 | `SnowFloorTile.cFireballDigAmount` | f32 | `200.0f` |
 | `SnowFloorTile.cHipdropDigAmount` | f32 | `1000.0f` |
 | `SnowFloorTile.cHipdropDigRadius` | f32 | `50.0f` |
+| `SnowFloorTile.control.f1` | f32 | `20.0f` |
+| `SnowFloorTile.control.f2` | f32 | `20.0f` |
+| `SnowFloorTile.control.f3` | f32 | `100.0f` |
+| `SnowFloorTile.control.f4` | f32 | `100.0f` |
 | `SnowFloorTile.cPlayerDigAmount` | f32 | `600.0f` |
 | `SnowFloorTile.cPointerDigAmount` | f32 | `30.0f` |
+| `SnowFloorTile.createReduceMap.f1` | f32 | `0.5f` |
+| `SnowFloorTile.createReduceMap.f2` | f32 | `0.2f` |
 | `SnowFloorTile.cSwingDigAmount` | f32 | `20.0f` |
 | `SnowFloorTile.cSwingDigRadius` | f32 | `100.0f` |
+| `SnowFloorTile.digPlayerWalk.f1` | f32 | `0.1f` |
+| `SnowFloorTile.digPlayerWalk.f2` | f32 | `20.0f` |
+| `SnowFloorTile.digPointer.f1` | f32 | `50.0f` |
+| `SnowFloorTile.digPointer.f2` | f32 | `200.0f` |
+| `SnowFloorTile.doErase.f1` | f32 | `20.0f` |
+| `SnowFloorTile.doMove.f1` | f32 | `1.732051f` |
+| `SnowFloorTile.drawLayer.f1` | f32 | `5.0f` |
+| `SnowFloorTile.init.f1` | f32 | `4096.0f` |
+| `SnowFloorTile.init.f2` | f32 | `4096.0f` |
+| `SnowFloorTile.init.f3` | f32 | `128.0f` |
+| `SnowFloorTile.init.f4` | f32 | `1.4142f` |
+| `SnowFloorTile.init.f5` | f32 | `32.0f` |
+| `SnowFloorTile.init.f6` | f32 | `120.0f` |
+| `SnowFloorTile.init.f7` | f32 | `800.0f` |
+| `SnowFloorTile.init.f8` | f32 | `1024.0f` |
+| `SnowFloorTile.init.f9` | f32 | `1024.0f` |
 | `SnowFloorTile.sColorA` | s16 | `64` |
 | `SnowFloorTile.sColorB` | s16 | `250` |
 | `SnowFloorTile.sColorG` | s16 | `220` |
@@ -22499,15 +27100,38 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SnowFloorTile.sLayerHeight` | s16 | `6` |
 | `SnowFloorTile.sStripCount` | u16 | `16` |
 | `SnowFloorTile.sTextureSize` | u16 | `32` |
+| `SnowMan.init.f1` | f32 | `0.95f` |
+| `SnowMan.init.f2` | f32 | `1.05f` |
+| `SnowMan.init.f3` | f32 | `0.60f` |
+| `SnowMan.init.f4` | f32 | `0.8f` |
 | `SnowMan.sStepForMelt` | s32 | `20` |
 | `SnowplowSwitch.sSensorRadius` | f32 | `70.0f` |
+| `SoundEmitter.exePlaySound.f1` | f32 | `1000.0f` |
+| `SoundEmitter.init.f1` | f32 | `20000.0f` |
 | `SpaceMine.sDistanceFar` | f32 | `1450.0f` |
 | `SpaceMine.sDistanceNear` | f32 | `1500.0f` |
 | `SpaceMine.sRotateSpeedFast` | f32 | `1.0f` |
 | `SpaceMine.sRotateSpeedNormal` | f32 | `1.0f` |
 | `SpaceMine.sSensorRadius` | f32 | `100.0f` |
+| `SpaceShipStep.init.f1` | f32 | `100.0f` |
+| `SpaceShipStep.updateResetToInitPosCheck.f1` | f32 | `700.0f` |
+| `SpaceShipStep.updateResetToInitPosCheck.f2` | f32 | `700.0f` |
+| `SpaceShipStep.updateResetToInitPosCheck.f3` | f32 | `700.0f` |
 | `SpaceShipStep.updateResetToInitPosCheck.isNearPlayer.1` | f32 | `3000.0f` |
 | `SpaceShipStep.updateResetToInitPosCheck.isNearPlayer.2` | f32 | `1000.0f` |
+| `SphereRailDash.exeRailMove.f1` | f32 | `0.85f` |
+| `SphereRailDash.exeWait.f1` | f32 | `2.0f` |
+| `SphereRailDash.exeWait.f2` | f32 | `3.0f` |
+| `SphereRailDash.exeWait.f3` | f32 | `2.0f` |
+| `SphereRailDash.exeWait.f4` | f32 | `2.0f` |
+| `SphereRailDash.exeWait.f5` | f32 | `3.0f` |
+| `SphereRailDash.exeWait.f6` | f32 | `2.0f` |
+| `SphereRailDash.exeWait.f7` | f32 | `0.0001f` |
+| `SphereRailDash.init.f1` | f32 | `200.0f` |
+| `SpiderCoin.init.f1` | f32 | `50.0f` |
+| `SpiderCoin.init.f2` | f32 | `150.0f` |
+| `SpiderCoin.init.f3` | f32 | `80.0f` |
+| `SpiderCoin.init.f4` | f32 | `0.3f` |
 | `SpiderCoin.sCocoonOffsetY` | f32 | `20.0f` |
 | `SpiderCoin.sCocoonOffsetZ` | f32 | `20.0f` |
 | `SpiderCoin.sCoinSpeed` | f32 | `20.0f` |
@@ -22517,6 +27141,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpiderCoin.sRotateSpeedY` | f32 | `30.0f` |
 | `SpiderCoin.sStepToTouch2nd` | s32 | `5` |
 | `SpiderMapBlock.sCoinSpeed` | f32 | `35.0f` |
+| `SpiderThread.initMainThreads.f1` | f32 | `360.0f` |
 | `SpiderThread.sIndirectScaleX` | f32 | `0.035f` |
 | `SpiderThread.sIndirectScaleY` | f32 | `0.03f` |
 | `SpiderThread.sMainPointRadius` | f32 | `100.0f` |
@@ -22534,23 +27159,46 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpiderThreadMainPoint.sNearMainPointAccelRate` | f32 | `0.1f` |
 | `SpiderThreadMainPoint.sNearPointDiffMin` | f32 | `1.0f` |
 | `SpiderThreadMainPoint.sWindFrictionRate` | f32 | `0.9f` |
+| `SpiderThreadPart.sendPointsLeftLower.f1` | f32 | `15.0f` |
+| `SpiderThreadPart.sendPointsLeftLower.f2` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsLeftLower.f3` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsLeftLower.f4` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsRightLower.f1` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsRightLower.f2` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsRightLower.f3` | f32 | `15.0f` |
+| `SpiderThreadPart.sendPointsRightLower.f4` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsUpper.f1` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsUpper.f2` | f32 | `3.0f` |
+| `SpiderThreadPart.sendPointsUpper.f3` | f32 | `18.0f` |
+| `SpiderThreadPart.sendPointsUpper.f4` | f32 | `3.0f` |
 | `SpiderThreadPart.sForceAttachTime` | s32 | `20` |
 | `SpiderThreadPart.sFrictionLengthMax` | f32 | `700.0f` |
 | `SpiderThreadPart.sFrictionLengthMin` | f32 | `200.0f` |
 | `SpiderThreadPart.sIndirectTexRateV` | f32 | `0.001f` |
 | `SpiderThreadPart.sIndirectTexSpeed` | f32 | `-0.002f` |
+| `SpiderThreadPart.SpiderThreadPart.f1` | f32 | `0.9f` |
+| `SpiderThreadPart.SpiderThreadPart.f2` | f32 | `0.9f` |
+| `SpiderThreadPart.SpiderThreadPart.f3` | f32 | `0.9f` |
+| `SpiderThreadPart.SpiderThreadPart.f4` | f32 | `1000.0f` |
+| `SpiderThreadPart.SpiderThreadPart.f5` | f32 | `100.0f` |
 | `SpiderThreadPart.sPointInterval` | f32 | `50.0f` |
 | `SpiderThreadPart.sTexRateV` | f32 | `0.002f` |
 | `SpiderThreadPart.sTouchTimerMax` | s32 | `5` |
 | `SpiderThreadPart.sWindFrictionRate` | f32 | `0.93f` |
+| `SpiderThreadPart.updatePointerPos.f1` | f32 | `0.5f` |
 | `SpiderThreadPoint.sAccelRate` | f32 | `0.02f` |
 | `SpiderThreadPoint.sDistanceToStop` | f32 | `1.0f` |
 | `SpiderThreadPoint.sSpeedMinToStop` | f32 | `0.1f` |
+| `SpiderThreadPoint.startThreadLevelSound.f1` | f32 | `50.0f` |
+| `SpiderThreadPoint.startThreadLevelSound.f2` | f32 | `100.0f` |
 | `SpiderThreadWindCtrl.sWindAccelBattle` | f32 | `0.5f` |
 | `SpiderThreadWindCtrl.sWindAccelBattleEndCurrent` | f32 | `100.0f` |
 | `SpiderThreadWindCtrl.sWindAccelBattleEndTarget` | f32 | `2.0f` |
 | `SpiderThreadWindCtrl.sWindAccelChance` | f32 | `1.0f` |
 | `SpiderThreadWindCtrl.sWindAccelSpeedBattleEnd` | f32 | `0.4f` |
+| `SpinDriver.exeShootStart.f1` | f32 | `2.0f` |
+| `SpinDriver.exeShootStart.f2` | f32 | `0.5f` |
+| `SpinDriver.exeShootStart.f3` | f32 | `2.0f` |
 | `SpinDriver.sBindSpeedMax` | f32 | `40.0f` |
 | `SpinDriver.sCaptureDamp` | f32 | `0.8f` |
 | `SpinDriver.sCaptureEndDistance` | f32 | `15.0f` |
@@ -22586,18 +27234,52 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpinDriverOperateRing.sToCenterMinRate` | f32 | `0.0001f` |
 | `SpinDriverOperateRing.sToCenterStartRate` | f32 | `0.1f` |
 | `SpinDriverOperateRing.sToPlaneRate` | f32 | `0.05f` |
+| `SpinDriverPathDrawer.calcPositionCount.f1` | f32 | `0.01f` |
+| `SpinDriverPathDrawer.calcPositionCount.f2` | f32 | `0.01f` |
+| `SpinDriverPathDrawer.draw.f1` | f32 | `0.5f` |
+| `SpinDriverPathDrawer.draw.f2` | f32 | `100.0f` |
+| `SpinDriverPathDrawer.draw.f3` | f32 | `100.0f` |
+| `SpinDriverPathDrawer.draw.f4` | f32 | `100.0f` |
+| `SpinDriverPathDrawer.draw.f5` | f32 | `100.0f` |
+| `SpinDriverPathDrawer.draw.f6` | f32 | `0.5f` |
+| `SpinDriverPathDrawer.draw.f7` | f32 | `0.5f` |
+| `SpinDriverPathDrawer.init.f1` | f32 | `75.0f` |
+| `SpinDriverPathDrawer.init.f2` | f32 | `20.0f` |
+| `SpinDriverPathDrawer.initClipping.f1` | f32 | `150.0f` |
+| `SpinDriverPathDrawer.initClipping.f2` | f32 | `150.0f` |
+| `SpinDriverPathDrawer.initPathEnd.f1` | f32 | `1000.0f` |
+| `SpinDriverPathDrawer.initPositionList.f1` | f32 | `0.01f` |
+| `SpinDriverPathDrawer.initPositionList.f2` | f32 | `0.01f` |
+| `SpinDriverPathDrawer.setFadeScale.f1` | f32 | `0.001f` |
+| `SpinDriverPathDrawer.setFadeScale.f2` | f32 | `0.001f` |
+| `SpinDriverShootPath.calcClippingInfo.f1` | f32 | `0.5f` |
+| `SpinDriverShootPath.calcPosition.f1` | f32 | `0.5f` |
 | `SpinDriverShootPath.cInitDirectionStep` | f32 | `0.01f` |
 | `SpinDriverShootPath.cParabolicLengthSamples` | s32 | `32` |
+| `SpinDriverUtil.setShadowAndClipping.f1` | f32 | `0.5f` |
+| `SpinDriverUtil.setShadowAndClipping.f2` | f32 | `0.5f` |
+| `SpinDriverUtil.setShadowAndClipping.f3` | f32 | `0.5f` |
 | `SpinDriverUtil.sSearchLength` | f32 | `1500.0f` |
+| `SpinLeverSwitch.init.f1` | f32 | `50.0f` |
 | `SpinLeverSwitch.sStepForHitStop` | s32 | `8` |
 | `SpinLeverSwitch.sStepOnSE` | s32 | `8` |
 | `SpinLeverSwitch.sStepToOnSwitch` | s32 | `15` |
+| `SpinningBox.calcPlanarProjectedVec.f1` | f32 | `0.0001f` |
 | `SpinningBox.exeFall.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `SpinningBox.exeFall.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `SpinningBox.exeFall.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `SpinningBox.exeSliding.f1` | f32 | `100.0f` |
+| `SpinningBox.exeSliding.f2` | f32 | `100.0f` |
+| `SpinningBox.exeSliding.f3` | f32 | `100.0f` |
 | `SpinningBox.exeSliding.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `SpinningBox.exeSliding.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `SpinningBox.exeSliding.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `SpinningBox.exeSpinning.f1` | f32 | `100.0f` |
+| `SpinningBox.exeSpinning.f2` | f32 | `100.0f` |
+| `SpinningBox.exeSpinning.f3` | f32 | `100.0f` |
+| `SpinningBox.exeSpinning.f4` | f32 | `100.0f` |
+| `SpinningBox.exeSpinning.f5` | f32 | `100.0f` |
+| `SpinningBox.exeSpinning.f6` | f32 | `100.0f` |
 | `SpinningBox.exeSpinning.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `SpinningBox.exeSpinning.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `SpinningBox.exeSpinning.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -22635,7 +27317,18 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpinningBox.hStopCheckVel` | f32 | `0.1f` |
 | `SpinningBox.hTurnYDirRatio` | f32 | `0.125f` |
 | `SpinningBox.hVelHMin` | f32 | `10.0f` |
+| `SpinningBox.init.f1` | f32 | `160.0f` |
+| `SpinningBox.init.f2` | f32 | `40.0f` |
+| `SpinningBox.init.f3` | f32 | `140.0f` |
+| `SpinningBox.init.f4` | f32 | `80.0f` |
+| `SpinningBox.init.f5` | f32 | `70.0f` |
+| `SpinningBox.init.f6` | f32 | `110.0f` |
+| `SpinningBox.init.f7` | f32 | `80.0f` |
+| `SpinningBox.kill.f1` | f32 | `50.0f` |
+| `SpinningBox.kill.f2` | f32 | `10.0f` |
+| `SpinningBox.kill.f3` | f32 | `40.0f` |
 | `SpinningBox.sShadowSize` | f32 | `160.0f` |
+| `SpringJetWater.init.f1` | f32 | `180.0f` |
 | `SpringJetWater.sClippingRadius` | f32 | `1000.0f` |
 | `SpringJetWater.sHitCylinderHeight` | f32 | `280.0f` |
 | `SpringJetWater.sHitCylinderRange` | f32 | `10.0f` |
@@ -22643,6 +27336,20 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpringJetWater.sHitSphereRadius` | f32 | `70.0f` |
 | `SpringJetWater.sSensorOffsetY` | f32 | `300.0f` |
 | `SpringJetWater.sSensorRadius` | f32 | `300.0f` |
+| `SpringWaterFloaterSpot.boundFloater.f1` | f32 | `20.0f` |
+| `SpringWaterFloaterSpot.boundFloater.f2` | f32 | `2.0f` |
+| `SpringWaterFloaterSpot.boundFloater.f3` | f32 | `15.0f` |
+| `SpringWaterFloaterSpot.boundFloater.f4` | f32 | `9.6f` |
+| `SpringWaterFloaterSpot.control.f1` | f32 | `70.0f` |
+| `SpringWaterFloaterSpot.exeFloatSignal.f1` | f32 | `3.0f` |
+| `SpringWaterFloaterSpot.exeFloatSignal.f2` | f32 | `0.5f` |
+| `SpringWaterFloaterSpot.exeWait.f1` | f32 | `90.0f` |
+| `SpringWaterFloaterSpot.floatFloater.f1` | f32 | `90.0f` |
+| `SpringWaterFloaterSpot.floatFloater.f2` | f32 | `90.0f` |
+| `SpringWaterFloaterSpot.floatFloater.f3` | f32 | `40.0f` |
+| `SpringWaterFloaterSpot.init.f1` | f32 | `100.0f` |
+| `SpringWaterFloaterSpot.init.f2` | f32 | `100.0f` |
+| `SpringWaterFloaterSpot.isModelLongSide.f1` | f32 | `2.0f` |
 | `StarPiece.cBinderRadius` | f32 | `40.0f` |
 | `StarPiece.cChaseRateStep` | f32 | `0.03f` |
 | `StarPiece.cChaseSpeed` | f32 | `85.0f` |
@@ -22694,11 +27401,42 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StarPiece.cWaterLaunchScale` | f32 | `0.5f` |
 | `StarPiece.exeFall.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `StarPiece.exeFall.reboundVelocityFromCollision.2` | f32 | `1.0f` |
+| `StarPiece.goToPlayer.f1` | f32 | `2.0f` |
+| `StarPieceDirector.calcPosCameraShoot.f1` | f32 | `300.0f` |
+| `StarPieceDirector.calcPosCameraShoot.f2` | f32 | `300.0f` |
+| `StarPieceDirector.calcPosCameraShoot.f3` | f32 | `30.0f` |
+| `StarPieceDirector.calcShootGoalUsingPointingDepth.f1` | f32 | `16000000.0f` |
+| `StarPieceDirector.calcShootGoalUsingPointingDepth.f2` | f32 | `3000.0f` |
+| `StarPieceDirector.calcShootGoalUsingPointingDepth.f3` | f32 | `9000000.0f` |
+| `StarPieceDirector.calcShootGoalUsingPointingDepth.f4` | f32 | `3000.0f` |
+| `StarPieceDirector.calcShootGoalUsingPointingDepth.f5` | f32 | `400.0f` |
+| `StarPieceDirector.control.f1` | f32 | `160.0f` |
+| `StarPieceDirector.control.f2` | f32 | `7.0f` |
+| `StarPieceDirector.control.f3` | f32 | `0.25f` |
+| `StarPieceDirector.control.f4` | f32 | `0.125f` |
+| `StarPieceDirector.init.f1` | f32 | `5.0f` |
+| `StarPieceDirector.tryShoot.f1` | f32 | `999999.9f` |
+| `StarPieceDirector.tryShoot.f2` | f32 | `999999.9f` |
 | `StarPieceFollowGroup.exeFollowEnd.1` | s32 | `20` |
+| `StarPieceFollowGroup.exeFollowEnd.f1` | f32 | `0.05f` |
+| `StarPieceFollowGroup.exeFollowEnd.f2` | f32 | `10.0f` |
+| `StarPieceFollowGroup.exeFollowToPlayer.f1` | f32 | `0.025f` |
+| `StarPieceFollowGroup.followPieces.f1` | f32 | `0.25f` |
+| `StarPieceFollowGroup.followPieces.f2` | f32 | `10.0f` |
+| `StarPieceFollowGroup.followPieces.f3` | f32 | `0.25f` |
+| `StarPieceFollowGroup.followPieces.f4` | f32 | `3.0f` |
+| `StarPieceGroup.init.f1` | f32 | `10.0f` |
+| `StarPieceGroup.init.f2` | f32 | `100.0f` |
+| `StarPieceGroup.init.f3` | f32 | `500.0f` |
 | `StarPieceMother.hAddRandomVectorValue` | f32 | `0.5f` |
 | `StarPieceMother.hAddRotateY` | f32 | `10.0f` |
+| `StarPieceMother.init.f1` | f32 | `60.0f` |
+| `StarPieceMother.init.f2` | f32 | `100.0f` |
+| `StarPieceSpot.init.f1` | f32 | `150.0f` |
 | `StarPieceSpot.sLaunchYVel` | f32 | `40.0f` |
 | `StarPieceSpot.sRandomPieceValue` | f32 | `15.0f` |
+| `SubmarineSteam.attackSensor.f1` | f32 | `0.7f` |
+| `SubmarineSteam.init.f1` | f32 | `800.0f` |
 | `SubmarineSteam.sHitCylinderHeight` | f32 | `480.0f` |
 | `SubmarineSteam.sHitCylinderRange` | f32 | `20.0f` |
 | `SubmarineSteam.sHitSphereOffsetY` | f32 | `600.0f` |
@@ -22706,6 +27444,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SubmarineSteam.sMaxNumGroupClipping` | s32 | `16` |
 | `SubmarineSteam.sSensorOffsetY` | f32 | `250.0f` |
 | `SubmarineSteam.sSensorRadius` | f32 | `400.0f` |
+| `SubmarineVolcanoBigColumn.init.f1` | f32 | `100.0f` |
 | `SubmarineVolcanoBigColumn.sGenerateLife` | s32 | `360` |
 | `SubmarineVolcanoBigColumn.sGenerateOffsetY` | f32 | `1250.0f` |
 | `SubmarineVolcanoBigColumn.sShakeDistance` | f32 | `800.0f` |
@@ -22738,24 +27477,109 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SuperSpinDriver.sSwingSpinAccel` | f32 | `0.1f` |
 | `SuperSpinDriver.sSwingSpinMax` | f32 | `0.23f` |
 | `SuperSpinDriver.sSwingTurnPerStep` | f32 | `0.05f` |
+| `SwingLight.init.f1` | f32 | `2000.0f` |
+| `SwitchBox.init.f1` | f32 | `90.0f` |
+| `SwitchBox.init.f2` | f32 | `150.0f` |
+| `SwitchBox.init.f3` | f32 | `150.0f` |
+| `SwitchBox.init.f4` | f32 | `150.0f` |
+| `SwitchBox.init.f5` | f32 | `77.0f` |
+| `SwitchBox.init.f6` | f32 | `150.0f` |
 | `TimerMoveWall.sDefaultMoveLength` | f32 | `1000.0f` |
+| `TrampleStar.calcAnim.f1` | f32 | `0.5f` |
+| `TrampleStar.calcAnim.f2` | f32 | `0.5f` |
+| `TrampleStar.calcNearestVtxIndex.f1` | f32 | `5000.0f` |
+| `TrampleStar.control.f1` | f32 | `5000.0f` |
 | `TrampleStar.cShadowTexOffset` | f32 | `0.5f` |
 | `TrampleStar.cShadowTexQ` | f32 | `1.0f` |
 | `TrampleStar.cShadowTexScale` | f32 | `0.003331f` |
+| `TrampleStar.divide.f1` | f32 | `0.5f` |
+| `TrampleStar.divide.f2` | f32 | `0.5f` |
+| `TrampleStar.drawSelf.f1` | f32 | `1000000.0f` |
+| `TrampleStar.drawSelf.f2` | f32 | `1000000.0f` |
+| `TrampleStar.drawSelf.f3` | f32 | `1000000.0f` |
+| `TrampleStar.drawSelf.f4` | f32 | `255.0f` |
+| `TrampleStar.exeBindingCapture.f1` | f32 | `0.8f` |
+| `TrampleStar.exeBindingCapture.f2` | f32 | `0.85f` |
+| `TrampleStar.exeBindingShoot.f1` | f32 | `0.1f` |
+| `TrampleStar.exeBindingShoot.f2` | f32 | `0.5f` |
+| `TrampleStar.exeBindingShoot.f3` | f32 | `0.8f` |
+| `TrampleStar.exeBindingShoot.f4` | f32 | `0.2f` |
+| `TrampleStar.exeBindingShoot.f5` | f32 | `1.5f` |
+| `TrampleStar.exeBindingShoot.f6` | f32 | `0.1f` |
+| `TrampleStar.exeBindingShoot.f7` | f32 | `1.5f` |
+| `TrampleStar.init.f1` | f32 | `500.0f` |
+| `TrampleStar.init.f10` | f32 | `500.0f` |
+| `TrampleStar.init.f11` | f32 | `500.0f` |
+| `TrampleStar.init.f12` | f32 | `500.0f` |
+| `TrampleStar.init.f13` | f32 | `500.0f` |
+| `TrampleStar.init.f14` | f32 | `500.0f` |
+| `TrampleStar.init.f15` | f32 | `500.0f` |
+| `TrampleStar.init.f16` | f32 | `500.0f` |
+| `TrampleStar.init.f17` | f32 | `500.0f` |
+| `TrampleStar.init.f18` | f32 | `500.0f` |
+| `TrampleStar.init.f19` | f32 | `500.0f` |
+| `TrampleStar.init.f2` | f32 | `500.0f` |
+| `TrampleStar.init.f20` | f32 | `500.0f` |
+| `TrampleStar.init.f21` | f32 | `500.0f` |
+| `TrampleStar.init.f22` | f32 | `500.0f` |
+| `TrampleStar.init.f23` | f32 | `500.0f` |
+| `TrampleStar.init.f24` | f32 | `500.0f` |
+| `TrampleStar.init.f25` | f32 | `500.0f` |
+| `TrampleStar.init.f26` | f32 | `0.1f` |
+| `TrampleStar.init.f3` | f32 | `500.0f` |
+| `TrampleStar.init.f4` | f32 | `500.0f` |
+| `TrampleStar.init.f5` | f32 | `500.0f` |
+| `TrampleStar.init.f6` | f32 | `500.0f` |
+| `TrampleStar.init.f7` | f32 | `500.0f` |
+| `TrampleStar.init.f8` | f32 | `500.0f` |
+| `TrampleStar.init.f9` | f32 | `500.0f` |
+| `TrampleStar.moveVtx.f1` | f32 | `400.0f` |
+| `TrampleStar.moveVtx.f2` | f32 | `400.0f` |
+| `TrampleStar.moveVtx.f3` | f32 | `400.0f` |
+| `TrampleStar.offLod.f1` | f32 | `0.1f` |
+| `TrampleStar.receiveOtherMsg.f1` | f32 | `30.0f` |
+| `TrampleStar.receiveOtherMsg.f2` | f32 | `30.0f` |
+| `TrampleStar.receiveOtherMsg.f3` | f32 | `50.0f` |
+| `TrampleStar.receiveOtherMsg.f4` | f32 | `50.0f` |
+| `TrampleStar.receiveOtherMsg.f5` | f32 | `20.0f` |
+| `TrampleStar.receiveOtherMsg.f6` | f32 | `20.0f` |
+| `TreasureBoxCracked.exeItemBound.f1` | f32 | `720.0f` |
 | `TreasureBoxCracked.exeOpenWait.1` | s32 | `10` |
+| `TreasureBoxCracked.init.f1` | f32 | `200.0f` |
+| `TreasureBoxCracked.init.f2` | f32 | `50.0f` |
 | `TreasureBoxCracked.sAccelRate` | f32 | `1.2f` |
+| `TreasureBoxCracked.sAirBubbleOffset` | f32[3] | `0.0f, 220.0f, 0.0f` |
 | `TreasureBoxCracked.sBoundSpeedMax` | f32 | `15.0f` |
 | `TreasureBoxCracked.sBoundTime` | s32 | `20` |
+| `TreasureBoxCracked.sChipOffset` | f32[3] | `0.0f, 170.0f, 0.0f` |
+| `TreasureBoxCracked.sCoinOffset` | f32[3] | `0.0f, 130.0f, 0.0f` |
 | `TreasureBoxCracked.sDefaultWaitForSwitchOn` | s32 | `5` |
 | `TreasureBoxCracked.sFirstSpeed` | f32 | `15.0f` |
+| `TreasureBoxCracked.sKinokoLifeUpOffset` | f32[3] | `0.0f, 130.0f, 0.0f` |
+| `TreasureBoxCracked.sKinokoOneUpOffset` | f32[3] | `0.0f, 130.0f, 0.0f` |
 | `TreasureBoxCracked.sPointLightBrightness` | f32 | `0.99f` |
 | `TreasureBoxCracked.sStepForCollisionMove` | f32 | `15.0f` |
+| `TreasureBoxCracked.sTopOpenEndOffset` | f32[3] | `0.0f, 23.0f, -250.0f` |
+| `TreasureBoxCracked.sTopOpenStartOffset` | f32[3] | `0.0f, -100.0f, -250.0f` |
+| `TreasureSpot.init.f1` | f32 | `80.0f` |
+| `TreasureSpot.init.f2` | f32 | `30.0f` |
+| `TreasureSpot.init.f3` | f32 | `100.0f` |
+| `TreasureSpot.init.f4` | f32 | `50.0f` |
 | `TreasureSpot.sEnableSpoutLength` | f32 | `2000.0f` |
 | `TreasureSpot.sGlowLeaveMargin` | f32 | `200.0f` |
 | `TreasureSpot.sNumCoin` | s32 | `1` |
 | `Tsukidashikun.sDefaultMoveSpeed` | f32 | `10.0f` |
 | `Tsukidashikun.sRumblePadLength` | f32 | `700.0f` |
+| `UFOBase.init.f1` | f32 | `100.0f` |
+| `UFOBase.init.f2` | f32 | `0.01f` |
+| `UFOBase.initSensorType.f1` | f32 | `100.0f` |
+| `UFOBase.initSubModel.f1` | f32 | `100.0f` |
+| `UFOBase.initSubModel.f2` | f32 | `500.0f` |
 | `ValveSwitch.exeAdjust.1` | s32 | `3` |
+| `ValveSwitch.exeAdjust.f1` | f32 | `3.0f` |
+| `ValveSwitch.init.f1` | f32 | `100.0f` |
+| `ValveSwitch.init.f2` | f32 | `75.0f` |
+| `ValveSwitch.init.f3` | f32 | `150.0f` |
 | `WarpPod.cPartsPerPod` | u32 | `256` |
 | `WarpPod.cPathLift` | f32 | `200.0f` |
 | `WarpPod.cPathPointCount` | u16 | `60` |
@@ -22763,14 +27587,87 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `WarpPod.cSensorRadiusHidden` | f32 | `120.0f` |
 | `WarpPod.cSensorRadiusVisible` | f32 | `15.0f` |
 | `WarpPod.cStandOnDistance` | f32 | `200.0f` |
+| `WarpPod.drawCylinder.f1` | f32 | `2.0f` |
+| `WarpPod.initDraw.f1` | f32 | `0.5f` |
+| `WarpPod.initDraw.f2` | f32 | `4.0f` |
+| `WarpPod.initDraw.f3` | f32 | `0.5f` |
+| `WarpPod.initDraw.f4` | f32 | `0.5f` |
+| `WarpPod.initDraw.f5` | f32 | `0.5f` |
+| `WarpPod.initDraw.f6` | f32 | `0.5f` |
+| `WarpPod.initDraw.f7` | f32 | `2.0f` |
 | `WatchTowerRotateStep.cClippingRadiusOffset` | f32 | `1500.0f` |
 | `WatchTowerRotateStep.cLiftShadowDropLength` | f32 | `370.0f` |
 | `WatchTowerRotateStep.cLiftShadowStartDropOffset` | f32 | `300.0f` |
 | `WatchTowerRotateStep.cRotateSpeed` | f32 | `0.3f` |
+| `WatchTowerRotateStep.initLift.f1` | f32 | `600.0f` |
+| `WatchTowerRotateStep.initLift.f2` | f32 | `200.0f` |
+| `WatchTowerRotateStep.initLift.f3` | f32 | `400.0f` |
+| `WaterfallCaveCover.exeBreak.f1` | f32 | `1000.0f` |
 | `WaterfallCaveCover.sSensorRadius` | f32 | `500.0f` |
+| `WaterLeakPipe.init.f1` | f32 | `120.0f` |
+| `WaterLeakPipe.init.f2` | f32 | `0.5f` |
+| `WaterLeakPipe.init.f3` | f32 | `0.5f` |
 | `WaterLeakPipe.sDefaultHeight` | f32 | `500.0f` |
 | `WaterLeakPipe.sLifeTime` | s32 | `15` |
 | `WaterPressure.sGunPointOffset` | f32 | `200.0f` |
+| `WaterPressureBullet.control.f1` | f32 | `2.5f` |
+| `WaterPressureBullet.exeFly.f1` | f32 | `0.4f` |
+| `WaterPressureBullet.init.f1` | f32 | `100.0f` |
+| `WaterPressureBullet.init.f2` | f32 | `100.0f` |
+| `WaterPressureBullet.init.f3` | f32 | `100.0f` |
+| `WaterPressureBullet.init.f4` | f32 | `100.0f` |
+| `WaterPressureBullet.init.f5` | f32 | `75.0f` |
+| `WaterPressureBullet.init.f6` | f32 | `1500.0f` |
+| `WaterPressureBullet.inviteMario.f1` | f32 | `60.0f` |
+| `WaterPressureBullet.inviteMario.f2` | f32 | `2000.0f` |
+| `WaterPressureBullet.shotWaterBullet.f1` | f32 | `1500.0f` |
+| `WaveFloatingForce.updateOnPlayer.f1` | f32 | `2.0f` |
+| `WaveFloatingForce.updateOnPlayer.f2` | f32 | `3.0f` |
+| `WaveFloatingForce.updateOnPlayer.f3` | f32 | `2.0f` |
+| `WaveFloatingForce.updateOnPlayer.f4` | f32 | `2.0f` |
+| `WaveFloatingForce.updateOnPlayer.f5` | f32 | `3.0f` |
+| `WaveFloatingForce.updateOnPlayer.f6` | f32 | `2.0f` |
+| `WaveFloatingForce.updateOnPlayer.f7` | f32 | `2.0f` |
+| `WaveFloatingForce.updateOnPlayer.f8` | f32 | `3.0f` |
+| `WaveFloatingForce.updateOnPlayer.f9` | f32 | `2.0f` |
+| `WhirlPool.draw.f1` | f32 | `6.0f` |
+| `WhirlPool.draw.f2` | f32 | `6.0f` |
+| `WhirlPool.draw.f3` | f32 | `6.0f` |
+| `WhirlPool.draw.f4` | f32 | `6.0f` |
+| `WhirlPool.drawPlane.f1` | f32 | `50.0f` |
+| `WhirlPool.drawPlane.f2` | f32 | `25.0f` |
+| `WhirlPool.drawPlane.f3` | f32 | `0.01f` |
+| `WhirlPool.drawPlane.f4` | f32 | `0.01f` |
+| `WhirlPool.drawPlane.f5` | f32 | `0.01f` |
+| `WhirlPool.init.f1` | f32 | `1500.0f` |
+| `WhirlPool.init.f2` | f32 | `100.0f` |
+| `WhirlPool.init.f3` | f32 | `100.0f` |
+| `WhirlPool.init.f4` | f32 | `2.0f` |
+| `WhirlPool.initPoints.f1` | f32 | `50.0f` |
+| `WhirlPool.initPoints.f2` | f32 | `10.0f` |
+| `WhirlPool.initPoints.f3` | f32 | `50.0f` |
+| `WhirlPool.initPoints.f4` | f32 | `100.0f` |
+| `WhirlPool.initPoints.f5` | f32 | `100.0f` |
+| `WhirlPool.initPoints.f6` | f32 | `360.0f` |
+| `WhirlPool.initPoints.f7` | f32 | `10.0f` |
+| `WhirlPool.initPoints.f8` | f32 | `360.0f` |
+| `WhirlPool.loadMaterial.f1` | f32 | `0.2f` |
+| `WhirlPool.loadMaterial.f2` | f32 | `0.2f` |
+| `WhirlPool.movement.f1` | f32 | `2.0f` |
+| `WhirlPool.movement.f2` | f32 | `360.0f` |
+| `WhirlPool.movement.f3` | f32 | `0.001f` |
+| `WhirlPool.movement.f4` | f32 | `0.001f` |
+| `WhirlPool.movement.f5` | f32 | `0.001f` |
+| `WhirlPool.movement.f6` | f32 | `0.001f` |
+| `WhirlPool.movement.f7` | f32 | `0.001f` |
+| `WhirlPool.movement.f8` | f32 | `0.01f` |
+| `WoodBox.exeHit.f1` | f32 | `10.0f` |
+| `WoodBox.exeHit.f2` | f32 | `40.0f` |
+| `WoodBox.exeHit.f3` | f32 | `50.0f` |
+| `WoodBox.exeHit.f4` | f32 | `30.0f` |
+| `WoodBox.init.f1` | f32 | `120.0f` |
+| `WoodBox.init.f2` | f32 | `100.0f` |
+| `WormEatenPlanet.init.f1` | f32 | `1000.0f` |
 
 <a id="p-nebula-tunables--gamemii"></a>
 
@@ -22780,8 +27677,58 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 |---|---|---|
 | `MiiCharacters.cIdNotSpecial` | u8 | `0x80` |
 | `MiiCharacters.cIdTemporary` | u8 | `0x20` |
+| `MiiFaceTexture.angle.f1` | f32 | `360.0f` |
+| `MiiFaceTexture.angle.f2` | f32 | `32.0f` |
 | `MiiFaceTexture.cEyebrowTilt` | u8[24] | `26, 26, 27, 25, 26, 25, 26, 25, 28, 25, 26, 24, 27, 27, 26, 26, 25, 25, 26, 26, 27, 26, 25, 27` |
 | `MiiFaceTexture.cScaleX` | f32 | `0.88961464f` |
+| `MiiFaceTexture.dimension.f1` | f32 | `0.4f` |
+| `MiiFaceTexture.drawQuad.f1` | f32 | `3.141592653589793f` |
+| `MiiFaceTexture.drawQuad.f2` | f32 | `180.0f` |
+| `MiiFaceTexture.drawQuad.f3` | f32 | `0.5f` |
+| `MiiFaceTexture.drawQuad.f4` | f32 | `0.5f` |
+| `MiiFaceTexture.drawQuad.f5` | f32 | `0.5f` |
+| `MiiFaceTexture.drawQuad.f6` | f32 | `0.5f` |
+| `MiiFaceTexture.drawQuad.f7` | f32 | `0.5f` |
+| `MiiFaceTexture.layout.f1` | f32 | `18.451525f` |
+| `MiiFaceTexture.layout.f10` | f32 | `360.0f` |
+| `MiiFaceTexture.layout.f11` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f12` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f13` | f32 | `360.0f` |
+| `MiiFaceTexture.layout.f14` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f15` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f16` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f2` | f32 | `16.549807f` |
+| `MiiFaceTexture.layout.f3` | f32 | `29.25885f` |
+| `MiiFaceTexture.layout.f4` | f32 | `31.763554f` |
+| `MiiFaceTexture.layout.f5` | f32 | `17.766165f` |
+| `MiiFaceTexture.layout.f6` | f32 | `2.0f` |
+| `MiiFaceTexture.layout.f7` | f32 | `17.95986f` |
+| `MiiFaceTexture.layout.f8` | f32 | `32.0f` |
+| `MiiFaceTexture.layout.f9` | f32 | `32.0f` |
+| `MiiFaceTexture.makeIcon.f1` | f32 | `43.2f` |
+| `MiiFaceTexture.makeIcon.f10` | f32 | `34.5f` |
+| `MiiFaceTexture.makeIcon.f11` | f32 | `1600.0f` |
+| `MiiFaceTexture.makeIcon.f12` | f32 | `1500.0f` |
+| `MiiFaceTexture.makeIcon.f13` | f32 | `6000.0f` |
+| `MiiFaceTexture.makeIcon.f2` | f32 | `43.2f` |
+| `MiiFaceTexture.makeIcon.f3` | f32 | `2.0f` |
+| `MiiFaceTexture.makeIcon.f4` | f32 | `57.29578f` |
+| `MiiFaceTexture.makeIcon.f5` | f32 | `500.0f` |
+| `MiiFaceTexture.makeIcon.f6` | f32 | `500.0f` |
+| `MiiFaceTexture.makeIcon.f7` | f32 | `700.0f` |
+| `MiiFaceTexture.makeIcon.f8` | f32 | `34.5f` |
+| `MiiFaceTexture.makeIcon.f9` | f32 | `600.0f` |
+| `MiiFaceTexture.unit.f1` | f32 | `64.0f` |
+| `MiiHead.build.f1` | f32 | `0.4f` |
+| `MiiHead.build.f10` | f32 | `2.0f` |
+| `MiiHead.build.f2` | f32 | `0.175f` |
+| `MiiHead.build.f3` | f32 | `1.5f` |
+| `MiiHead.build.f4` | f32 | `8.0f` |
+| `MiiHead.build.f5` | f32 | `0.4f` |
+| `MiiHead.build.f6` | f32 | `0.15f` |
+| `MiiHead.build.f7` | f32 | `5.0f` |
+| `MiiHead.build.f8` | f32 | `1.5f` |
+| `MiiHead.build.f9` | f32 | `11.0f` |
 | `MiiParts.cMagic` | u32 | `0x54504D4Eu` |
 | `MiiParts.cVersion` | u32 | `1` |
 
@@ -22793,20 +27740,40 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 |---|---|---|
 | `Butler.exeDemoShowGalaxyMap.1` | s32 | `70` |
 | `Butler.exeDemoStarPiece2.1` | s32 | `1` |
+| `Butler.init.f1` | f32 | `50.0f` |
+| `Butler.startDemoStarPiece1.f1` | f32 | `100.0f` |
+| `Butler.startDemoStarPiece2.f1` | f32 | `50.0f` |
+| `ButlerStateStarPieceReaction.ButlerStateStarPieceReaction.f1` | f32 | `180.0f` |
 | `CareTaker.exePreWipeOut.setRailCoordSpeed.1` | f32 | `0.0f` |
+| `CareTaker.exePstWipeOut.f1` | f32 | `1.3f` |
+| `CareTaker.exeWait.f1` | f32 | `1.3f` |
 | `CareTaker.exeWait.setRailCoordSpeed.1` | f32 | `0.0f` |
+| `CareTaker.init.f1` | f32 | `100.0f` |
+| `CareTaker.init.f2` | f32 | `3.0f` |
+| `CareTaker.init.f3` | f32 | `2.0f` |
+| `CareTaker.init.f4` | f32 | `0.1f` |
+| `CareTaker.init.f5` | f32 | `0.05f` |
+| `CareTaker.init.f6` | f32 | `350.0f` |
 | `CareTaker.sBgmStartStep` | s32 | `166` |
+| `CareTaker.setAnim.f1` | f32 | `2.0f` |
 | `CareTaker.sPreRaceWait` | s32 | `100` |
 | `CareTaker.sPstRaceWait` | s32 | `50` |
+| `CollectTico.exeCompleteDemo.f1` | f32 | `300.0f` |
+| `CollectTico.exeCompleteDemo.f2` | f32 | `360.0f` |
 | `CollectTico.exeFlash.1` | s32 | `10` |
 | `DemoRabbit.exeAppear.1` | s32 | `5` |
 | `DemoRabbit.exeDemo.turnDirectionToPlayerDegree.1` | f32 | `10.0f` |
 | `DemoRabbit.exeGoal.isNearPlayer.1` | f32 | `500.0f` |
 | `DemoRabbit.exeGoal.turnDirectionToPlayerDegree.1` | f32 | `10.0f` |
 | `DemoRabbit.exeGuide.checkPassBckFrame.1` | f32 | `3.0f` |
+| `DemoRabbit.exeGuide.f1` | f32 | `200.0f` |
+| `DemoRabbit.exeGuide.f2` | f32 | `2.0f` |
+| `DemoRabbit.exeGuide.f3` | f32 | `2.0f` |
 | `DemoRabbit.exeRunaway.checkPassBckFrame.1` | f32 | `3.0f` |
 | `DemoRabbit.exeTalk.turnDirectionToPlayerDegree.1` | f32 | `10.0f` |
 | `DemoRabbit.exeWait.turnDirectionToPlayerDegree.1` | f32 | `10.0f` |
+| `DemoRabbit.fadeIn.f1` | f32 | `100.0f` |
+| `DemoRabbit.fadeIn.f2` | f32 | `1000.0f` |
 | `DemoRabbit.sAirFric` | f32 | `0.99f` |
 | `DemoRabbit.sAirGravityAccel` | f32 | `1.0f` |
 | `DemoRabbit.sAppearJumpPowerV` | f32 | `20.0f` |
@@ -22826,9 +27793,37 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `DemoRabbit.sUpVecBlendRate` | f32 | `0.1f` |
 | `DemoRabbit.sWallJumpPowerV` | f32 | `30.0f` |
 | `DemoRabbit.updateNormalVelocity.reboundVelocityFromCollision.1` | f32 | `-0.05f` |
+| `DemoRabbit.updateRun.f1` | f32 | `200.0f` |
+| `DemoRabbit.updateRun.f2` | f32 | `2.0f` |
+| `DemoRabbit.updateRun.f3` | f32 | `2.0f` |
+| `DemoRabbit.updateStopVelocity.f1` | f32 | `10.0f` |
+| `HoneyBee.control.f1` | f32 | `80.0f` |
+| `HoneyBee.control.f2` | f32 | `80.0f` |
+| `HoneyBee.control.f3` | f32 | `9.0f` |
+| `HoneyBee.control.f4` | f32 | `10.0f` |
+| `HoneyBee.control.f5` | f32 | `120.0f` |
+| `HoneyBee.init.f1` | f32 | `70.0f` |
+| `HoneyBee.init.f2` | f32 | `20.0f` |
+| `HoneyBee.init.f3` | f32 | `450.0f` |
 | `HoneyBee.sFlyMoveSpeed` | f32 | `5.0f` |
+| `HoneyQueen.exeItch.f1` | f32 | `0.2f` |
 | `HoneyQueen.exeReady.isNearPlayer.1` | f32 | `-1.0f` |
+| `HoneyQueen.init.f1` | f32 | `100.0f` |
 | `HoneyQueen.sTalkBalloonOffset` | f32 | `950.0f` |
+| `Kinopio.init.f1` | f32 | `50.0f` |
+| `Kinopio.init.f10` | f32 | `100.0f` |
+| `Kinopio.init.f11` | f32 | `400.0f` |
+| `Kinopio.init.f2` | f32 | `50.0f` |
+| `Kinopio.init.f3` | f32 | `50.0f` |
+| `Kinopio.init.f4` | f32 | `50.0f` |
+| `Kinopio.init.f5` | f32 | `40.0f` |
+| `Kinopio.init.f6` | f32 | `50.0f` |
+| `Kinopio.init.f7` | f32 | `50.0f` |
+| `Kinopio.init.f8` | f32 | `30.0f` |
+| `Kinopio.init.f9` | f32 | `122.0f` |
+| `Kinopio.Param.f1` | f32 | `15.0f` |
+| `Kinopio.Param.f2` | f32 | `1.4f` |
+| `Kinopio.Param.f3` | f32 | `0.3f` |
 | `Kinopio.sDefaultScale` | f32 | `1.2f` |
 | `Kinopio.sDistanceEventPlayerIsNear` | f32 | `600.0f` |
 | `Kinopio.sDistancePlayerIsEvent` | f32 | `450.0f` |
@@ -22843,16 +27838,23 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Kinopio.sUpVecBlendRate` | f32 | `1.0f` |
 | `Kinopio.sWalkSpeed` | f32 | `0.83f` |
 | `KinopioAstro.cMessangerAlwaysEx` | bool | `false` |
+| `KinopioAstro.createLetterIcon.f1` | f32 | `122.0f` |
 | `KinopioAstro.sGotMailSePlayAreaRadius` | f32 | `1500.0f` |
 | `KinopioAstro.sMessangerOneUpExNum` | s32 | `20` |
 | `KinopioAstro.sMessangerOneUpNum` | s32 | `5` |
 | `KinopioAstro.sMessangerTalkDistance` | f32 | `3000.0f` |
+| `KinopioAstro.startDemo.f1` | f32 | `180.0f` |
+| `KoopaJr.exeReaction.f1` | f32 | `10.0f` |
+| `KoopaJr.exeReaction.f2` | f32 | `40.0f` |
+| `KoopaJr.init.f1` | f32 | `200.0f` |
 | `KoopaJr.sSensorSize` | f32 | `175.0f` |
 | `KoopaJr.sShadowRadius` | f32 | `100.0f` |
 | `KoopaJr.sStarPieceNum` | s32 | `20` |
 | `LuigiNPC.branchFunc.isNearPlayer.1` | f32 | `-1.0f` |
 | `LuigiNPC.exeOnTreeFall.addVelocityToGravity.1` | f32 | `1.0f` |
+| `LuigiNPC.initAfterPlacement.f1` | f32 | `500.0f` |
 | `LuigiNPC.sAfraidSeRange` | f32 | `600.0f` |
+| `LuigiNPC.setWaitAction.f1` | f32 | `1500.0f` |
 | `LuigiNPC.sHitJump` | f32 | `20.0f` |
 | `LuigiNPC.sHitMove` | f32 | `4.0f` |
 | `LuigiNPC.sLiftUpSeTiming` | s32 | `87` |
@@ -22866,18 +27868,82 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NebulaAchievementLuma.cLeft` | f32 | `450.0f` |
 | `NebulaAchievementLuma.cStartNo` | s32 | `0` |
 | `NPCActor.cPointingSeStepMax` | s32 | `0x400` |
+| `NPCActor.isScaleAnim.f1` | f32 | `0.2f` |
+| `NPCActor.isScaleAnim.f2` | f32 | `0.2f` |
+| `NPCActor.isScaleAnim.f3` | f32 | `0.2f` |
+| `NPCActor.NPCActor.f1` | f32 | `2000.0f` |
+| `NPCActor.NPCActor.f2` | f32 | `4.0f` |
+| `NPCActor.NPCActor.f3` | f32 | `2.0f` |
+| `NPCActor.NPCActor.f4` | f32 | `0.1f` |
+| `NPCActor.NPCActor.f5` | f32 | `0.08f` |
+| `NPCActor.NPCActorCaps.f1` | f32 | `50.0f` |
+| `NPCActor.NPCActorCaps.f2` | f32 | `50.0f` |
+| `NPCActor.NPCActorCaps.f3` | f32 | `50.0f` |
+| `NPCActor.NPCActorCaps.f4` | f32 | `80.0f` |
+| `NPCActor.NPCActorCaps.f5` | f32 | `150.0f` |
+| `NPCActor.NPCActorCaps.f6` | f32 | `50.0f` |
+| `NPCActor.setBaseMtx.f1` | f32 | `57.29578f` |
+| `NPCActor.setToDefault.f1` | f32 | `57.29578f` |
+| `NPCActor.turnToDefault.f1` | f32 | `0.017453292f` |
+| `NPCActor.turnToPlayer.f1` | f32 | `5.0f` |
+| `NPCActor.turnToPlayer.f2` | f32 | `0.017453292f` |
+| `Penguin.init.f1` | f32 | `80.0f` |
+| `Penguin.init.f2` | f32 | `50.0f` |
+| `Penguin.init.f3` | f32 | `150.0f` |
+| `Penguin.init.f4` | f32 | `2.0f` |
+| `Penguin.initAfterPlacement.f1` | f32 | `100.0f` |
+| `Penguin.initAfterPlacement.f2` | f32 | `500.0f` |
 | `Penguin.isPullRange.isNearPlayer.1` | f32 | `450.0f` |
+| `Penguin.RemovableTurtle.f1` | f32 | `5.85f` |
+| `Penguin.RemovableTurtle.f2` | f32 | `68.0f` |
+| `Penguin.RemovableTurtle.f3` | f32 | `30.0f` |
 | `Penguin.sBlendDash` | f32 | `0.08f` |
 | `Penguin.sDistanceCall` | f32 | `350.0f` |
 | `Penguin.sSpeedDash` | f32 | `6.0f` |
 | `Penguin.sSpeedSwim` | f32 | `5.0f` |
 | `Penguin.sSpeedSwimTurtle` | f32 | `10.0f` |
 | `Penguin.sSpeedWalk` | f32 | `1.5f` |
+| `PenguinCoach.init.f1` | f32 | `130.0f` |
+| `PenguinCoach.init.f10` | f32 | `40.0f` |
+| `PenguinCoach.init.f11` | f32 | `90.0f` |
+| `PenguinCoach.init.f12` | f32 | `10.0f` |
+| `PenguinCoach.init.f13` | f32 | `40.0f` |
+| `PenguinCoach.init.f14` | f32 | `0.1f` |
+| `PenguinCoach.init.f15` | f32 | `800.0f` |
+| `PenguinCoach.init.f16` | f32 | `350.0f` |
+| `PenguinCoach.init.f2` | f32 | `430.0f` |
+| `PenguinCoach.init.f3` | f32 | `180.0f` |
+| `PenguinCoach.init.f4` | f32 | `200.0f` |
+| `PenguinCoach.init.f5` | f32 | `80.0f` |
+| `PenguinCoach.init.f6` | f32 | `160.0f` |
+| `PenguinCoach.init.f7` | f32 | `150.0f` |
+| `PenguinCoach.init.f8` | f32 | `150.0f` |
+| `PenguinCoach.init.f9` | f32 | `300.0f` |
 | `PenguinCoach.sTurnSpeed` | f32 | `180.0f` |
+| `PenguinMaster.init.f1` | f32 | `130.0f` |
+| `PenguinMaster.init.f10` | f32 | `100.0f` |
+| `PenguinMaster.init.f11` | f32 | `350.0f` |
+| `PenguinMaster.init.f2` | f32 | `430.0f` |
+| `PenguinMaster.init.f3` | f32 | `180.0f` |
+| `PenguinMaster.init.f4` | f32 | `200.0f` |
+| `PenguinMaster.init.f5` | f32 | `80.0f` |
+| `PenguinMaster.init.f6` | f32 | `150.0f` |
+| `PenguinMaster.init.f7` | f32 | `100.0f` |
+| `PenguinMaster.init.f8` | f32 | `150.0f` |
+| `PenguinMaster.init.f9` | f32 | `260.0f` |
 | `PenguinRacer.exeRaceFall.attenuateVelocity.1` | f32 | `0.9f` |
 | `PenguinRacer.exeRaceGoal.addVelocityToGravity.1` | f32 | `1.0f` |
 | `PenguinRacer.exeRaceGoal.attenuateVelocity.1` | f32 | `0.9f` |
+| `PenguinRacer.exeRaceGoal.f1` | f32 | `5.0f` |
+| `PenguinRacer.exeRaceGoal.f2` | f32 | `0.1f` |
+| `PenguinRacer.exeRaceTurn.f1` | f32 | `3.0f` |
 | `PenguinRacer.exeRaceWait.attenuateVelocity.1` | f32 | `0.9f` |
+| `PenguinRacer.init.f1` | f32 | `100.0f` |
+| `PenguinRacer.init.f2` | f32 | `130.0f` |
+| `PenguinRacer.initShadow.f1` | f32 | `50.0f` |
+| `PenguinRacer.prepRacer.f1` | f32 | `60.0f` |
+| `PenguinRacer.prepRacer.f2` | f32 | `1000.0f` |
+| `PenguinRacer.resetRacer.f1` | f32 | `80.0f` |
 | `PenguinRacer.sFallBrake` | f32 | `0.002f` |
 | `PenguinRacer.sFallFrame` | s32 | `240` |
 | `PenguinRacer.sGoalBrake` | f32 | `0.005f` |
@@ -22886,6 +27952,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PenguinRacer.sSwimSoundPlayDistance` | f32 | `500.0f` |
 | `PenguinRacer.sTurnFrame` | s32 | `60` |
 | `PenguinRacer.updateMove.addVelocityToGravity.1` | f32 | `1.0f` |
+| `PenguinRacer.updateMove.f1` | f32 | `0.1f` |
+| `PenguinRacer.updateRacer.f1` | f32 | `2000.0f` |
+| `PenguinRacer.updateRacer.f2` | f32 | `100.0f` |
+| `PenguinRacer.updateVelocity.f1` | f32 | `5.0f` |
+| `PenguinRacerLeader.init.f1` | f32 | `130.0f` |
+| `PenguinRacerLeader.resetRacer.f1` | f32 | `180.0f` |
 | `PenguinSkater.exeCaught.1` | s32 | `20` |
 | `PenguinSkater.exeProvoke.isNearPlayer.1` | f32 | `10000.0f` |
 | `PenguinSkater.sAwayAccele` | f32 | `0.15f` |
@@ -22901,6 +27973,22 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PenguinSkater.sSamePosition` | f32 | `10.0f` |
 | `PenguinSkater.sSwitchRange` | f32 | `3000.0f` |
 | `PenguinSkater.sSwitchSpeed` | f32 | `10.0f` |
+| `PenguinStudent.exeLead.f1` | f32 | `7.0f` |
+| `PenguinStudent.exeLead.f2` | f32 | `7.0f` |
+| `PenguinStudent.exeSlow.f1` | f32 | `5.0f` |
+| `PenguinStudent.exeSlow.f2` | f32 | `5.0f` |
+| `PenguinStudent.exeSwim.f1` | f32 | `200.0f` |
+| `PenguinStudent.exeSwim.f2` | f32 | `7.0f` |
+| `PenguinStudent.exeSwim.f3` | f32 | `0.017453292f` |
+| `PenguinStudent.init.f1` | f32 | `50.0f` |
+| `PenguinStudent.init.f2` | f32 | `50.0f` |
+| `PenguinStudent.init.f3` | f32 | `50.0f` |
+| `PenguinStudent.init.f4` | f32 | `150.0f` |
+| `PenguinStudent.init.f5` | f32 | `100.0f` |
+| `PenguinStudent.init.f6` | f32 | `0.3f` |
+| `Rabbit.calcRailPos.f1` | f32 | `500.0f` |
+| `Rabbit.calcRailPos.f2` | f32 | `1000.0f` |
+| `Rabbit.calcRailPos.f3` | f32 | `80.0f` |
 | `Rabbit.cAppearHeight` | f32 | `150.0f` |
 | `Rabbit.cAppearHop` | f32 | `10.0f` |
 | `Rabbit.cDistEscape` | f32 | `400.0f` |
@@ -22909,20 +27997,71 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Rabbit.cFinalDisappearRadius` | f32 | `300.0f` |
 | `Rabbit.cGravity` | f32 | `3.0f` |
 | `Rabbit.cJumpSpeed` | f32 | `20.0f` |
+| `Rabbit.control.f1` | f32 | `5000.0f` |
+| `Rabbit.control.f2` | f32 | `3000.0f` |
 | `Rabbit.cProgressSpeed` | f32 | `18.0f` |
 | `Rabbit.cRegistNormal` | f32 | `0.98f` |
+| `Rabbit.exeGoal.f1` | f32 | `0.5f` |
+| `Rabbit.exeGoal.f2` | f32 | `0.5f` |
+| `Rabbit.exeMove.f1` | f32 | `100.0f` |
+| `Rabbit.exeMove.f10` | f32 | `1.2f` |
+| `Rabbit.exeMove.f11` | f32 | `350.0f` |
+| `Rabbit.exeMove.f12` | f32 | `1.1f` |
+| `Rabbit.exeMove.f13` | f32 | `10.0f` |
+| `Rabbit.exeMove.f2` | f32 | `2.0f` |
+| `Rabbit.exeMove.f3` | f32 | `150.0f` |
+| `Rabbit.exeMove.f4` | f32 | `1.8f` |
+| `Rabbit.exeMove.f5` | f32 | `200.0f` |
+| `Rabbit.exeMove.f6` | f32 | `1.6f` |
+| `Rabbit.exeMove.f7` | f32 | `250.0f` |
+| `Rabbit.exeMove.f8` | f32 | `1.4f` |
+| `Rabbit.exeMove.f9` | f32 | `300.0f` |
 | `Rabbit.exeMove.moveCoord.1` | f32 | `20.0f` |
+| `Rabbit.exeNear.f1` | f32 | `10.0f` |
 | `Rabbit.exeNear.moveCoord.1` | f32 | `20.0f` |
+| `Rabbit.exePreJump.f1` | f32 | `0.5f` |
+| `Rabbit.exePreJump.f2` | f32 | `0.5f` |
+| `Rabbit.exeWait.f1` | f32 | `0.5f` |
+| `Rabbit.exeWait.f2` | f32 | `0.5f` |
+| `Rabbit.exeWait.f3` | f32 | `3.0f` |
+| `Rabbit.init.f1` | f32 | `10.0f` |
+| `Rabbit.init.f2` | f32 | `10.0f` |
+| `Rabbit.init.f3` | f32 | `60.0f` |
+| `Rabbit.init.f4` | f32 | `60.0f` |
+| `Rabbit.init.f5` | f32 | `60.0f` |
+| `Rabbit.init.f6` | f32 | `160.0f` |
+| `Rabbit.init.f7` | f32 | `450.0f` |
+| `Rabbit.isNeedTurn.f1` | f32 | `0.78539819f` |
 | `RabbitStateCaught.sCaughtAirFreq` | f32 | `0.99f` |
 | `RabbitStateCaught.sCaughtGravityAccel` | f32 | `1.0f` |
 | `RabbitStateCaught.sCaughtJumpPower` | f32 | `20.0f` |
 | `RabbitStateCaught.sCaughtLandStartTime` | s32 | `20` |
 | `RabbitStateCaught.sMarioPoseBlendTime` | s32 | `5` |
+| `RabbitStateWaitStart.exeTalk.f1` | f32 | `30.0f` |
 | `RabbitStateWaitStart.sGravityAccel` | f32 | `0.1f` |
 | `RabbitStateWaitStart.sInStartTalkRange` | f32 | `300.0f` |
 | `RabbitStateWaitStart.sSmallTurnDegree` | f32 | `6.0f` |
 | `RabbitStateWaitStart.sSmallTurnStartDegree` | f32 | `45.0f` |
 | `RabbitStateWaitStart.sSpinDegree` | f32 | `2.0f` |
+| `Rosetta.canUpdateStarePos.f1` | f32 | `0.95f` |
+| `Rosetta.init.f1` | f32 | `70.0f` |
+| `Rosetta.init.f10` | f32 | `1500.0f` |
+| `Rosetta.init.f2` | f32 | `160.0f` |
+| `Rosetta.init.f3` | f32 | `80.0f` |
+| `Rosetta.init.f4` | f32 | `50.0f` |
+| `Rosetta.init.f5` | f32 | `40.0f` |
+| `Rosetta.init.f6` | f32 | `5.0f` |
+| `Rosetta.init.f7` | f32 | `0.6f` |
+| `Rosetta.init.f8` | f32 | `0.4f` |
+| `Rosetta.init.f9` | f32 | `200.0f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f1` | f32 | `13.0f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f2` | f32 | `30.0f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f3` | f32 | `25.14f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f4` | f32 | `6.16f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f5` | f32 | `15064.593f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f6` | f32 | `7917.67f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f7` | f32 | `7541.112f` |
+| `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1.f8` | f32 | `1500.0f` |
 | `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor1_exeWait.isNearPlayer.1` | f32 | `500.0f` |
 | `RosettaDemoHeavensDoor.RosettaDemoHeavensDoor2_exeWait.isNearPlayer.1` | f32 | `400.0f` |
 | `RosettaDemoHeavensDoor.sRosettaHideFrame` | s32 | `10` |
@@ -22934,6 +28073,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `RunawayRabbit.exeCaught.1` | s32 | `7` |
 | `RunawayRabbit.exeCaught.addVelocityToGravity.1` | f32 | `2.0f` |
 | `RunawayRabbit.exeRunaway.checkPassBckFrame.1` | f32 | `3.0f` |
+| `RunawayRabbit.exeRunaway.f1` | f32 | `1.3f` |
+| `RunawayRabbit.init.f1` | f32 | `100.0f` |
 | `RunawayRabbit.sAirFric` | f32 | `0.99f` |
 | `RunawayRabbit.sAirGravityAccel` | f32 | `1.0f` |
 | `RunawayRabbit.sAwayTargetVelocityRate` | f32 | `0.3f` |
@@ -22981,6 +28122,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `RunawayRabbitCollect.sFoundRabbitBgmState` | s32 | `3` |
 | `RunawayRabbitCollect.sStartRunAwayBgmChangeFrames` | s32 | `60` |
 | `RunawayRabbitCollect.sStartRunAwayBgmState` | s32 | `2` |
+| `RunawayTico.exeGuide0.f1` | f32 | `100.0f` |
 | `RunawayTico.sAppearSeStep` | s32 | `23` |
 | `RunawayTico.sAwayYOffset` | f32 | `-49.7357f` |
 | `RunawayTico.sDemoCameraZoomOutBgmStartFrame` | s32 | `617` |
@@ -22989,8 +28131,29 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `RunawayTico.sDemoFadeIn` | s32 | `75` |
 | `RunawayTico.sDemoFadeOut` | s32 | `90` |
 | `RunawayTico.sFloatSeStartFrame` | s32 | `560` |
+| `SignBoard.init.f1` | f32 | `30.0f` |
+| `SignBoard.init.f2` | f32 | `100.0f` |
+| `SignBoard.init.f3` | f32 | `130.0f` |
+| `SignBoard.init.f4` | f32 | `130.0f` |
+| `SignBoard.init.f5` | f32 | `160.0f` |
+| `SignBoard.init.f6` | f32 | `20.0f` |
+| `SignBoard.init.f7` | f32 | `80.0f` |
+| `StrayTico.exeCompleteDemo.f1` | f32 | `900.0f` |
 | `StrayTico.exeLauncherCamera.addVelocityMoveToTarget.1` | f32 | `0.5f` |
+| `StrayTico.exeLauncherCamera.f1` | f32 | `400.0f` |
+| `StrayTico.exeLauncherCamera.f2` | f32 | `150.0f` |
+| `StrayTico.exeLauncherCamera.f3` | f32 | `0.5f` |
+| `StrayTico.exeLauncherCamera.f4` | f32 | `200.0f` |
 | `StrayTico.exeWait.isNearPlayer.1` | f32 | `1000.0f` |
+| `StrayTico.init.f1` | f32 | `60.0f` |
+| `StrayTico.init.f2` | f32 | `20.0f` |
+| `StrayTico.initSensor.f1` | f32 | `80.0f` |
+| `StrayTico.initSensor.f2` | f32 | `45.0f` |
+| `StrayTico.initShadow.f1` | f32 | `40.0f` |
+| `StrayTico.initShadow.f2` | f32 | `40.0f` |
+| `StrayTico.initShadow.f3` | f32 | `20.0f` |
+| `StrayTico.receiveMsgPlayerAttack.f1` | f32 | `10.0f` |
+| `StrayTico.receiveOtherMsg.f1` | f32 | `2.0f` |
 | `StrayTico.sAwayDistance` | f32 | `300.0f` |
 | `StrayTico.sChaseDistance` | f32 | `400.0f` |
 | `StrayTico.sChaseFric` | f32 | `0.97f` |
@@ -23005,21 +28168,81 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StrayTico.sUpVecBlendRate` | f32 | `0.2f` |
 | `StrayTico.sWaitTurnDegree` | f32 | `2.0f` |
 | `StrayTico.sWarpTryDistance` | f32 | `2000.0f` |
+| `StrayTico.updateChase.f1` | f32 | `0.5f` |
+| `StrayTico.updateChase.f2` | f32 | `0.5f` |
+| `StrayTico.updateChase.f3` | f32 | `150.0f` |
+| `StrayTico.updateChase.f4` | f32 | `0.5f` |
+| `StrayTico.updateChase.f5` | f32 | `200.0f` |
 | `StrayTico.updateChase.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `StrayTico.updateChase.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `StrayTico.updateChase.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `StrayTico.updateWarp.f1` | f32 | `200.0f` |
+| `StrayTico.updateWarp.f2` | f32 | `200.0f` |
+| `Syati.emitRing.f1` | f32 | `600.0f` |
+| `Syati.emitRing.f2` | f32 | `57.29578f` |
+| `Syati.emitRing.f3` | f32 | `57.29578f` |
+| `Syati.emitRing.f4` | f32 | `57.29578f` |
 | `Syati.exeCountDown.setBckRate.1` | f32 | `0.5f` |
+| `Syati.exeHideOnShore.f1` | f32 | `700.0f` |
+| `Syati.exeSwim.f1` | f64 | `0.5` |
 | `Syati.exeTalkNormal.isNearPlayer.1` | f32 | `-1.0f` |
 | `Syati.exeWaitStarAppeared.1` | s32 | `1` |
 | `Syati.exeWaitTalkNormal.isNearPlayer.1` | f32 | `-1.0f` |
+| `Syati.init.f1` | f32 | `200.0f` |
+| `Syati.init.f2` | f32 | `60.0f` |
+| `Syati.init.f3` | f32 | `230.0f` |
+| `Syati.init.f4` | f32 | `150.0f` |
+| `Syati.init.f5` | f32 | `2000.0f` |
+| `Syati.initTalking.f1` | f32 | `2500.0f` |
+| `Syati.isReadyToEmitRing.f1` | f32 | `600.0f` |
+| `Syati.sMarioMoveLocalOffsetDeepSea` | f32[3] | `6.0f, -176.0f, -590.0f` |
+| `Syati.sMarioMoveLocalOffsetRing` | f32[3] | `6.0f, -33.0f, -776.0f` |
+| `Syati.sTalkOffset` | f32[3] | `16.0f, 192.0f, -300.0f` |
+| `Syati.sTalkOffsetDeepSea` | f32[3] | `47.0f, 179.0f, -300.0f` |
+| `Syati.sTalkOffsetDelightDeepSea` | f32[3] | `152.0f, 240.0f, 250.0f` |
+| `Syati.sTalkOffsetOnShore` | f32[3] | `61.0f, 384.0f, 250.0f` |
+| `Syati.update.f1` | f32 | `450.0f` |
+| `Syati.updatePoseByRail.f1` | f32 | `600.0f` |
+| `Syati.updatePoseByRail.f2` | f32 | `0.04f` |
+| `Syati.updatePoseByRail.f3` | f64 | `0.04` |
+| `Syati.updateSwimCommon.f1` | f32 | `5000.0f` |
+| `TalkBalloon.exeOpen.f1` | f32 | `0.5f` |
+| `TalkBalloon.exeOpen.f2` | f32 | `0.5f` |
+| `TalkBalloon.placeByPlugin.f1` | f32 | `0.5f` |
+| `TalkBalloon.placeByPlugin.f2` | f32 | `0.5f` |
+| `TalkBalloon.updateBalloon.f1` | f32 | `0.5f` |
+| `TalkBalloon.updateBalloon.f2` | f32 | `0.5f` |
+| `TalkBalloon.updateBalloon.f3` | f32 | `10.0f` |
+| `TalkBalloon.updateBalloon.f4` | f32 | `2.0f` |
+| `TalkBalloon.updateBeak.f1` | f32 | `120.0f` |
 | `TalkDirector.sNearScale` | f32 | `1.2f` |
 | `TalkDirector.sTalkDistanceScale` | f32 | `1.0f` |
 | `TalkMessageCtrl.sComposeTalkDistanceScale` | f32 | `2.0f` |
 | `TalkMessageCtrl.sDefaultTalkDistance` | f32 | `240.0f` |
 | `TalkMessageCtrl.sSelectCometTicoTell` | u32 | `16` |
 | `TalkMessageCtrl.sSelectTicoShopWhich` | u32 | `14` |
+| `TalkState.updateButton.f1` | f32 | `1000.0f` |
+| `TalkState.updateButton.f2` | f32 | `40.0f` |
+| `TalkState.updateButton.f3` | f32 | `60.0f` |
 | `TalkSupportPlayerWatcher.sPlayerSpeedMin` | f32 | `4.0f` |
+| `TalkTextFormer.getLanguageRate.f1` | f32 | `1.25f` |
+| `TalkTextFormer.initTagProcessorRecursive.f1` | f32 | `0.8f` |
+| `TalkTextFormer.initTagProcessorRecursive.f2` | f32 | `0.9f` |
+| `TalkTextFormer.initTagProcessorRecursive.f3` | f32 | `0.35f` |
+| `TalkTextFormer.initTagProcessorRecursive.f4` | f32 | `0.9f` |
+| `TeresaRacer.exeMove.f1` | f32 | `0.05f` |
+| `TeresaRacer.exeMove.f2` | f32 | `0.1f` |
+| `TeresaRacer.exeMove.f3` | f32 | `0.05f` |
+| `TeresaRacer.exeMove.f4` | f32 | `0.1f` |
+| `TeresaRacer.init.f1` | f32 | `220.0f` |
+| `TeresaRacer.init.f2` | f32 | `25.0f` |
+| `TeresaRacer.init.f3` | f32 | `40.0f` |
+| `TeresaRacer.init.f4` | f32 | `500.0f` |
+| `TeresaRacer.init.f5` | f32 | `1.5f` |
+| `TeresaRacer.init.f6` | f32 | `0.05f` |
+| `TeresaRacer.init.f7` | f32 | `3000.0f` |
 | `TeresaRacer.prepRacer.setRailCoordSpeed.1` | f32 | `0.0f` |
+| `TeresaRacer.resetRacer.f1` | f32 | `180.0f` |
 | `TeresaRacer.sAccele` | f32 | `0.1f` |
 | `TeresaRacer.sCameraDirScale` | f32 | `0.4f` |
 | `TeresaRacer.sFarBgm_Fadetime` | s32 | `150` |
@@ -23031,8 +28254,39 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TeresaRacer.sRasterParamX` | s32 | `300` |
 | `TeresaRacer.sRasterParamY` | s32 | `1000` |
 | `TeresaRacer.sSpeed` | f32 | `20.0f` |
+| `TeresaRacer.updateRacer.f1` | f32 | `2000.0f` |
+| `TeresaRacer.updateRacer.f2` | f32 | `100.0f` |
+| `Tico.control.f1` | f32 | `0.998646f` |
+| `Tico.control.f2` | f32 | `100.0f` |
+| `Tico.control.f3` | f32 | `11.0f` |
+| `Tico.control.f4` | f32 | `0.2f` |
+| `Tico.control.f5` | f32 | `150.0f` |
 | `Tico.exeRed1.isNearPlayer.1` | f32 | `400.0f` |
+| `Tico.initBase.f1` | f32 | `60.0f` |
+| `Tico.initBase.f2` | f32 | `1000.0f` |
+| `Tico.initBase.f3` | f32 | `8.0f` |
+| `Tico.initBase.f4` | f32 | `0.2f` |
+| `Tico.initBase.f5` | f32 | `0.5f` |
+| `Tico.initBase.f6` | f32 | `12.0f` |
+| `Tico.initMessage.f1` | f32 | `120.0f` |
+| `Tico.initMessage.f2` | f32 | `350.0f` |
+| `Tico.initMessage.f3` | f32 | `120.0f` |
+| `Tico.initMessage.f4` | f32 | `120.0f` |
+| `Tico.initMessage.f5` | f32 | `350.0f` |
+| `Tico.initMessage.f6` | f32 | `120.0f` |
+| `TicoComet.exeEatPre.f1` | f32 | `2.0f` |
 | `TicoComet.exeEatPst.1` | s32 | `4` |
+| `TicoComet.init.f1` | f32 | `3000.0f` |
+| `TicoComet.init.f2` | f32 | `1000.0f` |
+| `TicoComet.init.f3` | f32 | `100.0f` |
+| `TicoComet.init.f4` | f32 | `100.0f` |
+| `TicoComet.init.f5` | f32 | `30.0f` |
+| `TicoComet.init.f6` | f32 | `350.0f` |
+| `TicoComet.receiveMsgPlayerAttack.f1` | f32 | `0.66f` |
+| `TicoComet.receiveMsgPlayerAttack.f2` | f32 | `0.33f` |
+| `TicoComet.TicoEatParam.f1` | f32 | `0.12f` |
+| `TicoComet.TicoEatParam.f2` | f32 | `0.12f` |
+| `TicoComet.TicoEatParam.f3` | f32 | `0.9f` |
 | `TicoDemoGetPower.sFanfareFrame` | s32 | `10` |
 | `TicoDemoGetPower.sFlashLightSeFrame` | s32 | `170` |
 | `TicoDemoGetPower.sFlashSpinSeFrame` | s32 | `72` |
@@ -23042,9 +28296,56 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TicoDemoGetPower.sTicoAppearFrame` | s32 | `110` |
 | `TicoDemoGetPower.sTicoAppearVoiceFrame` | s32 | `180` |
 | `TicoDemoGetPower.sWaitSeStopFrame` | s32 | `65` |
+| `TicoFat.calcScale.f1` | f32 | `0.9f` |
+| `TicoFat.control.f1` | f32 | `0.99864602f` |
+| `TicoFat.disappear.f1` | f32 | `15.0f` |
 | `TicoFat.exeDemo.1` | s32 | `89` |
+| `TicoFat.exeDemo.f1` | f32 | `10.0f` |
+| `TicoFat.exeFly.f1` | f32 | `0.5f` |
+| `TicoFat.exeFly.f2` | f32 | `2.0f` |
+| `TicoFat.exeFly.f3` | f32 | `2.0f` |
+| `TicoFat.exeFly.f4` | f32 | `0.5f` |
+| `TicoFat.exeFly.f5` | f32 | `2.0f` |
+| `TicoFat.exeFly.f6` | f32 | `0.5f` |
+| `TicoFat.exeFly.f7` | f32 | `0.01f` |
+| `TicoFat.exeFly.f8` | f32 | `0.1f` |
+| `TicoFat.getScaledActionName.f1` | f32 | `1.6f` |
+| `TicoFat.getScaledActionName.f2` | f32 | `1.3f` |
+| `TicoFat.init.f1` | f32 | `100.0f` |
+| `TicoFat.init.f10` | f32 | `1000.0f` |
+| `TicoFat.init.f2` | f32 | `30.0f` |
+| `TicoFat.init.f3` | f32 | `110.0f` |
+| `TicoFat.init.f4` | f32 | `30.0f` |
+| `TicoFat.init.f5` | f32 | `220.0f` |
+| `TicoFat.init.f6` | f32 | `220.0f` |
+| `TicoFat.init.f7` | f32 | `280.0f` |
+| `TicoFat.init.f8` | f32 | `280.0f` |
+| `TicoFat.init.f9` | f32 | `100.0f` |
+| `TicoFat.receiveStarPiece.f1` | f32 | `1.6f` |
+| `TicoFat.setCameraParam.f1` | f32 | `100.0f` |
+| `TicoFat.setCameraParam.f2` | f32 | `1.9f` |
+| `TicoFat.setCameraParam.f3` | f32 | `1300.0f` |
+| `TicoFat.setCameraParam.f4` | f32 | `1680.0f` |
+| `TicoFat.setMessage.f1` | f32 | `0.5f` |
+| `TicoFat.setMessage.f2` | f32 | `0.25f` |
+| `TicoFat.setMessage.f3` | f32 | `0.05f` |
+| `TicoFat.setScale.f1` | f32 | `1.3f` |
+| `TicoFat.setScale.f10` | f32 | `280.0f` |
+| `TicoFat.setScale.f11` | f32 | `280.0f` |
+| `TicoFat.setScale.f12` | f32 | `220.0f` |
+| `TicoFat.setScale.f13` | f32 | `220.0f` |
+| `TicoFat.setScale.f2` | f32 | `1.3f` |
+| `TicoFat.setScale.f3` | f32 | `1.6f` |
+| `TicoFat.setScale.f4` | f32 | `1.6f` |
+| `TicoFat.setScale.f5` | f32 | `0.9f` |
+| `TicoFat.setScale.f6` | f32 | `100.0f` |
+| `TicoFat.setScale.f7` | f32 | `110.0f` |
+| `TicoFat.setScale.f8` | f32 | `1.5f` |
+| `TicoFat.setScale.f9` | f32 | `1.5f` |
+| `TicoFat.TicoFat.f1` | f32 | `100.0f` |
 | `TicoFat.updateGoods.isNearPlayer.1` | f32 | `2000.0f` |
 | `TicoFat.updateGuidance.isNearPlayer.1` | f32 | `-1.0f` |
+| `TicoFat.updateScreenEffect.f1` | f32 | `500.0f` |
 | `TicoRail.cBodyRadius` | f32 | `50.0f` |
 | `TicoRail.cRailSpeedGoodBye` | f32 | `1.5f` |
 | `TicoRail.cRailSpeedMove` | f32 | `15.0f` |
@@ -23057,13 +28358,25 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TicoRail.cTalkReactionInterpole` | s32 | `5` |
 | `TicoRail.cTalkTerritoryY` | f32 | `30.0f` |
 | `TicoRail.cTurnRate` | f32 | `1.2f` |
+| `TicoShop.init.f1` | f32 | `350.0f` |
+| `TicoShop.kill.f1` | f32 | `15.0f` |
+| `TicoShop.kill.f2` | f32 | `15.0f` |
 | `TicoShop.sMouthSize` | f32 | `30.0f` |
 | `TicoShop.sSensorOffset` | f32 | `100.0f` |
 | `TicoShop.sSensorSize` | f32 | `100.0f` |
 | `TicoShop.sShadowLength` | f32 | `500.0f` |
 | `TicoShop.sStarPieceNeed` | s32 | `30` |
+| `TrickRabbit.addMovingAccel.f1` | f32 | `0.98f` |
+| `TrickRabbit.calcDefaultJumpTime.f1` | f32 | `22.0f` |
+| `TrickRabbit.calcJumpHeight.f1` | f32 | `100.0f` |
+| `TrickRabbit.control.f1` | f32 | `0.1f` |
+| `TrickRabbit.control.f2` | f32 | `0.2f` |
+| `TrickRabbit.doJump.f1` | f32 | `0.9f` |
+| `TrickRabbit.doJump.f2` | f32 | `70.0f` |
+| `TrickRabbit.doJump.f3` | f32 | `70.0f` |
 | `TrickRabbit.doJumpStart.addVelocityToGravity.1` | f32 | `1.0f` |
 | `TrickRabbit.doJumpStart.attenuateVelocity.1` | f32 | `0.88f` |
+| `TrickRabbit.doJumpStart.f1` | f32 | `0.99f` |
 | `TrickRabbit.doJumpStart.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.doJumpStart.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.doJumpStart.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -23071,11 +28384,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TrickRabbit.doRunaway.attenuateVelocity.1` | f32 | `0.85f` |
 | `TrickRabbit.doRunaway.checkPassBckFrame.1` | f32 | `0.0f` |
 | `TrickRabbit.doRunaway.checkPassBckFrame.2` | f32 | `3.0f` |
+| `TrickRabbit.doRunaway.f1` | f32 | `100.0f` |
+| `TrickRabbit.doRunaway.f2` | f32 | `2.4f` |
+| `TrickRabbit.doRunaway.f3` | f32 | `100.0f` |
+| `TrickRabbit.doRunaway.f4` | f32 | `400.0f` |
 | `TrickRabbit.doRunaway.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.doRunaway.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.doRunaway.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `TrickRabbit.doWait.addVelocityToGravity.1` | f32 | `1.0f` |
 | `TrickRabbit.doWait.attenuateVelocity.1` | f32 | `0.85f` |
+| `TrickRabbit.doWait.f1` | f32 | `10.0f` |
 | `TrickRabbit.doWait.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.doWait.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.doWait.reboundVelocityFromCollision.3` | f32 | `1.0f` |
@@ -23084,33 +28402,55 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TrickRabbit.exeBrakeTurn.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.exeBrakeTurn.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.exeBrakeTurn.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `TrickRabbit.exeDemoRunaway.f1` | f32 | `125.0f` |
 | `TrickRabbit.exeFallDown.addVelocityToGravity.1` | f32 | `1.0f` |
 | `TrickRabbit.exeFallDown.attenuateVelocity.1` | f32 | `0.99f` |
 | `TrickRabbit.exeFallDown.attenuateVelocity.2` | f32 | `0.85f` |
 | `TrickRabbit.exeFallDown.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.exeFallDown.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.exeFallDown.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `TrickRabbit.exeRunaway.f1` | f32 | `125.0f` |
 | `TrickRabbit.exeTumble.addVelocityToGravity.1` | f32 | `1.0f` |
 | `TrickRabbit.exeTumble.attenuateVelocity.1` | f32 | `0.99f` |
 | `TrickRabbit.exeTumble.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.exeTumble.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.exeTumble.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `TrickRabbit.exeWaitPowerStarDemo.addVelocityToGravity.1` | f32 | `1.0f` |
+| `TrickRabbit.exeWaitPowerStarDemo.f1` | f32 | `200.0f` |
+| `TrickRabbit.exeWaitPowerStarDemo.f2` | f32 | `30.0f` |
 | `TrickRabbit.exeWaitPowerStarDemo.isNearPlayer.1` | f32 | `70.0f` |
 | `TrickRabbit.exeWaitPowerStarDemo.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `TrickRabbit.exeWaitPowerStarDemo.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `TrickRabbit.exeWaitPowerStarDemo.reboundVelocityFromCollision.3` | f32 | `1.0f` |
+| `TrickRabbit.init.f1` | f32 | `45.0f` |
+| `TrickRabbit.init.f2` | f32 | `120.0f` |
+| `TrickRabbit.init.f3` | f32 | `100.0f` |
+| `TrickRabbit.init.f4` | f32 | `1500.0f` |
+| `TrickRabbit.initBind.f1` | f32 | `60.0f` |
+| `TrickRabbit.initBind.f2` | f32 | `60.0f` |
+| `TrickRabbit.initSensor.f1` | f32 | `70.0f` |
+| `TrickRabbit.initSensor.f2` | f32 | `30.0f` |
+| `TrickRabbit.initSensor.f3` | f32 | `70.0f` |
 | `TrickRabbit.receiveMsgTrample.1` | s32 | `1` |
+| `TrickRabbit.setUpJumpParam.f1` | f32 | `100.0f` |
+| `TrickRabbit.tryBrakeTurn.f1` | f32 | `0.1f` |
 | `TrickRabbit.tryBrakeTurn.isNearPlayer.1` | f32 | `600.0f` |
 | `TrickRabbit.tryBrakeTurnEnd.1` | s32 | `40` |
 | `TrickRabbit.tryComebackRouteStart.1` | s32 | `20` |
 | `TrickRabbit.tryEndFallDownLand.1` | s32 | `20` |
 | `TrickRabbit.tryEndGetUp.1` | s32 | `20` |
 | `TrickRabbit.tryEndTumble.1` | s32 | `20` |
+| `TrickRabbit.tryRunaway.f1` | f32 | `0.3f` |
 | `TrickRabbit.tryRunaway.isNearPlayer.1` | f32 | `1200.0f` |
 | `TrickRabbit.tryStop.isNearPlayer.1` | f32 | `1500.0f` |
+| `TrickRabbitFreeRun.exePowerStarDemo.f1` | f32 | `200.0f` |
 | `TrickRabbitFreeRun.exeRunaway.checkPassBckFrame.1` | f32 | `3.0f` |
 | `TrickRabbitFreeRun.exeRunawayStart.checkPassBckFrame.1` | f32 | `3.0f` |
+| `TrickRabbitFreeRun.init.f1` | f32 | `100.0f` |
+| `TrickRabbitFreeRun.init.f2` | f32 | `1500.0f` |
+| `TrickRabbitFreeRun.init.f3` | f32 | `120.0f` |
+| `TrickRabbitFreeRun.receiveMsgBlowDamage.f1` | f32 | `20.0f` |
+| `TrickRabbitFreeRun.receiveMsgBlowDamage.f2` | f32 | `20.0f` |
 | `TrickRabbitFreeRun.sBindRadius` | f32 | `60.0f` |
 | `TrickRabbitFreeRun.sBindYOffset` | f32 | `60.0f` |
 | `TrickRabbitFreeRun.sBodyRadius` | f32 | `70.0f` |
@@ -23123,10 +28463,15 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TrickRabbitFreeRun.sUpVecBlendRate` | f32 | `0.1f` |
 | `TrickRabbitSnow.exeAppearFromSnow.1` | s32 | `5` |
 | `TrickRabbitSnow.exeAppearFromSnow.addVelocityToGravity.1` | f32 | `1.0f` |
+| `TrickRabbitSnow.exeAppearFromSnow.f1` | f32 | `20.0f` |
 | `TrickRabbitSnow.exeAppearFromSnow.setVelocityJump.1` | f32 | `25.0f` |
+| `TrickRabbitSnow.exeHideSnow.f1` | f32 | `15.0f` |
 | `TrickRabbitSnow.exeRunaway.checkPassBckFrame.1` | f32 | `3.0f` |
 | `TrickRabbitSnow.exeStartHideSnow.checkPassBckFrame.1` | f32 | `3.0f` |
 | `TrickRabbitSnow.exeWaitSnow.turnDirectionToPlayerDegree.1` | f32 | `15.0f` |
+| `TrickRabbitSnow.init.f1` | f32 | `100.0f` |
+| `TrickRabbitSnow.init.f2` | f32 | `1500.0f` |
+| `TrickRabbitSnow.init.f3` | f32 | `120.0f` |
 | `TrickRabbitSnow.sAppearSnowJumpH` | f32 | `20.0f` |
 | `TrickRabbitSnow.sAppearSnowJumpV` | f32 | `20.0f` |
 | `TrickRabbitSnow.sBindRadius` | f32 | `60.0f` |
@@ -23141,7 +28486,62 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `TrickRabbitSnow.sStarPieceHitAccelH` | f32 | `10.0f` |
 | `TrickRabbitSnow.sStarPieceHitAccelV` | f32 | `40.0f` |
 | `TrickRabbitSnow.sUpVecBlendRate` | f32 | `0.1f` |
+| `TrickRabbitSnowCollect.initTalk.f1` | f32 | `120.0f` |
 | `TrickRabbitSnowCollect.sInStartEventRange` | f32 | `700.0f` |
+| `TrickRabbitUtil.createRabbitFootPrint.f1` | f32 | `100.0f` |
+| `TrickRabbitUtil.createRabbitFootPrint.f2` | f32 | `30.0f` |
+| `TrickRabbitUtil.createRabbitFootPrint.f3` | f32 | `30.0f` |
+
+<a id="p-nebula-tunables--gameparticle"></a>
+
+### Game/Particle
+
+| Key | Type | Game's value |
+|---|---|---|
+| `ChildShape.ParticleCalcChildAlphaOut.f1` | f32 | `255.0f` |
+| `EmitterDynamics.volumeCube.f1` | f32 | `0.5f` |
+| `EmitterDynamics.volumeCube.f2` | f32 | `0.5f` |
+| `EmitterDynamics.volumeCube.f3` | f32 | `0.5f` |
+| `EmitterDynamics.volumeLine.f1` | f32 | `0.5f` |
+| `EmitterDynamics.volumeLine.f2` | f32 | `0.5f` |
+| `EmitterDynamics.volumePoint.f1` | f32 | `0.5f` |
+| `EmitterDynamics.volumePoint.f2` | f32 | `0.5f` |
+| `EmitterDynamics.volumePoint.f3` | f32 | `0.5f` |
+| `ExtraShape.ParticleCalcAlphaAnm.f1` | f32 | `255.0f` |
+| `ExtraShape.ParticleCalcAlphaAnm.f2` | f32 | `255.0f` |
+| `ExtraShape.ParticleCalcAlphaAnm.f3` | f32 | `255.0f` |
+| `ExtraShape.ParticleCalcAlphaFlickAnm.f1` | f32 | `16384.0f` |
+| `ExtraShape.ParticleCalcAlphaFlickAnm.f2` | f32 | `0.5f` |
+| `ExtraShape.ParticleCalcAlphaFlickAnm.f3` | f32 | `255.0f` |
+| `ExtraShape.ParticleCalcScaleAnmReverseX.f1` | f32 | `2.0f` |
+| `ExtraShape.ParticleCalcScaleAnmReverseY.f1` | f32 | `2.0f` |
+| `ParticleDraw.loadPrjAnm.f1` | f32 | `0.5f` |
+| `ParticleDraw.loadPrjAnm.f2` | f32 | `0.5f` |
+| `ParticleDraw.ParticleDrawLine.f1` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripe.f1` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripe.f2` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripeX.f1` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripeX.f2` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripeX.f3` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripeX.f4` | f32 | `25.0f` |
+| `ParticleDraw.ParticleDrawStripeX.f5` | f32 | `0.01f` |
+| `ParticleDraw.ParticleDrawStripeX.f6` | f32 | `0.01f` |
+| `ParticleDraw.rotTypeXYZ.f1` | f32 | `0.333333f` |
+| `ParticleDraw.rotTypeXYZ.f2` | f32 | `0.57735f` |
+| `ParticleField.calc.f1` | f32 | `10.0f` |
+| `ParticleField.calc.f2` | f32 | `10.0f` |
+| `ParticleResource.drawC.f1` | f32 | `1.02f` |
+| `ParticleResource.drawC.f2` | f32 | `1.02f` |
+| `ParticleResource.drawC.f3` | f32 | `0.4f` |
+| `ParticleResource.drawP.f1` | f32 | `1.02f` |
+| `ParticleResource.drawP.f2` | f32 | `1.02f` |
+| `ParticleResource.drawP.f3` | f32 | `0.4f` |
+| `ParticleResource.sendParticle.f1` | f32 | `255.0f` |
+| `ParticleResource.sendParticle.f2` | f32 | `255.0f` |
+| `ParticleResource.setIndirect.f1` | f32 | `2.0f` |
+| `ParticleResource.setIndirect.f2` | f32 | `0.5f` |
+| `ParticleShape.setTexCoordAnimation.f1` | f32 | `0.5f` |
+| `ParticleShape.setTexCoordAnimation.f2` | f32 | `0.5f` |
 
 <a id="p-nebula-tunables--gameplayer"></a>
 
@@ -23149,17 +28549,1706 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `FireMarioBall.init.f1` | f32 | `25.0f` |
+| `FireMarioBall.init.f2` | f32 | `50.0f` |
+| `GhostPlayer.attackSensor.f1` | f32 | `10.0f` |
+| `GhostPlayer.attackSensor.f2` | f32 | `40.0f` |
+| `GhostPlayer.calcAndSetBaseMtx.f1` | f32 | `0.2f` |
 | `GhostPlayer.cGhostNamedSpecialAnims` | u32 | `4` |
+| `GhostPlayer.control.f1` | f32 | `0.9f` |
+| `GhostPlayer.exePreStartDemo2.f1` | f32 | `0.1f` |
 | `GhostPlayer.exeWinDemo.1` | s32 | `180` |
+| `GhostPlayer.getShiftRatio.f1` | f32 | `256.0f` |
+| `GhostPlayer.getShiftRatio.f2` | f32 | `256.0f` |
+| `GhostPlayer.init.f1` | f32 | `40.0f` |
+| `GhostPlayer.init.f2` | f32 | `80.0f` |
+| `GhostPlayer.init.f3` | f32 | `50.0f` |
+| `GhostPlayer.init.f4` | f32 | `15.59f` |
+| `GhostPlayer.init.f5` | f32 | `42.5f` |
+| `GhostPlayer.init.f6` | f32 | `42.93f` |
+| `GhostPlayer.init.f7` | f32 | `17.05f` |
+| `GhostPlayer.init.f8` | f32 | `0.7f` |
+| `GhostPlayer.init.f9` | f32 | `113.55f` |
+| `GhostPlayer.receiveGhostFrame.f1` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f2` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f3` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f4` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f5` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f6` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f7` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f8` | f32 | `180.0f` |
+| `GhostPlayer.receiveGhostFrame.f9` | f32 | `180.0f` |
+| `GhostPlayer.receiveMsgPlayerAttack.f1` | f32 | `10.0f` |
+| `GhostPlayer.receiveMsgPlayerAttack.f2` | f32 | `40.0f` |
+| `MarineSnow.draw.f1` | f32 | `60.0f` |
+| `MarineSnow.draw.f10` | f32 | `8.0f` |
+| `MarineSnow.draw.f11` | f32 | `12.0f` |
+| `MarineSnow.draw.f12` | f32 | `242.0f` |
+| `MarineSnow.draw.f13` | f32 | `255.0f` |
+| `MarineSnow.draw.f14` | f32 | `3.0f` |
+| `MarineSnow.draw.f2` | f32 | `2.0f` |
+| `MarineSnow.draw.f3` | f32 | `2.0f` |
+| `MarineSnow.draw.f4` | f32 | `2.0f` |
+| `MarineSnow.draw.f5` | f32 | `4.5f` |
+| `MarineSnow.draw.f6` | f32 | `10.0f` |
+| `MarineSnow.draw.f7` | f32 | `10.0f` |
+| `MarineSnow.draw.f8` | f32 | `3.0f` |
+| `MarineSnow.draw.f9` | f32 | `5.0f` |
+| `Mario.checkForceGrounding.f1` | f32 | `45.0f` |
+| `Mario.checkForceGrounding.f2` | f32 | `0.99f` |
+| `Mario.checkForceGrounding.f3` | f32 | `30.0f` |
+| `Mario.doExtraServices.f1` | f32 | `28000.0f` |
+| `Mario.doExtraServices.f2` | f32 | `2499.0f` |
+| `Mario.fixHeadFrontVecByGravity.f1` | f32 | `45.0f` |
+| `Mario.fixHeadFrontVecByGravity.f2` | f32 | `15.0f` |
+| `Mario.fixHeadFrontVecByGravity.f3` | f32 | `0.99f` |
+| `Mario.getGravityVec.f1` | f32 | `150.0f` |
+| `Mario.inputStick.f1` | f32 | `1.5f` |
+| `Mario.inputStick.f2` | f32 | `1.5f` |
+| `Mario.inputStick.f3` | f32 | `0.01f` |
+| `Mario.inputStick.f4` | f32 | `2.0f` |
+| `Mario.inputStick.f5` | f32 | `0.01f` |
+| `Mario.Mario.f1` | f32 | `200.0f` |
+| `Mario.postureCtrl.f1` | f32 | `45.0f` |
+| `Mario.postureCtrl.f10` | f32 | `0.5f` |
+| `Mario.postureCtrl.f11` | f32 | `260.0f` |
+| `Mario.postureCtrl.f12` | f32 | `0.1f` |
+| `Mario.postureCtrl.f13` | f32 | `0.1f` |
+| `Mario.postureCtrl.f2` | f32 | `45.0f` |
+| `Mario.postureCtrl.f3` | f32 | `60.0f` |
+| `Mario.postureCtrl.f4` | f32 | `290.0f` |
+| `Mario.postureCtrl.f5` | f32 | `260.0f` |
+| `Mario.postureCtrl.f6` | f32 | `0.5f` |
+| `Mario.postureCtrl.f7` | f32 | `0.5f` |
+| `Mario.postureCtrl.f8` | f32 | `260.0f` |
+| `Mario.postureCtrl.f9` | f32 | `30.0f` |
+| `Mario.setFrontVecKeepUp.f1` | f32 | `0.024543693f` |
+| `Mario.setFrontVecKeepUp.f2` | f32 | `0.5f` |
+| `Mario.setGroundNorm.f1` | f32 | `1.4959966f` |
+| `Mario.slopeTiltHead.f1` | f32 | `5.0f` |
+| `Mario.slopeTiltHead.f2` | f64 | `0.2` |
+| `Mario.update.f1` | f32 | `150.0f` |
+| `Mario.update.f2` | f32 | `40.0f` |
+| `Mario.update.f3` | f32 | `160.0f` |
+| `Mario.update.f4` | f32 | `80.0f` |
+| `Mario.update.f5` | f32 | `90.0f` |
+| `Mario.update.f6` | f32 | `5.0f` |
+| `Mario.update.f7` | f32 | `5.0f` |
+| `Mario.update.f8` | f32 | `0.5f` |
+| `Mario.updateGroundInfo.f1` | f32 | `170.0f` |
+| `Mario.updateLookOfs.f1` | f32 | `0.3f` |
+| `Mario.updateLookOfs.f10` | f32 | `0.2f` |
+| `Mario.updateLookOfs.f11` | f32 | `0.5f` |
+| `Mario.updateLookOfs.f12` | f32 | `0.02f` |
+| `Mario.updateLookOfs.f13` | f32 | `0.2f` |
+| `Mario.updateLookOfs.f14` | f32 | `0.2f` |
+| `Mario.updateLookOfs.f15` | f32 | `0.2f` |
+| `Mario.updateLookOfs.f2` | f32 | `35.0f` |
+| `Mario.updateLookOfs.f3` | f32 | `5.0f` |
+| `Mario.updateLookOfs.f4` | f32 | `50.0f` |
+| `Mario.updateLookOfs.f5` | f32 | `0.1f` |
+| `Mario.updateLookOfs.f6` | f32 | `256.0f` |
+| `Mario.updateLookOfs.f7` | f32 | `120.0f` |
+| `Mario.updateLookOfs.f8` | f32 | `0.2f` |
+| `Mario.updateLookOfs.f9` | f32 | `0.01f` |
+| `Mario.writeBackPhyisicalVector.f1` | f32 | `200.0f` |
+| `Mario.writeBackPhyisicalVector.f10` | f32 | `0.1f` |
+| `Mario.writeBackPhyisicalVector.f2` | f32 | `0.5f` |
+| `Mario.writeBackPhyisicalVector.f3` | f32 | `6.0f` |
+| `Mario.writeBackPhyisicalVector.f4` | f32 | `0.707f` |
+| `Mario.writeBackPhyisicalVector.f5` | f32 | `300.0f` |
+| `Mario.writeBackPhyisicalVector.f6` | f32 | `0.5f` |
+| `Mario.writeBackPhyisicalVector.f7` | f32 | `0.707f` |
+| `Mario.writeBackPhyisicalVector.f8` | f32 | `0.3f` |
+| `Mario.writeBackPhyisicalVector.f9` | f32 | `1.4285715f` |
+| `Mario2D.stick2DadjustGround.f1` | f32 | `0.707f` |
+| `Mario2D.stick2DadjustGround.f2` | f32 | `0.707f` |
+| `Mario2D.stick2DadjustGround.f3` | f32 | `0.3f` |
+| `Mario2D.stick2DadjustGround.f4` | f32 | `30.0f` |
+| `Mario2D.stick2DadjustGround.f5` | f32 | `180.0f` |
+| `Mario2D.stick2DadjustGround.f6` | f32 | `150.0f` |
+| `Mario2D.stick2DadjustGround.f7` | f32 | `180.0f` |
+| `MarioAccess.scatterStarPiece.f1` | f32 | `24.0f` |
+| `MarioAccess.scatterStarPiece.f2` | f32 | `24.0f` |
+| `MarioActor.calcAndSetBaseMtx.f1` | f32 | `500.0f` |
+| `MarioActor.calcAndSetBaseMtx.f10` | f32 | `80.0f` |
+| `MarioActor.calcAndSetBaseMtx.f11` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f12` | f32 | `0.01f` |
+| `MarioActor.calcAndSetBaseMtx.f13` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f14` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f15` | f32 | `0.8f` |
+| `MarioActor.calcAndSetBaseMtx.f16` | f32 | `15.0f` |
+| `MarioActor.calcAndSetBaseMtx.f17` | f32 | `0.02f` |
+| `MarioActor.calcAndSetBaseMtx.f18` | f32 | `160.0f` |
+| `MarioActor.calcAndSetBaseMtx.f19` | f32 | `0.5f` |
+| `MarioActor.calcAndSetBaseMtx.f2` | f32 | `150.0f` |
+| `MarioActor.calcAndSetBaseMtx.f20` | f32 | `120.0f` |
+| `MarioActor.calcAndSetBaseMtx.f21` | f32 | `160.0f` |
+| `MarioActor.calcAndSetBaseMtx.f22` | f32 | `0.15f` |
+| `MarioActor.calcAndSetBaseMtx.f23` | f32 | `30.0f` |
+| `MarioActor.calcAndSetBaseMtx.f24` | f32 | `2.0f` |
+| `MarioActor.calcAndSetBaseMtx.f25` | f32 | `15.0f` |
+| `MarioActor.calcAndSetBaseMtx.f26` | f32 | `0.15f` |
+| `MarioActor.calcAndSetBaseMtx.f27` | f32 | `30.0f` |
+| `MarioActor.calcAndSetBaseMtx.f28` | f32 | `2.0f` |
+| `MarioActor.calcAndSetBaseMtx.f29` | f32 | `15.0f` |
+| `MarioActor.calcAndSetBaseMtx.f3` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f4` | f32 | `150.0f` |
+| `MarioActor.calcAndSetBaseMtx.f5` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f6` | f32 | `0.2f` |
+| `MarioActor.calcAndSetBaseMtx.f7` | f32 | `0.8f` |
+| `MarioActor.calcAndSetBaseMtx.f8` | f32 | `15.0f` |
+| `MarioActor.calcAndSetBaseMtx.f9` | f32 | `0.02f` |
+| `MarioActor.calcAnim.f1` | f32 | `40.0f` |
+| `MarioActor.calcAnim.f2` | f32 | `10.0f` |
+| `MarioActor.calcAnim.f3` | f32 | `140.0f` |
+| `MarioActor.calcAnim.f4` | f32 | `5.0f` |
+| `MarioActor.calcAnim.f5` | f32 | `70.0f` |
+| `MarioActor.calcAnimInMovement.f1` | f32 | `500.0f` |
+| `MarioActor.calcAnimInMovement.f2` | f32 | `700.0f` |
+| `MarioActor.calcBaseFrontVec.f1` | f32 | `0.99f` |
+| `MarioActor.calcCenterPos.f1` | f32 | `40.0f` |
+| `MarioActor.calcCenterPos.f10` | f32 | `20.0f` |
+| `MarioActor.calcCenterPos.f2` | f32 | `0.8f` |
+| `MarioActor.calcCenterPos.f3` | f32 | `0.2f` |
+| `MarioActor.calcCenterPos.f4` | f32 | `60.0f` |
+| `MarioActor.calcCenterPos.f5` | f32 | `0.9f` |
+| `MarioActor.calcCenterPos.f6` | f32 | `0.1f` |
+| `MarioActor.calcCenterPos.f7` | f32 | `100.0f` |
+| `MarioActor.calcCenterPos.f8` | f32 | `0.8f` |
+| `MarioActor.calcCenterPos.f9` | f32 | `0.2f` |
 | `MarioActor.cDarkCometOneHealth` | bool | `true` |
 | `MarioActor.cHitTakesAll` | bool | `false` |
 | `MarioActor.cWaterAir` | s32 | `8` |
+| `MarioActor.init.f1` | f32 | `360.0f` |
+| `MarioActor.init.f2` | f32 | `360.0f` |
+| `MarioActor.init.f3` | f32 | `360.0f` |
+| `MarioActor.init2.f1` | f32 | `100.0f` |
+| `MarioActor.init2.f10` | f32 | `15.69f` |
+| `MarioActor.init2.f11` | f32 | `88.99f` |
+| `MarioActor.init2.f12` | f32 | `35.0f` |
+| `MarioActor.init2.f13` | f32 | `60.0f` |
+| `MarioActor.init2.f2` | f32 | `40.0f` |
+| `MarioActor.init2.f3` | f32 | `60.0f` |
+| `MarioActor.init2.f4` | f32 | `70.0f` |
+| `MarioActor.init2.f5` | f32 | `0.35f` |
+| `MarioActor.init2.f6` | f32 | `1.8f` |
+| `MarioActor.init2.f7` | f32 | `52.51f` |
+| `MarioActor.init2.f8` | f32 | `39.58f` |
+| `MarioActor.init2.f9` | f32 | `76.33f` |
+| `MarioActor.initAfterPlacement.f1` | f32 | `70.0f` |
+| `MarioActor.isInPunchTimerRange.f1` | f32 | `6.0f` |
+| `MarioActor.isInPunchTimerRange.f2` | f32 | `20.0f` |
+| `MarioActor.isJumping.f1` | f32 | `10.0f` |
+| `MarioActor.MarioActor.f1` | f32 | `1000.0f` |
+| `MarioActor.movement.f1` | f32 | `2.0f` |
+| `MarioActor.movement.f10` | f32 | `5.0f` |
+| `MarioActor.movement.f11` | f32 | `40.0f` |
+| `MarioActor.movement.f12` | f32 | `100.0f` |
+| `MarioActor.movement.f13` | f32 | `200.f` |
+| `MarioActor.movement.f14` | f32 | `5.0f` |
+| `MarioActor.movement.f15` | f32 | `40.0f` |
+| `MarioActor.movement.f16` | f32 | `0.1f` |
+| `MarioActor.movement.f17` | f32 | `200.0f` |
+| `MarioActor.movement.f18` | f32 | `0.1f` |
+| `MarioActor.movement.f2` | f32 | `0.5f` |
+| `MarioActor.movement.f3` | f32 | `0.1f` |
+| `MarioActor.movement.f4` | f32 | `2.0f` |
+| `MarioActor.movement.f5` | f32 | `10.0f` |
+| `MarioActor.movement.f6` | f32 | `10.0f` |
+| `MarioActor.movement.f7` | f32 | `20.0f` |
+| `MarioActor.movement.f8` | f32 | `0.5f` |
+| `MarioActor.movement.f9` | f32 | `5.0f` |
+| `MarioActor.scaleMtx.f1` | f32 | `0.35f` |
+| `MarioActor.setPress.f1` | f32 | `160.0f` |
+| `MarioActor.updateBindRatio.f1` | f32 | `2.0f` |
+| `MarioActor.updateBindRatio.f2` | f32 | `0.1f` |
+| `MarioActor.updateBindRatio.f3` | f32 | `0.01f` |
+| `MarioActor.updateBindRatio.f4` | f32 | `0.01f` |
+| `MarioActor.updateCameraInfo.f1` | f32 | `6.0f` |
+| `MarioActor.updateCameraInfo.f2` | f32 | `500.0f` |
+| `MarioActor.updateRotationInfo.f1` | f32 | `90.0f` |
+| `MarioActor.updateRotationInfo.f2` | f32 | `90.0f` |
+| `MarioActor.updateRotationInfo.f3` | f32 | `180.0f` |
+| `MarioActor.updateRotationInfo.f4` | f32 | `57.2957763672f` |
+| `MarioActor.updateRotationInfo.f5` | f32 | `57.2957763672f` |
+| `MarioActor.updateRotationInfo.f6` | f32 | `90.0f` |
+| `MarioActor.updateRotationInfo.f7` | f32 | `90.0f` |
+| `MarioActor.updateRotationInfo.f8` | f32 | `180.0f` |
+| `MarioActor.updateSwingTimer.f1` | f32 | `0.75f` |
+| `MarioActorBlackHole.exeGameOverBlackHole2.f1` | f32 | `180.0f` |
+| `MarioActorBlackHole.exeGameOverBlackHole2.f2` | f32 | `180.0f` |
+| `MarioActorBlackHole.exeGameOverBlackHole2.f3` | f32 | `0.01f` |
+| `MarioActorCamera.getSpecialMode.f1` | f32 | `300.0f` |
+| `MarioActorCamera.getSpecialMode.f2` | f32 | `800.0f` |
+| `MarioActorCamera.isFastRise.f1` | f32 | `60.0f` |
+| `MarioActorCamera.isLongDrop.f1` | f32 | `1000.0f` |
+| `MarioActorCamera.updateTransForCamera.f1` | f32 | `0.1f` |
+| `MarioActorCamera.updateTransForCamera.f2` | f32 | `0.9f` |
+| `MarioActorCamera.updateTransForCamera.f3` | f32 | `0.8f` |
+| `MarioActorCamera.updateTransForCamera.f4` | f32 | `0.2f` |
+| `MarioActorClap.bodyClap.f1` | f32 | `100.0f` |
+| `MarioActorDefensiveMsg.cylinderHitCheck.f1` | f32 | `100.0f` |
+| `MarioActorDefensiveMsg.receiveMsgEnemyAttack.f1` | f32 | `15.0f` |
+| `MarioActorDefensiveMsg.receiveMsgEnemyAttack.f2` | f32 | `30.0f` |
+| `MarioActorDefensiveMsg.receiveMsgPush.f1` | f32 | `1.1f` |
+| `MarioActorDefensiveMsg.receiveOtherMsg.f1` | f32 | `10.0f` |
+| `MarioActorDefensiveMsg.receiveOtherMsg.f2` | f32 | `0.5f` |
+| `MarioActorDefensiveMsg.receiveOtherMsg.f3` | f32 | `0.5f` |
+| `MarioActorDefensiveMsg.tryVectorAttackMsg.f1` | f32 | `15.0f` |
+| `MarioActorDefensiveMsg.tryVectorAttackMsg.f2` | f32 | `10.0f` |
+| `MarioActorDefensiveMsg.tryVectorAttackMsg.f3` | f32 | `15.0f` |
+| `MarioActorDefensiveMsg.tryVectorAttackMsg.f4` | f32 | `20.0f` |
+| `MarioActorDraw.drawReflectModel.f1` | f32 | `0.00001f` |
+| `MarioActorDraw.initDrawAndModel.f1` | f32 | `0.2f` |
+| `MarioActorDraw.initDrawAndModel.f2` | f32 | `0.14f` |
+| `MarioActorDraw.initDrawAndModel.f3` | f32 | `1000.0f` |
+| `MarioActorDraw.initDrawAndModel.f4` | f32 | `1000.0f` |
+| `MarioActorDraw.initTeresaMario.f1` | f32 | `90.0f` |
+| `MarioActorDraw.updateFace.f1` | f32 | `0.49f` |
+| `MarioActorDraw.updateFace.f2` | f32 | `10.0f` |
+| `MarioActorGameOver.exeGameOverAbyss.f1` | f32 | `0.99f` |
+| `MarioActorGameOver.exeGameOverAbyss.f2` | f32 | `35.0f` |
+| `MarioActorGameOver.exeGameOverAbyss.f3` | f32 | `0.01f` |
+| `MarioActorGravity.checkBeeCeilStick.f1` | f32 | `200.0f` |
+| `MarioActorGravity.syncJumpBeeStickMode.f1` | f32 | `36.0f` |
+| `MarioActorGravity.syncJumpBeeStickMode.f2` | f32 | `2.0f` |
+| `MarioActorGravity.updateBeeModeGravity.f1` | f32 | `0.1f` |
+| `MarioActorGravity.updateBeeModeGravity.f2` | f32 | `0.3f` |
+| `MarioActorGravity.updateBeeStickMode.f1` | f32 | `100.0f` |
+| `MarioActorGravity.updateBeeStickMode.f2` | f32 | `100.0f` |
+| `MarioActorGravity.updateGravityVec.f1` | f32 | `100.0f` |
+| `MarioActorGravity.updateGravityVec.f10` | f32 | `70.0f` |
+| `MarioActorGravity.updateGravityVec.f11` | f32 | `0.5f` |
+| `MarioActorGravity.updateGravityVec.f12` | f32 | `50.0f` |
+| `MarioActorGravity.updateGravityVec.f13` | f32 | `70.0f` |
+| `MarioActorGravity.updateGravityVec.f14` | f32 | `59.0f` |
+| `MarioActorGravity.updateGravityVec.f15` | f32 | `0.1f` |
+| `MarioActorGravity.updateGravityVec.f16` | f32 | `0.5f` |
+| `MarioActorGravity.updateGravityVec.f17` | f32 | `70.0f` |
+| `MarioActorGravity.updateGravityVec.f18` | f32 | `0.1f` |
+| `MarioActorGravity.updateGravityVec.f19` | f32 | `15.0f` |
+| `MarioActorGravity.updateGravityVec.f2` | f32 | `0.9f` |
+| `MarioActorGravity.updateGravityVec.f20` | f32 | `160.0f` |
+| `MarioActorGravity.updateGravityVec.f21` | f32 | `80.0f` |
+| `MarioActorGravity.updateGravityVec.f22` | f32 | `80.0f` |
+| `MarioActorGravity.updateGravityVec.f3` | f32 | `6.0f` |
+| `MarioActorGravity.updateGravityVec.f4` | f32 | `0.4f` |
+| `MarioActorGravity.updateGravityVec.f5` | f32 | `2.0f` |
+| `MarioActorGravity.updateGravityVec.f6` | f32 | `3.0f` |
+| `MarioActorGravity.updateGravityVec.f7` | f32 | `0.5f` |
+| `MarioActorGravity.updateGravityVec.f8` | f32 | `0.75f` |
+| `MarioActorGravity.updateGravityVec.f9` | f32 | `0.75f` |
+| `MarioActorHand.updateHand.f1` | f32 | `0.49f` |
+| `MarioActorHand.updateHand.f2` | f32 | `10.0f` |
+| `MarioActorHand.updateHand.f3` | f32 | `0.49f` |
+| `MarioActorHand.updateHand.f4` | f32 | `10.0f` |
+| `MarioActorMatrix.getFaceLookHeight.f1` | f32 | `150.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f1` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f10` | f32 | `100.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f2` | f32 | `10.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f3` | f32 | `15.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f4` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f5` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f6` | f32 | `10.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f7` | f32 | `15.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f8` | f32 | `250.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensor.f9` | f32 | `250.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f1` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f2` | f32 | `10.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f3` | f32 | `15.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f4` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f5` | f32 | `10.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f6` | f32 | `15.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f7` | f32 | `250.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInDamage.f8` | f32 | `250.0f` |
+| `MarioActorOffensiveMsg.attackOrPushSensorInRush.f1` | f32 | `20.0f` |
+| `MarioActorOffensiveMsg.checkAndTryTrampleAttack.f1` | f32 | `1.5f` |
+| `MarioActorOffensiveMsg.tryGetItem.f1` | f32 | `100.0f` |
+| `MarioActorParts.createIceFloor.f1` | f32 | `180.0f` |
+| `MarioActorParts.createIceWall.f1` | f32 | `180.0f` |
+| `MarioActorParts.shootFireBall.f1` | f32 | `30.0f` |
+| `MarioActorParts.shootFireBall.f2` | f32 | `0.5f` |
+| `MarioActorParts.shootFireBall.f3` | f32 | `0.5f` |
+| `MarioActorParts.shootFireBall.f4` | f32 | `0.5f` |
+| `MarioActorParts.updateBaseMtxTeresa.f1` | f32 | `10.0f` |
+| `MarioActorParts.updateBaseMtxTeresa.f2` | f32 | `0.3926991f` |
+| `MarioActorParts.updateBaseMtxTeresa.f3` | f32 | `0.98f` |
+| `MarioActorParts.updateBaseMtxTeresa.f4` | f32 | `0.02f` |
+| `MarioActorParts.updateBeeWingAnimation.f1` | f32 | `0.9f` |
+| `MarioActorParts.updateBeeWingAnimation.f2` | f32 | `0.9f` |
+| `MarioActorParts.updateFairyStar.f1` | f32 | `0.001f` |
+| `MarioActorParts.updateTakingPosition.f1` | f32 | `10.0f` |
+| `MarioActorParts.updateTakingPosition.f2` | f32 | `0.1f` |
+| `MarioActorParts.updateThrowVector.f1` | f32 | `40.0f` |
+| `MarioActorParts.updateThrowVector.f2` | f32 | `40.0f` |
+| `MarioActorPunch.isEnableSpinPunch.f1` | f32 | `160.0f` |
+| `MarioActorPunch.printHitMark.f1` | f32 | `200.0f` |
+| `MarioActorPunch.reactionPunch.f1` | f32 | `0.1f` |
+| `MarioActorPunch.reactionPunch.f2` | f32 | `0.1f` |
+| `MarioActorPunch.reactionPunch.f3` | f32 | `20.0f` |
+| `MarioActorPunch.reactionPunch.f4` | f32 | `5.0f` |
+| `MarioActorPunch.tryPunchAirAfter.f1` | f32 | `4.0f` |
+| `MarioActorPunch.trySpinPunch.f1` | f32 | `160.0f` |
+| `MarioActorRush.endRush.f1` | f32 | `70.0f` |
+| `MarioActorRush.endRush.f2` | f32 | `200.0f` |
+| `MarioActorRushMsg.getNearestJumpTarget.f1` | f32 | `100000.0f` |
+| `MarioActorRushMsg.getNearestRushTarget.f1` | f32 | `100000.0f` |
+| `MarioActorRushMsg.getNearestRushTarget.f2` | f32 | `20.0f` |
+| `MarioActorSensor.initScouter.f1` | f32 | `60.0f` |
+| `MarioActorSensor.initScouter.f2` | f32 | `100.0f` |
+| `MarioActorSensor.recordScoutingObject.f1` | f32 | `1.5707964f` |
+| `MarioActorSensor.recordScoutingObject.f2` | f32 | `60.0f` |
+| `MarioActorSensor.setupSensors.f1` | f32 | `100.0f` |
+| `MarioActorSensor.setupSensors.f2` | f32 | `100.0f` |
+| `MarioActorSensor.setupSensors.f3` | f32 | `2000.0f` |
+| `MarioActorSensor.setupSensors.f4` | f32 | `80.0f` |
+| `MarioActorSensor.setupSensors.f5` | f32 | `80.0f` |
+| `MarioActorSensor.trampleJump.f1` | f32 | `1.2f` |
+| `MarioActorSensor.trampleJump.f2` | f32 | `1.5f` |
+| `MarioActorSensor.updateHitSensor.f1` | f32 | `60.0f` |
+| `MarioActorSensor.updateHitSensor.f2` | f32 | `100.0f` |
+| `MarioActorSensor.updateHitSensor.f3` | f32 | `600.0f` |
+| `MarioActorSensor.updateHitSensor.f4` | f32 | `1000.0f` |
+| `MarioActorSensor.updateHitSensor.f5` | f32 | `2000.0f` |
+| `MarioActorSensor.updateHitSensor.f6` | f32 | `2000.0f` |
+| `MarioActorSensor.updateScouter.f1` | f32 | `80.0f` |
+| `MarioActorSensor.updateScouter.f10` | f32 | `100.0f` |
+| `MarioActorSensor.updateScouter.f11` | f32 | `300.0f` |
+| `MarioActorSensor.updateScouter.f12` | f32 | `5.0f` |
+| `MarioActorSensor.updateScouter.f13` | f32 | `180.0f` |
+| `MarioActorSensor.updateScouter.f14` | f32 | `200.0f` |
+| `MarioActorSensor.updateScouter.f15` | f32 | `40.0f` |
+| `MarioActorSensor.updateScouter.f2` | f32 | `100.0f` |
+| `MarioActorSensor.updateScouter.f3` | f32 | `100.0f` |
+| `MarioActorSensor.updateScouter.f4` | f32 | `1000.0f` |
+| `MarioActorSensor.updateScouter.f5` | f32 | `2400.0f` |
+| `MarioActorSensor.updateScouter.f6` | f32 | `3000.0f` |
+| `MarioActorSensor.updateScouter.f7` | f32 | `60.0f` |
+| `MarioActorSensor.updateScouter.f8` | f32 | `100.0f` |
+| `MarioActorSensor.updateScouter.f9` | f32 | `300.0f` |
+| `MarioActorShadow.calcCylinderToCenter.f1` | f32 | `1000.0f` |
+| `MarioActorShadow.calcCylinderToCenter.f2` | f32 | `10.0f` |
+| `MarioActorShadow.calcCylinderToCenter.f3` | f32 | `1000.0f` |
+| `MarioActorShadow.calcCylinderToCenter.f4` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewFootPrint.f1` | f32 | `0.1f` |
+| `MarioActorShadow.calcViewReflectionModel.f1` | f32 | `10.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f10` | f32 | `0.5f` |
+| `MarioActorShadow.calcViewReflectionModel.f11` | f32 | `0.5f` |
+| `MarioActorShadow.calcViewReflectionModel.f12` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f13` | f32 | `1.414f` |
+| `MarioActorShadow.calcViewReflectionModel.f14` | f32 | `127.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f2` | f32 | `25.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f3` | f32 | `40.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f4` | f32 | `200.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f5` | f32 | `40.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f6` | f32 | `160.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f7` | f32 | `1.414f` |
+| `MarioActorShadow.calcViewReflectionModel.f8` | f32 | `64.0f` |
+| `MarioActorShadow.calcViewReflectionModel.f9` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewWallShadowModel.f1` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewWallShadowModel.f2` | f32 | `10.0f` |
+| `MarioActorShadow.calcViewWallShadowModel.f3` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewWallShadowModel.f4` | f32 | `1000.0f` |
+| `MarioActorShadow.calcViewWallShadowModel.f5` | f32 | `0.9f` |
+| `MarioActorShadow.calcViewWallShadowModel.f6` | f32 | `0.1f` |
+| `MarioActorShadow.calcViewWallShadowModel.f7` | f32 | `10.0f` |
+| `MarioActorShadow.decideShadowMode.f1` | f32 | `500.0f` |
+| `MarioActorShadow.decideShadowMode.f2` | f32 | `0.75f` |
+| `MarioActorShadow.decideShadowMode.f3` | f32 | `0.75f` |
+| `MarioActorShadow.decideShadowMode.f4` | f32 | `1000.0f` |
+| `MarioActorSpecialDraw.calc1stPersonView.f1` | f32 | `300.0f` |
+| `MarioActorSpecialDraw.calc1stPersonView.f2` | f32 | `1000.0f` |
+| `MarioActorSpecialDraw.calc1stPersonView.f3` | f32 | `255.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f1` | f32 | `63.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f2` | f32 | `0.5f` |
+| `MarioActorSpecialDraw.calcFogLighting.f3` | f32 | `2.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f4` | f32 | `255.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f5` | f32 | `255.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f6` | f32 | `20.0f` |
+| `MarioActorSpecialDraw.calcFogLighting.f7` | f32 | `0.8f` |
+| `MarioActorSpecialDraw.calcFogLighting.f8` | f32 | `2.0f` |
+| `MarioActorSpecialDraw.calcScreenBoxRange.f1` | f32 | `80.0f` |
+| `MarioActorSpecialDraw.calcScreenBoxRange.f2` | f32 | `80.0f` |
+| `MarioActorSpecialDraw.calcScreenBoxRange.f3` | f32 | `80.0f` |
+| `MarioActorSpecialDraw.calcSpinEffect.f1` | f32 | `30.0f` |
+| `MarioActorSpecialDraw.calcSpinEffect.f2` | f32 | `5.8f` |
+| `MarioActorSpecialDraw.calcSpinEffect.f3` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.calcSpinEffect.f4` | f32 | `120.0f` |
+| `MarioActorSpecialDraw.calcSpinEffect.f5` | f32 | `120.0f` |
+| `MarioActorSpecialDraw.drawColdWaterDamage.f1` | f32 | `89.0f` |
+| `MarioActorSpecialDraw.drawColdWaterDamage.f2` | f32 | `120.0f` |
+| `MarioActorSpecialDraw.drawColdWaterDamage.f3` | f32 | `5.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f1` | f32 | `240.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f2` | f32 | `240.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f3` | f32 | `4.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f4` | f32 | `4.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f5` | f32 | `4.0f` |
+| `MarioActorSpecialDraw.drawDarkMask.f6` | f32 | `4.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f1` | f32 | `100.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f2` | f32 | `100.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f3` | f32 | `100.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f4` | f32 | `100.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f5` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f6` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f7` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawScreenBlend.f8` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawSphereMask.f1` | f32 | `0.00001f` |
+| `MarioActorSpecialDraw.drawSphereMask.f2` | f32 | `180.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f1` | f32 | `0.09817477f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f2` | f32 | `6.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f3` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f4` | f32 | `3.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f5` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f6` | f32 | `32.0f` |
+| `MarioActorSpecialDraw.drawSpinEffect.f7` | f32 | `160.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f1` | f32 | `100.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f10` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f2` | f32 | `0.3926991f` |
+| `MarioActorSpecialDraw.drawWallShade.f3` | f32 | `5.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f4` | f32 | `5.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f5` | f32 | `5.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f6` | f32 | `2.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f7` | f32 | `16.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f8` | f32 | `5.0f` |
+| `MarioActorSpecialDraw.drawWallShade.f9` | f32 | `10.0f` |
+| `MarioActorSpecialDraw.setRasterScroll.f1` | f32 | `0.9f` |
+| `MarioActorSpecialDraw.setRasterScroll.f2` | f32 | `0.1f` |
+| `MarioActorSpecialDraw.updateRandomTexture.f1` | f32 | `1000.0f` |
+| `MarioActorSpecialDraw.updateRasterScroll.f1` | f32 | `0.9f` |
+| `MarioActorSpecialDraw.writeBackScreenBox.f1` | f32 | `0.9999f` |
+| `MarioActorSpecialDraw.writeBackScreenBox.f2` | f32 | `0.9999f` |
+| `MarioActorSpecialDraw.writeBackScreenBox.f3` | f32 | `0.9999f` |
+| `MarioActorSpecialDraw.writeBackScreenBox.f4` | f32 | `0.9999f` |
+| `MarioActorTakeMsg.releaseThrowMemoSensor.f1` | f32 | `3.0f` |
+| `MarioActorTakeMsg.releaseThrowMemoSensor.f2` | f32 | `3.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f1` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f10` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f11` | f32 | `2.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f12` | f32 | `25.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f13` | f32 | `50.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f2` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f3` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f4` | f32 | `400000.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f5` | f32 | `10000.0f` |
+| `MarioActorTakeMsg.tryPullTrans.f6` | f32 | `0.4f` |
+| `MarioActorTakeMsg.tryPullTrans.f7` | f32 | `0.01f` |
+| `MarioActorTakeMsg.tryPullTrans.f8` | f32 | `0.04f` |
+| `MarioActorTakeMsg.tryPullTrans.f9` | f32 | `600.0f` |
+| `MarioActorTakeMsg.trySetLockOnTarget.f1` | f32 | `500.0f` |
+| `MarioActorTakeMsg.tryTornadoPull.f1` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryTornadoPull.f2` | f32 | `200.0f` |
+| `MarioActorTakeMsg.tryTornadoPull.f3` | f32 | `0.1f` |
+| `MarioActorTakeMsg.tryTornadoPull.f4` | f32 | `2.0f` |
+| `MarioActorTakeMsg.tryTornadoPull.f5` | f32 | `600.0f` |
+| `MarioActorTakeMsg.tryTornadoPull.f6` | f32 | `120.0f` |
+| `MarioAnimationEfx.spinUpdate.f1` | f32 | `30.0f` |
+| `MarioAnimationEfx.squatSpinCheck.f1` | f32 | `40.0f` |
+| `MarioAnimator.isMirrorAnimation.f1` | f32 | `0.5f` |
+| `MarioAnimator.setHipSlidingTilt.f1` | f32 | `1.414213f` |
+| `MarioAnimator.setHoming.f1` | f32 | `10.0f` |
+| `MarioAnimator.setHoming.f2` | f32 | `0.1f` |
+| `MarioAnimator.setHoming.f3` | f32 | `0.1f` |
+| `MarioAnimator.setHoming.f4` | f32 | `0.9f` |
+| `MarioAnimator.setHoming.f5` | f32 | `0.1f` |
+| `MarioAnimator.setTilt.f1` | f32 | `0.001f` |
+| `MarioAnimator.setTilt.f10` | f32 | `0.03f` |
+| `MarioAnimator.setTilt.f2` | f32 | `0.9f` |
+| `MarioAnimator.setTilt.f3` | f32 | `0.1f` |
+| `MarioAnimator.setTilt.f4` | f32 | `0.95f` |
+| `MarioAnimator.setTilt.f5` | f32 | `0.05f` |
+| `MarioAnimator.setTilt.f6` | f32 | `0.9f` |
+| `MarioAnimator.setTilt.f7` | f32 | `0.1f` |
+| `MarioAnimator.setTilt.f8` | f32 | `4.0f` |
+| `MarioAnimator.setTilt.f9` | f32 | `0.97f` |
+| `MarioAnimator.setWalkWeight.f1` | f32 | `0.5f` |
+| `MarioAnimator.targetWeight.f1` | f32 | `0.5f` |
+| `MarioAnimator.targetWeight.f2` | f32 | `0.5f` |
+| `MarioAnimator.update.f1` | f32 | `79.0f` |
+| `MarioAnimator.update.f2` | f32 | `59.0f` |
+| `MarioAnimator.update.f3` | f32 | `59.0f` |
+| `MarioAnimator.updateJointRumble.f1` | f32 | `30.0f` |
+| `MarioAnimator.updateJointRumble.f2` | f32 | `30.0f` |
+| `MarioAnimator.updateJointRumble.f3` | f32 | `0.7f` |
+| `MarioAnimator.updateJointRumble.f4` | f32 | `60.0f` |
+| `MarioAnimator.updateJointRumble.f5` | f32 | `5.0f` |
+| `MarioAnimator.updateJointRumble.f6` | f32 | `0.707f` |
+| `MarioAnimator.updateJointRumble.f7` | f32 | `0.707f` |
+| `MarioAnimator.updateJointRumble.f8` | f32 | `0.9f` |
+| `MarioBee.beeMarioOnAir.f1` | f32 | `5.0f` |
+| `MarioBee.beeMarioOnAir.f2` | f32 | `0.1f` |
+| `MarioBee.beeMarioOnAir.f3` | f32 | `5.0f` |
+| `MarioBee.beeMarioOnAir.f4` | f32 | `1.5f` |
+| `MarioBee.beeMarioOnAir.f5` | f32 | `0.9f` |
+| `MarioBee.beeMarioOnAir.f6` | f32 | `15.0f` |
+| `MarioBee.beeMarioOnAir.f7` | f32 | `0.5f` |
+| `MarioBee.beeMarioOnAir.f8` | f32 | `0.5f` |
+| `MarioBlown.update.f1` | f32 | `0.95f` |
+| `MarioBlown.update.f2` | f32 | `10.0f` |
+| `MarioBlown.update.f3` | f32 | `0.5f` |
+| `MarioBlown.update.f4` | f32 | `40.0f` |
+| `MarioBump.start.f1` | f32 | `16.0f` |
+| `MarioBump.startBump.f1` | f32 | `100.0f` |
+| `MarioBump.startBump.f2` | f32 | `0.52359879f` |
+| `MarioBump.update.f1` | f32 | `0.1f` |
+| `MarioBump.update.f2` | f32 | `0.1f` |
+| `MarioClimb.update.f1` | f32 | `6.0f` |
+| `MarioCollision.calcDistToCeil.f1` | f32 | `30.0f` |
+| `MarioCollision.calcDistToCeil.f2` | f32 | `200.0f` |
+| `MarioCollision.calcDistToCeil.f3` | f32 | `10.0f` |
+| `MarioCollision.calcDistToCeil.f4` | f32 | `200.0f` |
+| `MarioCollision.calcDistToCeil.f5` | f32 | `200.0f` |
+| `MarioCollision.calcDistToCeilHead.f1` | f32 | `40.0f` |
+| `MarioCollision.calcDistToCeilHead.f2` | f32 | `80.0f` |
+| `MarioCollision.calcDistToCeilHead.f3` | f32 | `80.0f` |
+| `MarioCollision.calcDistWidth.f1` | f32 | `100.0f` |
+| `MarioCollision.calcDistWidth.f2` | f32 | `100.0f` |
+| `MarioCollision.calcDistWidth.f3` | f32 | `100.0f` |
+| `MarioCollision.calcDistWidth.f4` | f32 | `80.0f` |
+| `MarioCollision.calcDistWidth.f5` | f32 | `30.0f` |
+| `MarioCollision.calcDistWidth.f6` | f32 | `100.0f` |
+| `MarioCollision.calcDistWidth.f7` | f32 | `100.0f` |
+| `MarioCollision.calcDistWidth.f8` | f32 | `0.707f` |
+| `MarioCollision.calcDistWidth.f9` | f32 | `100.0f` |
+| `MarioCollision.calcFrontFloor.f1` | f32 | `100.0f` |
+| `MarioCollision.calcFrontFloor.f10` | f32 | `15.0f` |
+| `MarioCollision.calcFrontFloor.f11` | f32 | `5.0f` |
+| `MarioCollision.calcFrontFloor.f12` | f32 | `10.0f` |
+| `MarioCollision.calcFrontFloor.f13` | f32 | `400.0f` |
+| `MarioCollision.calcFrontFloor.f14` | f32 | `25.0f` |
+| `MarioCollision.calcFrontFloor.f2` | f32 | `8.0f` |
+| `MarioCollision.calcFrontFloor.f3` | f32 | `200.0f` |
+| `MarioCollision.calcFrontFloor.f4` | f32 | `0.1f` |
+| `MarioCollision.calcFrontFloor.f5` | f32 | `200.0f` |
+| `MarioCollision.calcFrontFloor.f6` | f32 | `20.0f` |
+| `MarioCollision.calcFrontFloor.f7` | f32 | `210.0f` |
+| `MarioCollision.calcFrontFloor.f8` | f32 | `0.9f` |
+| `MarioCollision.calcFrontFloor.f9` | f32 | `1.5707964f` |
+| `MarioCollision.calcShadowPos.f1` | f32 | `100.0f` |
+| `MarioCollision.calcShadowPos.f2` | f32 | `400.0f` |
+| `MarioCollision.calcShadowPos.f3` | f32 | `10.0f` |
+| `MarioCollision.calcShadowPos.f4` | f32 | `100.0f` |
+| `MarioCollision.calcShadowPos.f5` | f32 | `100.0f` |
+| `MarioCollision.calcShadowPos.f6` | f32 | `50.0f` |
+| `MarioCollision.calcShadowPos.f7` | f32 | `0.1f` |
+| `MarioCollision.calcShadowPos.f8` | f32 | `2500.0f` |
+| `MarioCollision.checkAllWall.f1` | f32 | `110.0f` |
+| `MarioCollision.checkAllWall.f10` | f32 | `0.707f` |
+| `MarioCollision.checkAllWall.f11` | f32 | `180.0f` |
+| `MarioCollision.checkAllWall.f12` | f32 | `0.707f` |
+| `MarioCollision.checkAllWall.f13` | f32 | `60.0f` |
+| `MarioCollision.checkAllWall.f14` | f32 | `5.0f` |
+| `MarioCollision.checkAllWall.f15` | f32 | `80.0f` |
+| `MarioCollision.checkAllWall.f16` | f32 | `60.0f` |
+| `MarioCollision.checkAllWall.f17` | f32 | `80.0f` |
+| `MarioCollision.checkAllWall.f18` | f32 | `0.5f` |
+| `MarioCollision.checkAllWall.f19` | f32 | `0.707f` |
+| `MarioCollision.checkAllWall.f2` | f32 | `120.0f` |
+| `MarioCollision.checkAllWall.f20` | f32 | `0.707f` |
+| `MarioCollision.checkAllWall.f21` | f32 | `0.999f` |
+| `MarioCollision.checkAllWall.f22` | f32 | `0.9f` |
+| `MarioCollision.checkAllWall.f3` | f32 | `25.0f` |
+| `MarioCollision.checkAllWall.f4` | f32 | `25.0f` |
+| `MarioCollision.checkAllWall.f5` | f32 | `0.707f` |
+| `MarioCollision.checkAllWall.f6` | f32 | `180.0f` |
+| `MarioCollision.checkAllWall.f7` | f32 | `3.14159f` |
+| `MarioCollision.checkAllWall.f8` | f32 | `30.0f` |
+| `MarioCollision.checkAllWall.f9` | f32 | `0.5f` |
+| `MarioCollision.checkBaseTransBall.f1` | f32 | `50.0f` |
+| `MarioCollision.checkBaseTransBall.f2` | f32 | `50.0f` |
+| `MarioCollision.checkBaseTransBall.f3` | f32 | `40.0f` |
+| `MarioCollision.checkBaseTransBall.f4` | f32 | `50.0f` |
+| `MarioCollision.checkBaseTransBall.f5` | f32 | `40.0f` |
+| `MarioCollision.checkBaseTransPoint.f1` | f32 | `30.0f` |
+| `MarioCollision.checkBaseTransPoint.f2` | f32 | `0.3f` |
+| `MarioCollision.checkBaseTransPoint.f3` | f32 | `0.707f` |
+| `MarioCollision.checkBaseTransPoint.f4` | f32 | `1.01f` |
+| `MarioCollision.checkBaseTransPoint.f5` | f32 | `0.99f` |
+| `MarioCollision.checkBaseTransPoint.f6` | f32 | `5.0f` |
+| `MarioCollision.checkCurrentFloorCodeSevere.f1` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f1` | f32 | `50.0f` |
+| `MarioCollision.checkGround.f10` | f32 | `80.0f` |
+| `MarioCollision.checkGround.f11` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f12` | f32 | `3.0f` |
+| `MarioCollision.checkGround.f13` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f14` | f32 | `3.0f` |
+| `MarioCollision.checkGround.f15` | f32 | `3.0f` |
+| `MarioCollision.checkGround.f16` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f17` | f32 | `3.0f` |
+| `MarioCollision.checkGround.f18` | f32 | `3.0f` |
+| `MarioCollision.checkGround.f19` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f2` | f32 | `2.0943952f` |
+| `MarioCollision.checkGround.f20` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f21` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f22` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f23` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f24` | f32 | `55.0f` |
+| `MarioCollision.checkGround.f25` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f26` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f27` | f32 | `0.99f` |
+| `MarioCollision.checkGround.f28` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f29` | f32 | `6.0f` |
+| `MarioCollision.checkGround.f3` | f32 | `10.0f` |
+| `MarioCollision.checkGround.f30` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f31` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f32` | f32 | `0.01f` |
+| `MarioCollision.checkGround.f33` | f32 | `0.01f` |
+| `MarioCollision.checkGround.f34` | f32 | `0.01f` |
+| `MarioCollision.checkGround.f35` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f4` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f5` | f32 | `100.0f` |
+| `MarioCollision.checkGround.f6` | f32 | `5.0f` |
+| `MarioCollision.checkGround.f7` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f8` | f32 | `30.0f` |
+| `MarioCollision.checkGround.f9` | f32 | `100.0f` |
+| `MarioCollision.checkHeadPoint.f1` | f32 | `40.0f` |
+| `MarioCollision.checkHeadPoint.f10` | f32 | `0.2f` |
+| `MarioCollision.checkHeadPoint.f11` | f32 | `0.707f` |
+| `MarioCollision.checkHeadPoint.f2` | f32 | `110.0f` |
+| `MarioCollision.checkHeadPoint.f3` | f32 | `50.0f` |
+| `MarioCollision.checkHeadPoint.f4` | f32 | `50.0f` |
+| `MarioCollision.checkHeadPoint.f5` | f32 | `2.0f` |
+| `MarioCollision.checkHeadPoint.f6` | f32 | `60.0f` |
+| `MarioCollision.checkHeadPoint.f7` | f32 | `0.707f` |
+| `MarioCollision.checkHeadPoint.f8` | f32 | `0.707f` |
+| `MarioCollision.checkHeadPoint.f9` | f32 | `45.0f` |
+| `MarioCollision.checkMap.f1` | f32 | `30.0f` |
+| `MarioCollision.checkMap.f2` | f32 | `100.0f` |
+| `MarioCollision.checkMap.f3` | f32 | `150.0f` |
+| `MarioCollision.createAtField.f1` | f32 | `50.0f` |
+| `MarioCollision.createAtField.f10` | f32 | `80.0f` |
+| `MarioCollision.createAtField.f11` | f32 | `0.7853982f` |
+| `MarioCollision.createAtField.f12` | f32 | `60.0f` |
+| `MarioCollision.createAtField.f13` | f32 | `45.0f` |
+| `MarioCollision.createAtField.f2` | f32 | `50.0f` |
+| `MarioCollision.createAtField.f3` | f32 | `40.0f` |
+| `MarioCollision.createAtField.f4` | f32 | `40.0f` |
+| `MarioCollision.createAtField.f5` | f32 | `40.0f` |
+| `MarioCollision.createAtField.f6` | f32 | `40.0f` |
+| `MarioCollision.createAtField.f7` | f32 | `40.0f` |
+| `MarioCollision.createAtField.f8` | f32 | `60.0f` |
+| `MarioCollision.createAtField.f9` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f1` | f32 | `80.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f2` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f3` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f4` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f5` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f6` | f32 | `120.0f` |
+| `MarioCollision.doSpinPunchAroundPolygons.f7` | f32 | `120.0f` |
+| `MarioCollision.fixTransBetweenWall.f1` | f32 | `0.5f` |
+| `MarioCollision.getCameraCubeCode.f1` | f32 | `100.0f` |
+| `MarioCollision.saveLastSafetyTrans.f1` | f32 | `10.0f` |
+| `MarioCollision.saveLastSafetyTrans.f2` | f32 | `15.0f` |
+| `MarioCollision.saveLastSafetyTrans.f3` | f32 | `5.0f` |
+| `MarioCollision.saveLastSafetyTrans.f4` | f32 | `0.125f` |
+| `MarioCollision.saveLastSafetyTrans.f5` | f32 | `50.0f` |
+| `MarioCollision.saveLastSafetyTrans.f6` | f32 | `50.0f` |
+| `MarioCollision.updateBinderInfo.f1` | f32 | `0.1f` |
+| `MarioCollision.updateBinderInfo.f10` | f32 | `0.17f` |
+| `MarioCollision.updateBinderInfo.f11` | f32 | `0.5f` |
+| `MarioCollision.updateBinderInfo.f12` | f32 | `1.4959966f` |
+| `MarioCollision.updateBinderInfo.f13` | f32 | `1.4959966f` |
+| `MarioCollision.updateBinderInfo.f14` | f32 | `5.0f` |
+| `MarioCollision.updateBinderInfo.f15` | f32 | `2.0f` |
+| `MarioCollision.updateBinderInfo.f16` | f32 | `30.0f` |
+| `MarioCollision.updateBinderInfo.f17` | f32 | `100.0f` |
+| `MarioCollision.updateBinderInfo.f2` | f32 | `0.707f` |
+| `MarioCollision.updateBinderInfo.f3` | f32 | `30.0f` |
+| `MarioCollision.updateBinderInfo.f4` | f32 | `0.10471976f` |
+| `MarioCollision.updateBinderInfo.f5` | f32 | `0.707f` |
+| `MarioCollision.updateBinderInfo.f6` | f32 | `0.707f` |
+| `MarioCollision.updateBinderInfo.f7` | f32 | `0.707f` |
+| `MarioCollision.updateBinderInfo.f8` | f32 | `0.707f` |
+| `MarioCollision.updateBinderInfo.f9` | f32 | `2.3561945f` |
+| `MarioCollision.updateCubeCode.f1` | f32 | `100.0f` |
+| `MarioCollision.updateCubeCode.f2` | f32 | `2000.0f` |
+| `MarioDamage.close.f1` | f32 | `0.1f` |
+| `MarioDamage.damageFloorCheck.f1` | f32 | `10.0f` |
+| `MarioDamage.damagePolygonCheck.f1` | f32 | `10.0f` |
+| `MarioDamage.damageWallCheck.f1` | f32 | `5.0f` |
+| `MarioDamage.damageWallCheck.f2` | f32 | `10.0f` |
+| `MarioDamage.impact.f1` | f32 | `2.0f` |
+| `MarioDamage.impact.f2` | f32 | `2.0f` |
+| `MarioDamage.impact.f3` | f32 | `0.5f` |
+| `MarioDamage.start.f1` | f32 | `0.25f` |
+| `MarioDamage.start.f2` | f32 | `0.5f` |
+| `MarioDamage.stopHead.f1` | f32 | `0.5f` |
+| `MarioDamage.stopHead.f2` | f32 | `0.5f` |
+| `MarioDamage.update.f1` | f32 | `0.95f` |
+| `MarioDamage.update.f10` | f32 | `50.0f` |
+| `MarioDamage.update.f11` | f32 | `10.0f` |
+| `MarioDamage.update.f12` | f32 | `5.0f` |
+| `MarioDamage.update.f13` | f32 | `0.7f` |
+| `MarioDamage.update.f14` | f32 | `50.0f` |
+| `MarioDamage.update.f15` | f32 | `50.0f` |
+| `MarioDamage.update.f16` | f32 | `10.0f` |
+| `MarioDamage.update.f17` | f32 | `5.0f` |
+| `MarioDamage.update.f18` | f32 | `50.0f` |
+| `MarioDamage.update.f19` | f32 | `50.0f` |
+| `MarioDamage.update.f2` | f32 | `0.95f` |
+| `MarioDamage.update.f3` | f32 | `0.95f` |
+| `MarioDamage.update.f4` | f32 | `30.0f` |
+| `MarioDamage.update.f5` | f32 | `20.0f` |
+| `MarioDamage.update.f6` | f32 | `0.95f` |
+| `MarioDamage.update.f7` | f32 | `0.95f` |
+| `MarioDamage.update.f8` | f32 | `0.95f` |
+| `MarioDamage.update.f9` | f32 | `50.0f` |
+| `MarioDamageCrush.start.f1` | f32 | `0.2f` |
+| `MarioDamageFreeze.update.f1` | f32 | `10.0f` |
+| `MarioDamageFreeze.update.f2` | f32 | `1.5f` |
+| `MarioDamageFreeze.update.f3` | f32 | `8.0f` |
+| `MarioDamageFreeze.update.f4` | f32 | `0.4f` |
+| `MarioDamageParalyze.close.f1` | f32 | `10.0f` |
+| `MarioDamageParalyze.update.f1` | f32 | `3.0f` |
 | `MarioEffect.cLowHealthWarning` | bool | `true` |
+| `MarioEffect.getFloorMaterialIndex.f1` | f32 | `400.0f` |
+| `MarioEffect.updateEffect.f1` | f32 | `0.1f` |
+| `MarioEffect.updateEffect.f2` | f32 | `0.1f` |
+| `MarioEffect.updateEffect.f3` | f32 | `300.0f` |
+| `MarioEffect.updateEffect.f4` | f32 | `300.0f` |
+| `MarioEnforce.checkEnforceMoveInner.f1` | f32 | `200.0f` |
+| `MarioEnforce.checkEnforceMoveInner.f2` | f32 | `200.0f` |
+| `MarioEnforce.getLastGroundEdgeIndex.f1` | f32 | `3.0f` |
+| `MarioEnforce.recordRelativePosition.f1` | f32 | `85.0f` |
+| `MarioEnforce.recordRelativePosition.f2` | f32 | `81.0f` |
+| `MarioEnforce.recordRelativePosition.f3` | f32 | `51.0f` |
+| `MarioEnforce.recordRelativePosition.f4` | f32 | `0.707f` |
+| `MarioEnforce.recordRelativePosition.f5` | f32 | `0.9f` |
+| `MarioFlip.setVec.f1` | f32 | `5.0f` |
+| `MarioFlip.setVec.f2` | f32 | `0.75f` |
+| `MarioFlip.start.f1` | f32 | `0.75f` |
+| `MarioFlip.update.f1` | f32 | `30.0f` |
+| `MarioFlip.update.f2` | f32 | `0.98f` |
+| `MarioFlip.update.f3` | f32 | `0.97f` |
+| `MarioFlip.update.f4` | f32 | `0.97f` |
+| `MarioFlip.update.f5` | f32 | `0.1f` |
+| `MarioFlip.update.f6` | f32 | `0.1f` |
+| `MarioFlip.update.f7` | f32 | `1.2f` |
+| `MarioFlip.update.f8` | f32 | `2.0f` |
+| `MarioFlip.update.f9` | f32 | `1.2f` |
+| `MarioFlow.update.f1` | f32 | `0.95f` |
+| `MarioFlow.update.f2` | f32 | `0.95f` |
+| `MarioFlow.update.f3` | f32 | `0.95f` |
+| `MarioFoo.calcRingAcc.f1` | f32 | `0.5f` |
+| `MarioFoo.calcRingAcc.f2` | f32 | `30.0f` |
+| `MarioFoo.calcRingAcc.f3` | f32 | `30.0f` |
+| `MarioFoo.calcRingAcc.f4` | f32 | `0.5f` |
+| `MarioFoo.draw3D.f1` | f32 | `2.0f` |
+| `MarioFoo.draw3D.f10` | f32 | `0.5f` |
+| `MarioFoo.draw3D.f11` | f32 | `70.0f` |
+| `MarioFoo.draw3D.f12` | f32 | `70.0f` |
+| `MarioFoo.draw3D.f13` | f32 | `2000.0f` |
+| `MarioFoo.draw3D.f14` | f32 | `50.0f` |
+| `MarioFoo.draw3D.f15` | f32 | `2000.0f` |
+| `MarioFoo.draw3D.f16` | f32 | `50.0f` |
+| `MarioFoo.draw3D.f17` | f32 | `0.5f` |
+| `MarioFoo.draw3D.f18` | f32 | `0.5f` |
+| `MarioFoo.draw3D.f19` | f32 | `2.0f` |
+| `MarioFoo.draw3D.f2` | f32 | `50.0f` |
+| `MarioFoo.draw3D.f20` | f32 | `255.0f` |
+| `MarioFoo.draw3D.f21` | f32 | `255.0f` |
+| `MarioFoo.draw3D.f22` | f32 | `10.0f` |
+| `MarioFoo.draw3D.f23` | f32 | `10.0f` |
+| `MarioFoo.draw3D.f3` | f32 | `70.0f` |
+| `MarioFoo.draw3D.f4` | f32 | `70.0f` |
+| `MarioFoo.draw3D.f5` | f32 | `2000.0f` |
+| `MarioFoo.draw3D.f6` | f32 | `50.0f` |
+| `MarioFoo.draw3D.f7` | f32 | `2000.0f` |
+| `MarioFoo.draw3D.f8` | f32 | `50.0f` |
+| `MarioFoo.draw3D.f9` | f32 | `0.5f` |
+| `MarioFoo.hitWall.f1` | f32 | `0.7853982f` |
+| `MarioFoo.hitWall.f2` | f32 | `0.7853982f` |
+| `MarioFoo.jet.f1` | f32 | `1.02f` |
+| `MarioFoo.jet.f2` | f32 | `0.98f` |
+| `MarioFoo.jet.f3` | f32 | `0.9f` |
+| `MarioFoo.jet.f4` | f32 | `2.0f` |
+| `MarioFoo.jet.f5` | f32 | `1.2f` |
+| `MarioFoo.jet.f6` | f32 | `50.0f` |
+| `MarioFoo.jet.f7` | f32 | `1.5f` |
+| `MarioFoo.passRing.f1` | f32 | `0.25f` |
+| `MarioFoo.start.f1` | f32 | `0.5235988f` |
+| `MarioFoo.update.f1` | f32 | `0.1f` |
+| `MarioFoo.update.f10` | f32 | `5.0f` |
+| `MarioFoo.update.f11` | f32 | `0.05f` |
+| `MarioFoo.update.f12` | f32 | `0.05f` |
+| `MarioFoo.update.f13` | f32 | `5.0f` |
+| `MarioFoo.update.f14` | f32 | `0.5f` |
+| `MarioFoo.update.f15` | f32 | `1.0471976f` |
+| `MarioFoo.update.f16` | f32 | `0.1f` |
+| `MarioFoo.update.f17` | f32 | `1.1f` |
+| `MarioFoo.update.f18` | f32 | `0.1f` |
+| `MarioFoo.update.f19` | f32 | `0.1f` |
+| `MarioFoo.update.f2` | f32 | `120.0f` |
+| `MarioFoo.update.f20` | f32 | `1.1f` |
+| `MarioFoo.update.f21` | f32 | `0.1f` |
+| `MarioFoo.update.f22` | f32 | `0.01f` |
+| `MarioFoo.update.f23` | f32 | `3.1415927f` |
+| `MarioFoo.update.f24` | f32 | `0.5235988f` |
+| `MarioFoo.update.f25` | f32 | `0.5235988f` |
+| `MarioFoo.update.f26` | f32 | `0.1f` |
+| `MarioFoo.update.f27` | f32 | `25.0f` |
+| `MarioFoo.update.f28` | f32 | `25.0f` |
+| `MarioFoo.update.f29` | f32 | `0.98f` |
+| `MarioFoo.update.f3` | f32 | `120.0f` |
+| `MarioFoo.update.f30` | f32 | `0.98f` |
+| `MarioFoo.update.f31` | f32 | `0.98f` |
+| `MarioFoo.update.f4` | f32 | `2.0f` |
+| `MarioFoo.update.f5` | f32 | `10.0f` |
+| `MarioFoo.update.f6` | f32 | `2.0f` |
+| `MarioFoo.update.f7` | f32 | `8.0f` |
+| `MarioFoo.update.f8` | f32 | `100.0f` |
+| `MarioFoo.update.f9` | f32 | `0.05f` |
+| `MarioFoo.updateTilt.f1` | f32 | `0.1f` |
+| `MarioFoo.updateTilt.f2` | f32 | `5.0f` |
+| `MarioFoo.updateTilt.f3` | f32 | `12.0f` |
+| `MarioFoo.updateTilt.f4` | f32 | `2.0943952f` |
+| `MarioFoo.updateTilt.f5` | f32 | `8.0f` |
+| `MarioFoo.updateTilt.f6` | f32 | `120.0f` |
+| `MarioFoo.updateTilt.f7` | f32 | `10.0f` |
+| `MarioFoo.updateTilt.f8` | f32 | `0.1f` |
+| `MarioFoo.updateTilt.f9` | f32 | `0.9f` |
+| `MarioFpView.isDisableStayHere.f1` | f32 | `0.01f` |
+| `MarioFpView.start.f1` | f32 | `30.0f` |
+| `MarioFpView.update.f1` | f32 | `0.5f` |
+| `MarioFrontStep.doFrontStep.f1` | f32 | `30.0f` |
+| `MarioFrontStep.doFrontStep.f2` | f32 | `0.25f` |
+| `MarioFrontStep.doFrontStep.f3` | f32 | `200.0f` |
+| `MarioFrontStep.postureCtrl.f1` | f32 | `0.25f` |
+| `MarioFrontStep.update.f1` | f32 | `200.0f` |
+| `MarioFrontStep.update.f2` | f32 | `0.1f` |
+| `MarioFrontStep.update.f3` | f32 | `0.866f` |
+| `MarioHang.checkHang.f1` | f32 | `0.8f` |
+| `MarioHang.checkHang.f10` | f32 | `50.0f` |
+| `MarioHang.checkHang.f11` | f32 | `5.0f` |
+| `MarioHang.checkHang.f12` | f32 | `60.0f` |
+| `MarioHang.checkHang.f13` | f32 | `160.0f` |
+| `MarioHang.checkHang.f14` | f32 | `0.1f` |
+| `MarioHang.checkHang.f15` | f32 | `0.1f` |
+| `MarioHang.checkHang.f16` | f32 | `0.08726647f` |
+| `MarioHang.checkHang.f17` | f32 | `50.0f` |
+| `MarioHang.checkHang.f18` | f32 | `5.0f` |
+| `MarioHang.checkHang.f19` | f32 | `60.0f` |
+| `MarioHang.checkHang.f2` | f32 | `50.0f` |
+| `MarioHang.checkHang.f3` | f32 | `5.0f` |
+| `MarioHang.checkHang.f4` | f32 | `60.0f` |
+| `MarioHang.checkHang.f5` | f32 | `160.0f` |
+| `MarioHang.checkHang.f6` | f32 | `0.1f` |
+| `MarioHang.checkHang.f7` | f32 | `0.1f` |
+| `MarioHang.checkHang.f8` | f32 | `0.08726647f` |
+| `MarioHang.checkHang.f9` | f32 | `100.0f` |
+| `MarioHang.fixHangDir.f1` | f32 | `150.0f` |
+| `MarioHang.isEnableBackHang.f1` | f32 | `0.707f` |
+| `MarioHang.isEnableBackHang.f2` | f32 | `84.0f` |
+| `MarioHang.isEnableHang.f1` | f32 | `0.2f` |
+| `MarioHang.isEnableHang.f2` | f32 | `0.2f` |
+| `MarioHang.isEnableHang.f3` | f32 | `30.0f` |
+| `MarioHang.isEnableHang.f4` | f32 | `5.0f` |
+| `MarioHang.isEnableHang.f5` | f32 | `0.707f` |
+| `MarioHang.isEnableSideHang.f1` | f32 | `0.707f` |
+| `MarioHang.isEnableSideHang.f2` | f32 | `20.0f` |
+| `MarioHang.isEnableSideHang.f3` | f32 | `84.0f` |
+| `MarioHang.notice.f1` | f32 | `150.0f` |
+| `MarioHang.postureCtrl.f1` | f32 | `0.01f` |
+| `MarioHang.postureCtrl.f2` | f32 | `30.0f` |
+| `MarioHang.postureCtrl.f3` | f32 | `0.01f` |
+| `MarioHang.tryClimb.f1` | f32 | `160.0f` |
+| `MarioHang.tryClimb.f10` | f32 | `15.0f` |
+| `MarioHang.tryClimb.f11` | f32 | `15.0f` |
+| `MarioHang.tryClimb.f12` | f32 | `30.0f` |
+| `MarioHang.tryClimb.f2` | f32 | `30.0f` |
+| `MarioHang.tryClimb.f3` | f32 | `60.0f` |
+| `MarioHang.tryClimb.f4` | f32 | `30.0f` |
+| `MarioHang.tryClimb.f5` | f32 | `15.0f` |
+| `MarioHang.tryClimb.f6` | f32 | `55.0f` |
+| `MarioHang.tryClimb.f7` | f32 | `30.0f` |
+| `MarioHang.tryClimb.f8` | f32 | `15.0f` |
+| `MarioHang.tryClimb.f9` | f32 | `55.0f` |
+| `MarioHang.update.f1` | f32 | `100.0f` |
+| `MarioHang.update.f10` | f32 | `5.0f` |
+| `MarioHang.update.f11` | f32 | `6.0f` |
+| `MarioHang.update.f12` | f32 | `100.0f` |
+| `MarioHang.update.f13` | f32 | `0.95f` |
+| `MarioHang.update.f14` | f32 | `20.0f` |
+| `MarioHang.update.f15` | f32 | `100.0f` |
+| `MarioHang.update.f2` | f32 | `0.707f` |
+| `MarioHang.update.f3` | f32 | `45.0f` |
+| `MarioHang.update.f4` | f32 | `100.0f` |
+| `MarioHang.update.f5` | f32 | `100.0f` |
+| `MarioHang.update.f6` | f32 | `160.0f` |
+| `MarioHang.update.f7` | f32 | `0.707f` |
+| `MarioHang.update.f8` | f32 | `100.0f` |
+| `MarioHang.update.f9` | f32 | `80.0f` |
+| `MarioJump.checkAndTryForceJump.f1` | f32 | `10.0f` |
+| `MarioJump.checkWallJumpHit.f1` | f32 | `0.2f` |
+| `MarioJump.checkWallJumpHit.f2` | f32 | `80.0f` |
+| `MarioJump.checkWallJumpHit.f3` | f32 | `5.0f` |
+| `MarioJump.decideSlipUp.f1` | f32 | `0.8f` |
+| `MarioJump.decideSlipUp.f2` | f32 | `30.0f` |
+| `MarioJump.doAirWalk.f1` | f32 | `0.7853982f` |
+| `MarioJump.doAirWalk.f10` | f32 | `7.0f` |
+| `MarioJump.doAirWalk.f11` | f32 | `7.0f` |
+| `MarioJump.doAirWalk.f12` | f32 | `30.0f` |
+| `MarioJump.doAirWalk.f2` | f32 | `0.1f` |
+| `MarioJump.doAirWalk.f3` | f32 | `5.0f` |
+| `MarioJump.doAirWalk.f4` | f32 | `5.0f` |
+| `MarioJump.doAirWalk.f5` | f32 | `2.0f` |
+| `MarioJump.doAirWalk.f6` | f32 | `0.998f` |
+| `MarioJump.doAirWalk.f7` | f32 | `0.01f` |
+| `MarioJump.doAirWalk.f8` | f32 | `6.0f` |
+| `MarioJump.doAirWalk.f9` | f32 | `6.0f` |
+| `MarioJump.doLanding.f1` | f32 | `10.0f` |
+| `MarioJump.doLanding.f10` | f32 | `10.0f` |
+| `MarioJump.doLanding.f11` | f32 | `10.0f` |
+| `MarioJump.doLanding.f12` | f32 | `0.5f` |
+| `MarioJump.doLanding.f2` | f32 | `5.0f` |
+| `MarioJump.doLanding.f3` | f32 | `6.0f` |
+| `MarioJump.doLanding.f4` | f32 | `2.0f` |
+| `MarioJump.doLanding.f5` | f32 | `5.0f` |
+| `MarioJump.doLanding.f6` | f32 | `10.0f` |
+| `MarioJump.doLanding.f7` | f32 | `90.0f` |
+| `MarioJump.doLanding.f8` | f32 | `90.0f` |
+| `MarioJump.doLanding.f9` | f32 | `2.0f` |
+| `MarioJump.initJumpParam.f1` | f32 | `0.2f` |
+| `MarioJump.initJumpParam.f2` | f32 | `0.8f` |
+| `MarioJump.initJumpParam.f3` | f32 | `256.0f` |
+| `MarioJump.moveWallSlide.f1` | f32 | `0.2f` |
+| `MarioJump.moveWallSlide.f2` | f32 | `0.2f` |
+| `MarioJump.moveWallSlide.f3` | f32 | `0.2f` |
+| `MarioJump.moveWallSlide.f4` | f32 | `0.8f` |
+| `MarioJump.moveWallSlide.f5` | f32 | `0.2f` |
+| `MarioJump.moveWallSlide.f6` | f32 | `0.8f` |
+| `MarioJump.moveWallSlide.f7` | f32 | `10.0f` |
+| `MarioJump.procHipDrop.f1` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f10` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f11` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f12` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f13` | f32 | `45.0f` |
+| `MarioJump.procHipDrop.f14` | f32 | `500.0f` |
+| `MarioJump.procHipDrop.f15` | f32 | `500.0f` |
+| `MarioJump.procHipDrop.f2` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f3` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f4` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f5` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f6` | f32 | `0.5f` |
+| `MarioJump.procHipDrop.f7` | f32 | `10.0f` |
+| `MarioJump.procHipDrop.f8` | f32 | `0.1f` |
+| `MarioJump.procHipDrop.f9` | f32 | `10.0f` |
+| `MarioJump.procJump.f1` | f32 | `160.0f` |
+| `MarioJump.procJump.f10` | f32 | `200.0f` |
+| `MarioJump.procJump.f11` | f32 | `0.1f` |
+| `MarioJump.procJump.f12` | f32 | `80.0f` |
+| `MarioJump.procJump.f2` | f32 | `0.9f` |
+| `MarioJump.procJump.f3` | f32 | `0.6f` |
+| `MarioJump.procJump.f4` | f32 | `1.8f` |
+| `MarioJump.procJump.f5` | f32 | `0.25f` |
+| `MarioJump.procJump.f6` | f32 | `2.0f` |
+| `MarioJump.procJump.f7` | f32 | `2.0f` |
+| `MarioJump.procJump.f8` | f32 | `0.3f` |
+| `MarioJump.procJump.f9` | f32 | `300.0f` |
+| `MarioJump.taskOnTornadoCentering.f1` | f32 | `10.0f` |
+| `MarioJump.taskOnTornadoCentering.f2` | f32 | `10.0f` |
+| `MarioJump.taskOnTornadoCentering.f3` | f32 | `10.0f` |
+| `MarioJump.taskOnTornadoCentering.f4` | f32 | `0.1f` |
+| `MarioJump.taskOnTornadoCentering.f5` | f32 | `0.1f` |
+| `MarioJump.tryBackJump.f1` | f32 | `500.0f` |
+| `MarioJump.tryDrop.f1` | f32 | `80.0f` |
+| `MarioJump.tryDrop.f10` | f32 | `8.0f` |
+| `MarioJump.tryDrop.f11` | f32 | `0.1f` |
+| `MarioJump.tryDrop.f2` | f32 | `80.0f` |
+| `MarioJump.tryDrop.f3` | f32 | `0.1f` |
+| `MarioJump.tryDrop.f4` | f32 | `80.0f` |
+| `MarioJump.tryDrop.f5` | f32 | `80.0f` |
+| `MarioJump.tryDrop.f6` | f32 | `0.1f` |
+| `MarioJump.tryDrop.f7` | f32 | `20.0f` |
+| `MarioJump.tryDrop.f8` | f32 | `10.0f` |
+| `MarioJump.tryDrop.f9` | f32 | `8.0f` |
+| `MarioJump.tryHangSlipUp.f1` | f32 | `0.6f` |
+| `MarioJump.tryJump.f1` | f32 | `15.0f` |
+| `MarioJump.tryJump.f10` | f32 | `0.9f` |
+| `MarioJump.tryJump.f11` | f32 | `500.0f` |
+| `MarioJump.tryJump.f12` | f32 | `0.1f` |
+| `MarioJump.tryJump.f13` | f32 | `5.0f` |
+| `MarioJump.tryJump.f2` | f32 | `1.5707964f` |
+| `MarioJump.tryJump.f3` | f32 | `0.5f` |
+| `MarioJump.tryJump.f4` | f32 | `0.5f` |
+| `MarioJump.tryJump.f5` | f32 | `0.3f` |
+| `MarioJump.tryJump.f6` | f32 | `1.5707964f` |
+| `MarioJump.tryJump.f7` | f32 | `4.0f` |
+| `MarioJump.tryJump.f8` | f32 | `10.0f` |
+| `MarioJump.tryJump.f9` | f32 | `0.5f` |
+| `MarioJump.trySlipUpJump.f1` | f32 | `100.0f` |
+| `MarioJump.trySlipUpJump.f2` | f32 | `50.0f` |
+| `MarioJump.trySlipUpJump.f3` | f32 | `150.0f` |
+| `MarioJump.trySlipUpJump.f4` | f32 | `10.0f` |
+| `MarioJump.trySpinJump.f1` | f32 | `100.0f` |
+| `MarioJump.trySquatJump.f1` | f32 | `1.5707964f` |
+| `MarioJump.trySquatJump.f2` | f32 | `4.0f` |
+| `MarioJump.trySquatJump.f3` | f32 | `10.0f` |
+| `MarioModule.calcAngleD.f1` | f32 | `3.14159f` |
+| `MarioModule.calcAngleD.f2` | f32 | `180.0f` |
+| `MarioModule.calcAngleD.f3` | f32 | `90.0f` |
+| `MarioModule.calcAngleD.f4` | f32 | `90.0f` |
+| `MarioModule.checkSquat.f1` | f32 | `100.0f` |
+| `MarioModule.isSlipPolygon.f1` | f32 | `3.0f` |
+| `MarioModule.isSlipPolygon.f2` | f32 | `0.5f` |
+| `MarioModule.isStickFull.f1` | f32 | `0.9f` |
+| `MarioMove.calcMoveDir.f1` | f32 | `0.1f` |
+| `MarioMove.decideInertia.f1` | f32 | `0.08f` |
+| `MarioMove.decideInertia.f2` | f32 | `0.5f` |
+| `MarioMove.decideInertia.f3` | f32 | `0.08f` |
+| `MarioMove.decideInertia.f4` | f32 | `0.4f` |
+| `MarioMove.decideInertia.f5` | f32 | `0.5f` |
+| `MarioMove.doLockOnHoming.f1` | f32 | `0.05235988f` |
+| `MarioMove.fixPositionInTower.f1` | f32 | `200.0f` |
+| `MarioMove.mainMove.f1` | f32 | `160.0f` |
+| `MarioMove.mainMove.f10` | f32 | `90.0f` |
+| `MarioMove.mainMove.f11` | f32 | `180.0f` |
+| `MarioMove.mainMove.f12` | f32 | `0.1f` |
+| `MarioMove.mainMove.f13` | f32 | `90.0f` |
+| `MarioMove.mainMove.f14` | f32 | `180.0f` |
+| `MarioMove.mainMove.f15` | f32 | `0.1f` |
+| `MarioMove.mainMove.f16` | f32 | `0.5f` |
+| `MarioMove.mainMove.f17` | f32 | `0.707f` |
+| `MarioMove.mainMove.f18` | f32 | `0.01f` |
+| `MarioMove.mainMove.f19` | f32 | `45.0f` |
+| `MarioMove.mainMove.f2` | f32 | `0.5f` |
+| `MarioMove.mainMove.f20` | f32 | `180.0f` |
+| `MarioMove.mainMove.f21` | f32 | `0.1f` |
+| `MarioMove.mainMove.f22` | f32 | `0.3f` |
+| `MarioMove.mainMove.f23` | f32 | `0.12f` |
+| `MarioMove.mainMove.f24` | f32 | `0.1f` |
+| `MarioMove.mainMove.f25` | f32 | `0.1f` |
+| `MarioMove.mainMove.f26` | f32 | `0.1f` |
+| `MarioMove.mainMove.f27` | f32 | `0.1f` |
+| `MarioMove.mainMove.f28` | f32 | `22.5f` |
+| `MarioMove.mainMove.f29` | f32 | `180.0f` |
+| `MarioMove.mainMove.f3` | f32 | `5.0f` |
+| `MarioMove.mainMove.f30` | f32 | `2.5f` |
+| `MarioMove.mainMove.f31` | f32 | `0.99f` |
+| `MarioMove.mainMove.f32` | f32 | `22.5f` |
+| `MarioMove.mainMove.f33` | f32 | `180.0f` |
+| `MarioMove.mainMove.f34` | f32 | `1.1f` |
+| `MarioMove.mainMove.f35` | f32 | `120.0f` |
+| `MarioMove.mainMove.f4` | f32 | `0.5f` |
+| `MarioMove.mainMove.f5` | f32 | `2.0f` |
+| `MarioMove.mainMove.f6` | f32 | `0.05f` |
+| `MarioMove.mainMove.f7` | f32 | `0.75f` |
+| `MarioMove.mainMove.f8` | f32 | `10.0f` |
+| `MarioMove.mainMove.f9` | f32 | `180.0f` |
+| `MarioMove.retainMoveDir.f1` | f32 | `0.06f` |
+| `MarioMove.retainMoveDir.f2` | f32 | `0.1f` |
+| `MarioMove25D.update25Dmode.f1` | f32 | `0.965f` |
+| `MarioMove25D.update25Dmode.f2` | f32 | `0.9397f` |
+| `MarioMove25D.update25Dmode.f3` | f32 | `0.7f` |
+| `MarioMove25D.update25Dmode.f4` | f32 | `0.7853982f` |
+| `MarioMove25D.updateAxisFromMode.f1` | f32 | `0.99f` |
+| `MarioMove2D.calcMoveDir2D.f1` | f32 | `0.1f` |
+| `MarioMove2D.stick2Dadjust.f1` | f32 | `3.0415928f` |
+| `MarioMove2D.stick2Dadjust.f10` | f32 | `1.3962635f` |
+| `MarioMove2D.stick2Dadjust.f11` | f32 | `1.7453294f` |
+| `MarioMove2D.stick2Dadjust.f12` | f32 | `0.3f` |
+| `MarioMove2D.stick2Dadjust.f13` | f32 | `0.19634955f` |
+| `MarioMove2D.stick2Dadjust.f14` | f32 | `1.5707964f` |
+| `MarioMove2D.stick2Dadjust.f15` | f32 | `1.5707964f` |
+| `MarioMove2D.stick2Dadjust.f16` | f32 | `2.9452431f` |
+| `MarioMove2D.stick2Dadjust.f17` | f32 | `1.5707964f` |
+| `MarioMove2D.stick2Dadjust.f18` | f32 | `0.0001f` |
+| `MarioMove2D.stick2Dadjust.f2` | f32 | `3.0415928f` |
+| `MarioMove2D.stick2Dadjust.f3` | f32 | `0.3f` |
+| `MarioMove2D.stick2Dadjust.f4` | f32 | `0.5f` |
+| `MarioMove2D.stick2Dadjust.f5` | f32 | `1.5f` |
+| `MarioMove2D.stick2Dadjust.f6` | f32 | `3.1415927f` |
+| `MarioMove2D.stick2Dadjust.f7` | f32 | `0.5235988f` |
+| `MarioMove2D.stick2Dadjust.f8` | f32 | `2.617994f` |
+| `MarioMove2D.stick2Dadjust.f9` | f32 | `0.3f` |
+| `MarioNullBck.getFramePos.f1` | f32 | `0.01f` |
+| `MarioNullBck.getFramePos.f2` | f32 | `0.01f` |
 | `MarioNullBck.getFramePos.setBckRate.1` | f32 | `0.0f` |
+| `MarioPress.checkPressDamage.f1` | f32 | `200.0f` |
+| `MarioPress.checkPressDamage.f10` | f32 | `200.0f` |
+| `MarioPress.checkPressDamage.f11` | f32 | `60.0f` |
+| `MarioPress.checkPressDamage.f2` | f32 | `0.707f` |
+| `MarioPress.checkPressDamage.f3` | f32 | `100.0f` |
+| `MarioPress.checkPressDamage.f4` | f32 | `100.0f` |
+| `MarioPress.checkPressDamage.f5` | f32 | `200.0f` |
+| `MarioPress.checkPressDamage.f6` | f32 | `0.707f` |
+| `MarioPress.checkPressDamage.f7` | f32 | `100.0f` |
+| `MarioPress.checkPressDamage.f8` | f32 | `100.0f` |
+| `MarioPress.checkPressDamage.f9` | f32 | `60.0f` |
+| `MarioPress.checkSidePress.f1` | f32 | `50.0f` |
+| `MarioPress.checkSidePress.f10` | f32 | `0.707f` |
+| `MarioPress.checkSidePress.f11` | f32 | `180.0f` |
+| `MarioPress.checkSidePress.f12` | f32 | `0.017453292f` |
+| `MarioPress.checkSidePress.f13` | f32 | `5.0f` |
+| `MarioPress.checkSidePress.f14` | f32 | `5.0f` |
+| `MarioPress.checkSidePress.f15` | f32 | `0.34906587f` |
+| `MarioPress.checkSidePress.f16` | f32 | `160.0f` |
+| `MarioPress.checkSidePress.f17` | f32 | `200.0f` |
+| `MarioPress.checkSidePress.f18` | f32 | `10.0f` |
+| `MarioPress.checkSidePress.f19` | f32 | `0.707f` |
+| `MarioPress.checkSidePress.f2` | f32 | `40.0f` |
+| `MarioPress.checkSidePress.f20` | f32 | `0.707f` |
+| `MarioPress.checkSidePress.f21` | f32 | `120.0f` |
+| `MarioPress.checkSidePress.f22` | f32 | `100.0f` |
+| `MarioPress.checkSidePress.f23` | f32 | `0.707f` |
+| `MarioPress.checkSidePress.f24` | f32 | `100.0f` |
+| `MarioPress.checkSidePress.f25` | f32 | `80.0f` |
+| `MarioPress.checkSidePress.f3` | f32 | `80.0f` |
+| `MarioPress.checkSidePress.f4` | f32 | `70.0f` |
+| `MarioPress.checkSidePress.f5` | f32 | `0.707f` |
+| `MarioPress.checkSidePress.f6` | f32 | `0.2f` |
+| `MarioPress.checkSidePress.f7` | f32 | `0.2f` |
+| `MarioPress.checkSidePress.f8` | f32 | `0.2f` |
+| `MarioPress.checkSidePress.f9` | f32 | `0.2f` |
+| `MarioPress.checkSidePressPre.f1` | f32 | `100.0f` |
+| `MarioPress.checkSidePressPre.f2` | f32 | `0.5f` |
+| `MarioPress.checkSidePressPre.f3` | f32 | `100.0f` |
+| `MarioPress.checkVerticalPress.f1` | f32 | `80.0f` |
+| `MarioPress.checkVerticalPress.f2` | f32 | `160.0f` |
+| `MarioPress.checkVerticalPress.f3` | f32 | `10.0f` |
+| `MarioPress.checkVerticalPress.f4` | f32 | `150.0f` |
+| `MarioPress.checkVerticalPress.f5` | f32 | `10.0f` |
+| `MarioPress.checkVerticalPress.f6` | f32 | `150.0f` |
+| `MarioPress.checkVerticalPress.f7` | f32 | `0.5f` |
+| `MarioRabbit.hop.f1` | f32 | `0.5f` |
+| `MarioRabbit.hop.f2` | f32 | `0.3f` |
+| `MarioRabbit.impact.f1` | f32 | `2.0f` |
+| `MarioRabbit.impact.f2` | f32 | `2.0f` |
+| `MarioRabbit.impact.f3` | f32 | `0.5f` |
+| `MarioRabbit.start.f1` | f32 | `0.25f` |
+| `MarioRabbit.start.f2` | f32 | `0.5f` |
+| `MarioRabbit.update.f1` | f32 | `50.0f` |
+| `MarioRabbit.update.f2` | f32 | `50.0f` |
+| `MarioRabbit.update.f3` | f32 | `1.0471976f` |
+| `MarioRabbit.update.f4` | f32 | `0.2f` |
+| `MarioRabbit.update.f5` | f32 | `0.05f` |
+| `MarioRecovery.calcFirstVector.f1` | f32 | `10.0f` |
+| `MarioRecovery.calcFirstVector.f2` | f32 | `3.1415927f` |
+| `MarioRecovery.calcFirstVector.f3` | f32 | `6.2831855f` |
+| `MarioRecovery.calcFirstVector.f4` | f32 | `500.0f` |
+| `MarioRecovery.calcFirstVector.f5` | f32 | `20.0f` |
+| `MarioRecovery.doRecovery.f1` | f32 | `160.0f` |
+| `MarioRecovery.start.f1` | f32 | `1.5707964f` |
+| `MarioRecovery.start.f2` | f32 | `600.0f` |
+| `MarioRecovery.start.f3` | f32 | `600.0f` |
+| `MarioRecovery.update.f1` | f32 | `0.1f` |
+| `MarioRecovery.update.f2` | f32 | `20.0f` |
+| `MarioRecovery.update.f3` | f32 | `50.0f` |
+| `MarioRecovery.update.f4` | f32 | `300.0f` |
+| `MarioRecovery.update.f5` | f32 | `10.0f` |
+| `MarioRecovery.update.f6` | f32 | `10.0f` |
+| `MarioRecovery.update.f7` | f32 | `10.0f` |
+| `MarioRecovery.updateJump.f1` | f32 | `4.712389f` |
+| `MarioRecovery.updateJump.f10` | f32 | `30.0f` |
+| `MarioRecovery.updateJump.f2` | f32 | `0.5f` |
+| `MarioRecovery.updateJump.f3` | f32 | `300.0f` |
+| `MarioRecovery.updateJump.f4` | f32 | `300.0f` |
+| `MarioRecovery.updateJump.f5` | f32 | `25.0f` |
+| `MarioRecovery.updateJump.f6` | f32 | `25.0f` |
+| `MarioRecovery.updateJump.f7` | f32 | `60.0f` |
+| `MarioRecovery.updateJump.f8` | f32 | `0.8f` |
+| `MarioRecovery.updateJump.f9` | f32 | `30.0f` |
+| `MarioSearchLight.calcAndSetBaseMtx.f1` | f32 | `0.1f` |
+| `MarioSearchLight.drawSearchLight.f1` | f32 | `10000.0f` |
+| `MarioSearchLight.drawSearchLight.f10` | f32 | `255.0f` |
+| `MarioSearchLight.drawSearchLight.f11` | f32 | `4.0f` |
+| `MarioSearchLight.drawSearchLight.f12` | f32 | `255.0f` |
+| `MarioSearchLight.drawSearchLight.f13` | f32 | `4.0f` |
+| `MarioSearchLight.drawSearchLight.f2` | f32 | `10.0f` |
+| `MarioSearchLight.drawSearchLight.f3` | f32 | `10.0f` |
+| `MarioSearchLight.drawSearchLight.f4` | f32 | `10.0f` |
+| `MarioSearchLight.drawSearchLight.f5` | f32 | `10.0f` |
+| `MarioSearchLight.drawSearchLight.f6` | f32 | `150.0f` |
+| `MarioSearchLight.drawSearchLight.f7` | f32 | `255.0f` |
+| `MarioSearchLight.drawSearchLight.f8` | f32 | `255.0f` |
+| `MarioSearchLight.drawSearchLight.f9` | f32 | `4.0f` |
+| `MarioSearchLight.init.f1` | f32 | `100.0f` |
+| `MarioSearchLight.initThrowing.f1` | f32 | `13.19f` |
+| `MarioSearchLight.initThrowing.f2` | f32 | `41.57f` |
+| `MarioSearchLight.initThrowing.f3` | f32 | `19.02f` |
+| `MarioSearchLight.initThrowing.f4` | f32 | `3.63f` |
+| `MarioSearchLight.initThrowing.f5` | f32 | `41.69f` |
+| `MarioSearchLight.initThrowing.f6` | f32 | `15.76f` |
+| `MarioSearchLight.updateHitSensor.f1` | f32 | `80.0f` |
+| `MarioSearchLight.updateHitSensor.f2` | f32 | `2000.0f` |
 | `MarioShadow.cJumpAxisDot` | f32 | `0.5f` |
 | `MarioShadow.cJumpDistance` | f32 | `300.0f` |
 | `MarioShadow.cMarkPartBase` | u32 | `0u` |
 | `MarioShadow.cPolygonPartFirst` | u32 | `0x10000u` |
+| `MarioShadow.create.f1` | f32 | `0.1f` |
+| `MarioShadow.create.f2` | f32 | `0.707f` |
+| `MarioShadow.create.f3` | f32 | `0.15f` |
+| `MarioShadow.create.f4` | f32 | `2.0f` |
+| `MarioShadow.doSortPolygons.f1` | f32 | `0.33333334f` |
+| `MarioShadow.draw3.f1` | f32 | `2.0f` |
+| `MarioShadow.draw3.f2` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f1` | f32 | `160.0f` |
+| `MarioShadow.drawAndCaptureTex.f10` | f32 | `1.4f` |
+| `MarioShadow.drawAndCaptureTex.f11` | f32 | `1.4f` |
+| `MarioShadow.drawAndCaptureTex.f12` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f13` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f14` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f15` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f16` | f32 | `0.5f` |
+| `MarioShadow.drawAndCaptureTex.f17` | f32 | `0.5f` |
+| `MarioShadow.drawAndCaptureTex.f18` | f32 | `2.0f` |
+| `MarioShadow.drawAndCaptureTex.f19` | f32 | `16.0f` |
+| `MarioShadow.drawAndCaptureTex.f2` | f32 | `150.0f` |
+| `MarioShadow.drawAndCaptureTex.f20` | f32 | `0.5f` |
+| `MarioShadow.drawAndCaptureTex.f21` | f32 | `0.385f` |
+| `MarioShadow.drawAndCaptureTex.f22` | f32 | `0.5f` |
+| `MarioShadow.drawAndCaptureTex.f23` | f32 | `0.5f` |
+| `MarioShadow.drawAndCaptureTex.f3` | f32 | `150.0f` |
+| `MarioShadow.drawAndCaptureTex.f4` | f32 | `150.0f` |
+| `MarioShadow.drawAndCaptureTex.f5` | f32 | `150.0f` |
+| `MarioShadow.drawAndCaptureTex.f6` | f32 | `10.0f` |
+| `MarioShadow.drawAndCaptureTex.f7` | f32 | `100000.0f` |
+| `MarioShadow.drawAndCaptureTex.f8` | f32 | `0.2f` |
+| `MarioShadow.drawAndCaptureTex.f9` | f32 | `0.2f` |
+| `MarioShadow.drawVolumeBox.f1` | f32 | `2.0f` |
+| `MarioShadow.drawVolumeBox.f2` | f32 | `2.0f` |
+| `MarioShadow.initCaptureTex.f1` | f32 | `0.25f` |
+| `MarioShadow.initCaptureTex.f2` | f32 | `0.35f` |
+| `MarioShadow.sendPolygons.f1` | f32 | `5.0f` |
+| `MarioShadow.setMode.f1` | f32 | `50.0f` |
+| `MarioShadow.setMode.f2` | f32 | `150.0f` |
+| `MarioShadow.setMode.f3` | f32 | `18.0f` |
+| `MarioShadow.setViewMtx.f1` | f32 | `10000.0f` |
+| `MarioSideStep.checkWallJumpCode.f1` | f32 | `10.0f` |
+| `MarioSideStep.checkWallJumpCode.f2` | f32 | `10.0f` |
+| `MarioSideStep.checkWallJumpCode.f3` | f32 | `10.0f` |
+| `MarioSideStep.doSideStep.f1` | f32 | `200.0f` |
+| `MarioSideStep.doSideStep.f2` | f32 | `91.0f` |
+| `MarioSideStep.doSideStep.f3` | f32 | `1.6534699f` |
+| `MarioSideStep.doSideStep.f4` | f32 | `1.4959966f` |
+| `MarioSideStep.update.f1` | f32 | `0.1f` |
+| `MarioSideStep.update.f2` | f32 | `0.866f` |
+| `MarioSideStep.update.f3` | f32 | `0.707f` |
+| `MarioSideStep.update.f4` | f32 | `0.25f` |
+| `MarioSideStep.update.f5` | f32 | `6.0f` |
+| `MarioSideStep.update.f6` | f32 | `6.0f` |
+| `MarioSkate.close.f1` | f32 | `1.5f` |
+| `MarioSkate.postureCtrl.f1` | f32 | `3.1415927f` |
+| `MarioSkate.update.f1` | f32 | `20.0f` |
+| `MarioSkate.update.f10` | f32 | `0.1f` |
+| `MarioSkate.update.f11` | f32 | `0.1f` |
+| `MarioSkate.update.f12` | f32 | `0.5f` |
+| `MarioSkate.update.f13` | f32 | `0.3926991f` |
+| `MarioSkate.update.f14` | f32 | `0.3926991f` |
+| `MarioSkate.update.f15` | f32 | `0.5235988f` |
+| `MarioSkate.update.f16` | f32 | `0.5235988f` |
+| `MarioSkate.update.f17` | f32 | `0.8f` |
+| `MarioSkate.update.f18` | f32 | `0.9f` |
+| `MarioSkate.update.f19` | f32 | `0.1f` |
+| `MarioSkate.update.f2` | f32 | `50.0f` |
+| `MarioSkate.update.f20` | f32 | `0.95f` |
+| `MarioSkate.update.f21` | f32 | `0.05f` |
+| `MarioSkate.update.f3` | f32 | `1.25f` |
+| `MarioSkate.update.f4` | f32 | `1.5f` |
+| `MarioSkate.update.f5` | f32 | `20.0f` |
+| `MarioSkate.update.f6` | f32 | `1.2f` |
+| `MarioSkate.update.f7` | f32 | `1.2f` |
+| `MarioSkate.update.f8` | f32 | `0.04f` |
+| `MarioSkate.update.f9` | f32 | `0.04f` |
+| `MarioSlider.calcWallHit.f1` | f32 | `10.0f` |
+| `MarioSlider.calcWallHit.f2` | f32 | `10.0f` |
+| `MarioSlider.calcWallHit.f3` | f32 | `10.0f` |
+| `MarioSlider.calcWallHit.f4` | f32 | `10.0f` |
+| `MarioSlider.calcWallHit.f5` | f32 | `0.5f` |
+| `MarioSlider.postureCtrl.f1` | f32 | `0.2f` |
+| `MarioSlider.postureCtrl.f2` | f32 | `2.0f` |
+| `MarioSlider.update.f1` | f32 | `10.0f` |
+| `MarioSlider.update.f2` | f32 | `20.0f` |
+| `MarioSlider.update.f3` | f32 | `0.1f` |
+| `MarioSlider.update.f4` | f32 | `15.0f` |
+| `MarioSlip.moveSlopeSlide.f1` | f32 | `5.8f` |
+| `MarioSlip.moveSlopeSlide.f2` | f32 | `0.5f` |
+| `MarioSlip.moveSlopeSlide.f3` | f32 | `15.0f` |
+| `MarioSlip.moveSlopeSlide.f4` | f32 | `15.0f` |
+| `MarioSlip.moveSlopeSlide.f5` | f32 | `0.2f` |
+| `MarioSlip.slopeMove.f1` | f32 | `30.0f` |
+| `MarioSlip.slopeMove.f10` | f32 | `0.1f` |
+| `MarioSlip.slopeMove.f11` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f12` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f13` | f32 | `25.0f` |
+| `MarioSlip.slopeMove.f14` | f32 | `0.3f` |
+| `MarioSlip.slopeMove.f15` | f32 | `90.0f` |
+| `MarioSlip.slopeMove.f16` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f17` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f18` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f19` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f2` | f32 | `2.0f` |
+| `MarioSlip.slopeMove.f20` | f32 | `30.0f` |
+| `MarioSlip.slopeMove.f21` | f32 | `0.05f` |
+| `MarioSlip.slopeMove.f22` | f32 | `1.0471976f` |
+| `MarioSlip.slopeMove.f23` | f32 | `1.4959966f` |
+| `MarioSlip.slopeMove.f24` | f32 | `2.0f` |
+| `MarioSlip.slopeMove.f25` | f32 | `0.1f` |
+| `MarioSlip.slopeMove.f26` | f32 | `0.5235988f` |
+| `MarioSlip.slopeMove.f27` | f32 | `0.5f` |
+| `MarioSlip.slopeMove.f28` | f32 | `0.1f` |
+| `MarioSlip.slopeMove.f29` | f32 | `0.5235988f` |
+| `MarioSlip.slopeMove.f3` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f30` | f32 | `0.15f` |
+| `MarioSlip.slopeMove.f31` | f32 | `0.9f` |
+| `MarioSlip.slopeMove.f32` | f32 | `0.9f` |
+| `MarioSlip.slopeMove.f33` | f32 | `0.9f` |
+| `MarioSlip.slopeMove.f34` | f32 | `0.8f` |
+| `MarioSlip.slopeMove.f35` | f32 | `0.2f` |
+| `MarioSlip.slopeMove.f4` | f32 | `10.0f` |
+| `MarioSlip.slopeMove.f5` | f32 | `0.5f` |
+| `MarioSlip.slopeMove.f6` | f32 | `15.0f` |
+| `MarioSlip.slopeMove.f7` | f32 | `0.4f` |
+| `MarioSlip.slopeMove.f8` | f32 | `0.8f` |
+| `MarioSlip.slopeMove.f9` | f32 | `10.0f` |
+| `MarioSlope.checkGroundOnSlope.f1` | f32 | `10.0f` |
+| `MarioSlope.checkGroundOnSlope.f10` | f32 | `80.0f` |
+| `MarioSlope.checkGroundOnSlope.f11` | f32 | `0.1908f` |
+| `MarioSlope.checkGroundOnSlope.f12` | f32 | `5.0f` |
+| `MarioSlope.checkGroundOnSlope.f2` | f32 | `20.0f` |
+| `MarioSlope.checkGroundOnSlope.f3` | f32 | `60.0f` |
+| `MarioSlope.checkGroundOnSlope.f4` | f32 | `30.0f` |
+| `MarioSlope.checkGroundOnSlope.f5` | f32 | `40.0f` |
+| `MarioSlope.checkGroundOnSlope.f6` | f32 | `40.0f` |
+| `MarioSlope.checkGroundOnSlope.f7` | f32 | `2.0f` |
+| `MarioSlope.checkGroundOnSlope.f8` | f32 | `100.0f` |
+| `MarioSlope.checkGroundOnSlope.f9` | f32 | `30.0f` |
+| `MarioSlope.isUseSimpleGroundCheck.f1` | f32 | `5.0f` |
+| `MarioSlope.isUseSimpleGroundCheck.f2` | f32 | `30.0f` |
+| `MarioSlope.isUseSimpleGroundCheck.f3` | f32 | `100.0f` |
+| `MarioSlope.isUseSimpleGroundCheck.f4` | f32 | `5.0f` |
+| `MarioSpecial.isHeadPushEnableArea.f1` | f32 | `7020.0f` |
+| `MarioSpecial.isHeadPushEnableArea.f2` | f32 | `6920.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f1` | f32 | `1627.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f2` | f32 | `783.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f3` | f32 | `2152.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f4` | f32 | `1.5707964f` |
+| `MarioSpecial.isNotReflectGlassGround.f5` | f32 | `400.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f6` | f32 | `300.0f` |
+| `MarioSpecial.isNotReflectGlassGround.f7` | f32 | `700.0f` |
+| `MarioSpecial.isUseFooSpecialGravity.f1` | f32 | `14760.0f` |
+| `MarioSpecial.isUseFooSpecialGravity.f2` | f32 | `10676.2f` |
+| `MarioSpecial.isUseFooSpecialGravity.f3` | f32 | `6770.0f` |
+| `MarioSpecial.updateOnimasu.f1` | f32 | `1000.0f` |
+| `MarioSpecial.updateOnimasu.f10` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f11` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f12` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f13` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f14` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f15` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f16` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f17` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f18` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f19` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f2` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f20` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f21` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f22` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f23` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f24` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f25` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f26` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f27` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f28` | f32 | `10.0f` |
+| `MarioSpecial.updateOnimasu.f29` | f32 | `500.0f` |
+| `MarioSpecial.updateOnimasu.f3` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f30` | f32 | `300.0f` |
+| `MarioSpecial.updateOnimasu.f31` | f32 | `300.0f` |
+| `MarioSpecial.updateOnimasu.f32` | f32 | `500.0f` |
+| `MarioSpecial.updateOnimasu.f33` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f34` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f35` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f36` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f37` | f32 | `300.0f` |
+| `MarioSpecial.updateOnimasu.f38` | f32 | `500.0f` |
+| `MarioSpecial.updateOnimasu.f39` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f4` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f40` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f41` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f42` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f43` | f32 | `300.0f` |
+| `MarioSpecial.updateOnimasu.f44` | f32 | `500.0f` |
+| `MarioSpecial.updateOnimasu.f45` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f46` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f47` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f48` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f49` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f5` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f50` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f51` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f52` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f53` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f54` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f55` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f56` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f57` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f58` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f59` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f6` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f60` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f61` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f62` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f63` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f64` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f65` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f66` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f67` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f68` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f69` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f7` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f70` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f71` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f72` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f73` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f74` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f75` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f76` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f77` | f32 | `320.0f` |
+| `MarioSpecial.updateOnimasu.f8` | f32 | `400.0f` |
+| `MarioSpecial.updateOnimasu.f9` | f32 | `400.0f` |
+| `MarioStep.checkStep.f1` | f32 | `20.0f` |
+| `MarioStep.checkStep.f2` | f32 | `0.3926991f` |
+| `MarioStep.checkStep.f3` | f32 | `1.0471976f` |
+| `MarioStep.checkStep.f4` | f32 | `0.5f` |
+| `MarioStep.start.f1` | f32 | `16.0f` |
+| `MarioStep.startStep.f1` | f32 | `80.0f` |
+| `MarioStep.startStep.f2` | f32 | `20.0f` |
+| `MarioStep.startStep.f3` | f32 | `50.0f` |
+| `MarioStep.startStep.f4` | f32 | `200.0f` |
+| `MarioStep.update.f1` | f32 | `0.1f` |
+| `MarioStep.update.f2` | f32 | `0.1f` |
+| `MarioStep.update.f3` | f32 | `0.5f` |
+| `MarioStep.update.f4` | f32 | `0.5f` |
+| `MarioStick.setStickSensor.f1` | f32 | `0.9f` |
+| `MarioStick.update.f1` | f32 | `0.01f` |
+| `MarioStick.update.f2` | f32 | `1.308997f` |
+| `MarioStick.update.f3` | f32 | `0.01f` |
+| `MarioStick.update.f4` | f32 | `1.308997f` |
+| `MarioSwim.calcRingAcc.f1` | f32 | `0.5f` |
+| `MarioSwim.calcRingAcc.f2` | f32 | `30.0f` |
+| `MarioSwim.calcRingAcc.f3` | f32 | `30.0f` |
+| `MarioSwim.calcRingAcc.f4` | f32 | `0.5f` |
+| `MarioSwim.checkStartSwim.f1` | f32 | `100.0f` |
+| `MarioSwim.checkUnderWaterFull.f1` | f32 | `10000.0f` |
+| `MarioSwim.checkUnderWaterFull.f2` | f32 | `40.0f` |
+| `MarioSwim.checkUnderWaterFull.f3` | f32 | `100.0f` |
+| `MarioSwim.checkUnderWaterFull.f4` | f32 | `100.0f` |
+| `MarioSwim.checkWaterBottom.f1` | f32 | `50.0f` |
+| `MarioSwim.checkWaterBottom.f2` | f32 | `2000.0f` |
+| `MarioSwim.checkWaterBottom.f3` | f32 | `200.0f` |
+| `MarioSwim.checkWaterCube.f1` | f32 | `110.0f` |
+| `MarioSwim.checkWaterCube.f2` | f32 | `80.0f` |
+| `MarioSwim.checkWaterCube.f3` | f32 | `80.0f` |
+| `MarioSwim.checkWaterCube.f4` | f32 | `30.0f` |
+| `MarioSwim.checkWaterCube.f5` | f32 | `100.0f` |
+| `MarioSwim.checkWaterCube.f6` | f32 | `200.0f` |
+| `MarioSwim.checkWaterCube.f7` | f32 | `500.0f` |
+| `MarioSwim.checkWaterCube.f8` | f32 | `30.0f` |
+| `MarioSwim.close.f1` | f32 | `100.0f` |
+| `MarioSwim.close.f2` | f32 | `5.0f` |
+| `MarioSwim.close.f3` | f32 | `15.0f` |
+| `MarioSwim.close.f4` | f32 | `0.3f` |
+| `MarioSwim.decideAnimation.f1` | f32 | `0.1f` |
+| `MarioSwim.decideAnimation.f2` | f32 | `0.1f` |
+| `MarioSwim.decideAnimation.f3` | f32 | `0.1f` |
+| `MarioSwim.decideAnimation.f4` | f32 | `0.1f` |
+| `MarioSwim.decideAnimation.f5` | f32 | `1.6534699f` |
+| `MarioSwim.decideAnimation.f6` | f32 | `0.1f` |
+| `MarioSwim.decideAnimation.f7` | f32 | `2.0f` |
+| `MarioSwim.decideEffect.f1` | f32 | `2.5f` |
+| `MarioSwim.decideEffect.f2` | f32 | `10.0f` |
+| `MarioSwim.decideEffect.f3` | f32 | `0.03f` |
+| `MarioSwim.decideVelocity.f1` | f32 | `400.0f` |
+| `MarioSwim.decideVelocity.f10` | f32 | `0.99f` |
+| `MarioSwim.decideVelocity.f11` | f32 | `0.995f` |
+| `MarioSwim.decideVelocity.f12` | f32 | `0.96f` |
+| `MarioSwim.decideVelocity.f13` | f32 | `0.96f` |
+| `MarioSwim.decideVelocity.f14` | f32 | `0.95f` |
+| `MarioSwim.decideVelocity.f2` | f32 | `0.95f` |
+| `MarioSwim.decideVelocity.f3` | f32 | `0.3f` |
+| `MarioSwim.decideVelocity.f4` | f32 | `0.75f` |
+| `MarioSwim.decideVelocity.f5` | f32 | `2.0f` |
+| `MarioSwim.decideVelocity.f6` | f32 | `3.0f` |
+| `MarioSwim.decideVelocity.f7` | f32 | `1.2f` |
+| `MarioSwim.decideVelocity.f8` | f32 | `0.1f` |
+| `MarioSwim.decideVelocity.f9` | f32 | `0.95f` |
+| `MarioSwim.doJetJump.f1` | f32 | `12.0f` |
+| `MarioSwim.doJetJump.f2` | f32 | `15.0f` |
+| `MarioSwim.doJetJump.f3` | f32 | `18.0f` |
+| `MarioSwim.doJetJump.f4` | f32 | `30.0f` |
+| `MarioSwim.doJetJump.f5` | f32 | `1.25f` |
+| `MarioSwim.flowOnWave.f1` | f32 | `25.0f` |
+| `MarioSwim.flowOnWave.f2` | f32 | `5.0f` |
+| `MarioSwim.getStickY.f1` | f32 | `0.5f` |
+| `MarioSwim.getStickY.f2` | f32 | `0.5f` |
+| `MarioSwim.getStickY.f3` | f32 | `0.5f` |
+| `MarioSwim.getSurface.f1` | f32 | `40.0f` |
+| `MarioSwim.getSurface.f2` | f32 | `0.01f` |
+| `MarioSwim.getSurface.f3` | f32 | `0.03f` |
+| `MarioSwim.getWaterAreaInfo.f1` | f32 | `0.97f` |
+| `MarioSwim.getWaterAreaInfo.f10` | f32 | `0.05f` |
+| `MarioSwim.getWaterAreaInfo.f2` | f32 | `0.03f` |
+| `MarioSwim.getWaterAreaInfo.f3` | f32 | `0.99f` |
+| `MarioSwim.getWaterAreaInfo.f4` | f32 | `0.01f` |
+| `MarioSwim.getWaterAreaInfo.f5` | f32 | `0.5f` |
+| `MarioSwim.getWaterAreaInfo.f6` | f32 | `0.8f` |
+| `MarioSwim.getWaterAreaInfo.f7` | f32 | `500.0f` |
+| `MarioSwim.getWaterAreaInfo.f8` | f32 | `500.0f` |
+| `MarioSwim.getWaterAreaInfo.f9` | f32 | `0.95f` |
+| `MarioSwim.hitHead.f1` | f32 | `1.5f` |
+| `MarioSwim.hitHead.f2` | f32 | `10.0f` |
+| `MarioSwim.hitHead.f3` | f32 | `10.0f` |
+| `MarioSwim.hitHead.f4` | f32 | `5.0f` |
+| `MarioSwim.hitPoly.f1` | f32 | `0.5f` |
+| `MarioSwim.hitWall.f1` | f32 | `0.70700002f` |
+| `MarioSwim.hitWall.f10` | f32 | `2.6179941f` |
+| `MarioSwim.hitWall.f11` | f32 | `16.0f` |
+| `MarioSwim.hitWall.f12` | f32 | `0.8f` |
+| `MarioSwim.hitWall.f13` | f32 | `16.0f` |
+| `MarioSwim.hitWall.f14` | f32 | `6.0f` |
+| `MarioSwim.hitWall.f15` | f32 | `6.0f` |
+| `MarioSwim.hitWall.f16` | f32 | `6.0f` |
+| `MarioSwim.hitWall.f17` | f32 | `0.8f` |
+| `MarioSwim.hitWall.f18` | f32 | `10.0f` |
+| `MarioSwim.hitWall.f19` | f32 | `10.0f` |
+| `MarioSwim.hitWall.f2` | f32 | `0.5f` |
+| `MarioSwim.hitWall.f3` | f32 | `0.1f` |
+| `MarioSwim.hitWall.f4` | f32 | `0.1f` |
+| `MarioSwim.hitWall.f5` | f32 | `1.5f` |
+| `MarioSwim.hitWall.f6` | f32 | `0.1f` |
+| `MarioSwim.hitWall.f7` | f32 | `1.5707964f` |
+| `MarioSwim.hitWall.f8` | f32 | `6.0f` |
+| `MarioSwim.hitWall.f9` | f32 | `2.6179941f` |
+| `MarioSwim.jet.f1` | f32 | `0.95f` |
+| `MarioSwim.jet.f2` | f32 | `0.1f` |
+| `MarioSwim.jet.f3` | f32 | `0.96f` |
+| `MarioSwim.jet.f4` | f32 | `1.02f` |
+| `MarioSwim.jet.f5` | f32 | `1.5f` |
+| `MarioSwim.jet.f6` | f32 | `0.98f` |
+| `MarioSwim.passRing.f1` | f32 | `0.25f` |
+| `MarioSwim.procBuoyancy.f1` | f32 | `2000.0f` |
+| `MarioSwim.procBuoyancy.f2` | f32 | `2000.0f` |
+| `MarioSwim.procBuoyancy.f3` | f32 | `2.0f` |
+| `MarioSwim.procBuoyancy.f4` | f32 | `300.0f` |
+| `MarioSwim.procBuoyancy.f5` | f32 | `100.0f` |
+| `MarioSwim.procBuoyancy.f6` | f32 | `300.0f` |
+| `MarioSwim.procBuoyancy.f7` | f32 | `50.0f` |
+| `MarioSwim.procBuoyancy.f8` | f32 | `0.1f` |
+| `MarioSwim.pushedByWaterWall.f1` | f32 | `80.0f` |
+| `MarioSwim.pushedByWaterWall.f2` | f32 | `0.995f` |
+| `MarioSwim.pushedByWaterWall.f3` | f32 | `0.2f` |
+| `MarioSwim.pushedByWaterWall.f4` | f32 | `0.2f` |
+| `MarioSwim.ringDash.f1` | f32 | `1.5f` |
+| `MarioSwim.ringDash.f2` | f32 | `1.5f` |
+| `MarioSwim.ringDash.f3` | f32 | `0.98f` |
+| `MarioSwim.ringDash.f4` | f32 | `0.98f` |
+| `MarioSwim.spin.f1` | f32 | `0.95f` |
+| `MarioSwim.spin.f2` | f32 | `0.5f` |
+| `MarioSwim.start.f1` | f32 | `100.0f` |
+| `MarioSwim.start.f10` | f32 | `10.0f` |
+| `MarioSwim.start.f11` | f32 | `0.2f` |
+| `MarioSwim.start.f12` | f32 | `0.1f` |
+| `MarioSwim.start.f13` | f32 | `1.49599659443f` |
+| `MarioSwim.start.f14` | f32 | `200.0f` |
+| `MarioSwim.start.f15` | f32 | `200.0f` |
+| `MarioSwim.start.f16` | f32 | `8.0f` |
+| `MarioSwim.start.f17` | f32 | `0.5f` |
+| `MarioSwim.start.f18` | f32 | `2.09439516068f` |
+| `MarioSwim.start.f2` | f32 | `200.0f` |
+| `MarioSwim.start.f3` | f32 | `100.0f` |
+| `MarioSwim.start.f4` | f32 | `0.1f` |
+| `MarioSwim.start.f5` | f32 | `0.2f` |
+| `MarioSwim.start.f6` | f32 | `0.1f` |
+| `MarioSwim.start.f7` | f32 | `10.0f` |
+| `MarioSwim.start.f8` | f32 | `5.0f` |
+| `MarioSwim.start.f9` | f32 | `9.0f` |
+| `MarioSwim.startSwim.f1` | f32 | `50.0f` |
+| `MarioSwim.update.f1` | f32 | `100.0f` |
+| `MarioSwim.update.f10` | f32 | `0.1f` |
+| `MarioSwim.update.f11` | f32 | `200.0f` |
+| `MarioSwim.update.f12` | f32 | `200.0f` |
+| `MarioSwim.update.f13` | f32 | `2.0f` |
+| `MarioSwim.update.f14` | f32 | `10.0f` |
+| `MarioSwim.update.f15` | f32 | `60.0f` |
+| `MarioSwim.update.f16` | f32 | `1000.0f` |
+| `MarioSwim.update.f17` | f32 | `0.9f` |
+| `MarioSwim.update.f18` | f32 | `0.5f` |
+| `MarioSwim.update.f19` | f32 | `100.0f` |
+| `MarioSwim.update.f2` | f32 | `50.0f` |
+| `MarioSwim.update.f20` | f32 | `400.0f` |
+| `MarioSwim.update.f21` | f32 | `0.707000017166f` |
+| `MarioSwim.update.f22` | f32 | `2.5f` |
+| `MarioSwim.update.f23` | f32 | `2.0f` |
+| `MarioSwim.update.f24` | f32 | `200.0f` |
+| `MarioSwim.update.f25` | f32 | `400.0f` |
+| `MarioSwim.update.f26` | f32 | `0.03f` |
+| `MarioSwim.update.f27` | f32 | `0.1f` |
+| `MarioSwim.update.f28` | f32 | `120.0f` |
+| `MarioSwim.update.f29` | f32 | `120.0f` |
+| `MarioSwim.update.f3` | f32 | `0.196349546313f` |
+| `MarioSwim.update.f30` | f32 | `2.0f` |
+| `MarioSwim.update.f31` | f32 | `10.0f` |
+| `MarioSwim.update.f32` | f32 | `2.0f` |
+| `MarioSwim.update.f33` | f32 | `300.0f` |
+| `MarioSwim.update.f34` | f32 | `100.0f` |
+| `MarioSwim.update.f35` | f32 | `0.05f` |
+| `MarioSwim.update.f36` | f32 | `5.0f` |
+| `MarioSwim.update.f37` | f32 | `5.0f` |
+| `MarioSwim.update.f38` | f32 | `0.523598790169f` |
+| `MarioSwim.update.f39` | f32 | `0.01f` |
+| `MarioSwim.update.f4` | f32 | `30.0f` |
+| `MarioSwim.update.f40` | f32 | `0.523598790169f` |
+| `MarioSwim.update.f41` | f32 | `0.15f` |
+| `MarioSwim.update.f42` | f32 | `0.523598790169f` |
+| `MarioSwim.update.f43` | f32 | `0.523598790169f` |
+| `MarioSwim.update.f44` | f32 | `0.523598790169f` |
+| `MarioSwim.update.f45` | f32 | `0.872664690018f` |
+| `MarioSwim.update.f46` | f32 | `2.26892805099f` |
+| `MarioSwim.update.f47` | f32 | `0.01f` |
+| `MarioSwim.update.f48` | f32 | `12.0f` |
+| `MarioSwim.update.f49` | f32 | `0.01f` |
+| `MarioSwim.update.f5` | f32 | `30.0f` |
+| `MarioSwim.update.f50` | f32 | `0.01f` |
+| `MarioSwim.update.f51` | f32 | `0.01f` |
+| `MarioSwim.update.f52` | f32 | `10.0f` |
+| `MarioSwim.update.f53` | f32 | `3.0f` |
+| `MarioSwim.update.f54` | f32 | `0.1f` |
+| `MarioSwim.update.f55` | f32 | `25.0f` |
+| `MarioSwim.update.f56` | f32 | `25.0f` |
+| `MarioSwim.update.f57` | f32 | `0.25f` |
+| `MarioSwim.update.f58` | f32 | `100.0f` |
+| `MarioSwim.update.f59` | f32 | `10.0f` |
+| `MarioSwim.update.f6` | f32 | `2.0f` |
+| `MarioSwim.update.f60` | f32 | `0.98f` |
+| `MarioSwim.update.f61` | f32 | `0.001f` |
+| `MarioSwim.update.f62` | f32 | `0.001f` |
+| `MarioSwim.update.f63` | f32 | `0.1f` |
+| `MarioSwim.update.f7` | f32 | `30.0f` |
+| `MarioSwim.update.f8` | f32 | `10.0f` |
+| `MarioSwim.update.f9` | f32 | `10.0f` |
+| `MarioSwim.updateTilt.f1` | f32 | `0.1f` |
+| `MarioSwim.updateTilt.f10` | f32 | `2.0f` |
+| `MarioSwim.updateTilt.f11` | f32 | `3.0f` |
+| `MarioSwim.updateTilt.f12` | f32 | `8.0f` |
+| `MarioSwim.updateTilt.f13` | f32 | `120.0f` |
+| `MarioSwim.updateTilt.f14` | f32 | `10.0f` |
+| `MarioSwim.updateTilt.f15` | f32 | `0.1f` |
+| `MarioSwim.updateTilt.f16` | f32 | `0.9f` |
+| `MarioSwim.updateTilt.f2` | f32 | `0.1f` |
+| `MarioSwim.updateTilt.f3` | f32 | `6.0f` |
+| `MarioSwim.updateTilt.f4` | f32 | `0.1f` |
+| `MarioSwim.updateTilt.f5` | f32 | `0.03f` |
+| `MarioSwim.updateTilt.f6` | f32 | `5.0f` |
+| `MarioSwim.updateTilt.f7` | f32 | `0.7f` |
+| `MarioSwim.updateTilt.f8` | f32 | `8.0f` |
+| `MarioSwim.updateTilt.f9` | f32 | `12.0f` |
+| `MarioSwim.updateUnderWater.f1` | f32 | `0.1f` |
+| `MarioSwim.updateUnderWater.f2` | f32 | `100.0f` |
+| `MarioSwim.updateUnderWater.f3` | f32 | `300.0f` |
+| `MarioSwim.updateUnderWater.f4` | f32 | `210.0f` |
+| `MarioSwim.updateUnderWater.f5` | f32 | `100.0f` |
+| `MarioSwim.updateUnderWater.f6` | f32 | `170.0f` |
+| `MarioSwim.updateUnderWater.f7` | f32 | `40.0f` |
 | `MarioTask.sHipDropSlideAngle` | f32 | `0.7853982f` |
 | `MarioTask.sHipDropSlideLen` | f32 | `10.0f` |
 | `MarioTask.sHipDropSlideRot` | f32 | `0.10471976f` |
@@ -23169,6 +30258,250 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MarioTask.sOne` | f32 | `1.0f` |
 | `MarioTask.sSameDirEpsilon` | f32 | `0.01f` |
 | `MarioTask.sZero` | f32 | `0.0f` |
+| `MarioTeresa.addTeresaHorizontalVelocity.f1` | f32 | `0.707f` |
+| `MarioTeresa.addTeresaHorizontalVelocity.f2` | f32 | `2.0f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f1` | f32 | `10.0f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f2` | f32 | `20.0f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f3` | f32 | `3.1415927f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f4` | f32 | `0.5f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f5` | f32 | `0.707f` |
+| `MarioTeresa.addTeresaVerticalVelocity.f6` | f32 | `2.0f` |
+| `MarioTeresa.checkHeight.f1` | f32 | `2.0f` |
+| `MarioTeresa.checkHeight.f2` | f32 | `120.0f` |
+| `MarioTeresa.checkHeight.f3` | f32 | `110.0f` |
+| `MarioTeresa.checkHeight.f4` | f32 | `0.1f` |
+| `MarioTeresa.checkHeight.f5` | f32 | `0.1f` |
+| `MarioTeresa.checkWallCeilReflect.f1` | f32 | `200.0f` |
+| `MarioTeresa.checkWallCeilReflect.f2` | f32 | `1.5f` |
+| `MarioTeresa.checkWind.f1` | f32 | `10.0f` |
+| `MarioTeresa.checkWind.f2` | f32 | `50.0f` |
+| `MarioTeresa.checkWind.f3` | f32 | `0.94f` |
+| `MarioTeresa.checkWind.f4` | f32 | `0.94f` |
+| `MarioTeresa.checkWind.f5` | f32 | `0.94f` |
+| `MarioTeresa.checkWind.f6` | f32 | `0.1f` |
+| `MarioTeresa.checkWind.f7` | f32 | `1.5f` |
+| `MarioTeresa.checkWind.f8` | f32 | `0.2f` |
+| `MarioTeresa.checkWind.f9` | f32 | `0.2f` |
+| `MarioTeresa.doTeresaReflection.f1` | f32 | `10.0f` |
+| `MarioTeresa.doTeresaReflection.f2` | f32 | `10.0f` |
+| `MarioTeresa.doTeresaReflection.f3` | f32 | `2.0f` |
+| `MarioTeresa.doTeresaReflection.f4` | f32 | `2.0f` |
+| `MarioTeresa.procAirControl.f1` | f32 | `2.0f` |
+| `MarioTeresa.procAirControl.f2` | f32 | `0.4f` |
+| `MarioTeresa.procAirControl.f3` | f32 | `0.25f` |
+| `MarioTeresa.procControl.f1` | f32 | `1.5f` |
+| `MarioTeresa.procControl.f2` | f32 | `0.3f` |
+| `MarioTeresa.procControl.f3` | f32 | `0.3f` |
+| `MarioTeresa.procControl.f4` | f32 | `2.0f` |
+| `MarioTeresa.procDrop.f1` | f32 | `100.0f` |
+| `MarioTeresa.procDrop.f10` | f32 | `0.04f` |
+| `MarioTeresa.procDrop.f2` | f32 | `100.0f` |
+| `MarioTeresa.procDrop.f3` | f32 | `0.25f` |
+| `MarioTeresa.procDrop.f4` | f32 | `0.1f` |
+| `MarioTeresa.procDrop.f5` | f32 | `1.5f` |
+| `MarioTeresa.procDrop.f6` | f32 | `0.75f` |
+| `MarioTeresa.procDrop.f7` | f32 | `10.0f` |
+| `MarioTeresa.procDrop.f8` | f32 | `0.5f` |
+| `MarioTeresa.procDrop.f9` | f32 | `0.5f` |
+| `MarioTeresa.procNearGroundControl.f1` | f32 | `60.0f` |
+| `MarioTeresa.procNearGroundControl.f2` | f32 | `50.0f` |
+| `MarioTeresa.procNearGroundControl.f3` | f32 | `50.0f` |
+| `MarioTeresa.procNearGroundControl.f4` | f32 | `50.0f` |
+| `MarioTeresa.procNearGroundControl.f5` | f32 | `0.5f` |
+| `MarioTeresa.procNearGroundControl.f6` | f32 | `3.1415927f` |
+| `MarioTeresa.procNoControl.f1` | f32 | `0.99f` |
+| `MarioTeresa.procNoControl.f2` | f32 | `0.99f` |
+| `MarioTeresa.procNoControl.f3` | f32 | `0.99f` |
+| `MarioTeresa.startTeresaDisappear.f1` | f32 | `100.0f` |
+| `MarioTeresa.startTeresaDisappear.f2` | f32 | `10.0f` |
+| `MarioTeresa.update.f1` | f32 | `10.0f` |
+| `MarioTeresa.update.f2` | f32 | `0.01f` |
+| `MarioTeresa.updateTeresaAnimation.f1` | f32 | `10.0f` |
+| `MarioWait.controlWaitAnimation.f1` | f32 | `0.1f` |
+| `MarioWait.controlWaitAnimation.f10` | f32 | `0.7853982f` |
+| `MarioWait.controlWaitAnimation.f2` | f32 | `0.1f` |
+| `MarioWait.controlWaitAnimation.f3` | f32 | `1.5707964f` |
+| `MarioWait.controlWaitAnimation.f4` | f32 | `0.7853982f` |
+| `MarioWait.controlWaitAnimation.f5` | f32 | `0.7853982f` |
+| `MarioWait.controlWaitAnimation.f6` | f32 | `0.7853982f` |
+| `MarioWait.controlWaitAnimation.f7` | f32 | `1.5707964f` |
+| `MarioWait.controlWaitAnimation.f8` | f32 | `0.7853982f` |
+| `MarioWait.controlWaitAnimation.f9` | f32 | `0.7853982f` |
+| `MarioWait.isBlendWaitGround.f1` | f32 | `8.0f` |
+| `MarioWait.stopWaitAnimation.f1` | f32 | `1.5f` |
+| `MarioWalk.cancelSquatMode.f1` | f32 | `0.1f` |
+| `MarioWalk.decideOnIceAnimation.f1` | f32 | `0.2f` |
+| `MarioWalk.decideOnIceAnimation.f2` | f32 | `0.7f` |
+| `MarioWalk.decideOnIceAnimation.f3` | f32 | `0.2f` |
+| `MarioWalk.decideSquatWalkAnimation.f1` | f32 | `0.1f` |
+| `MarioWalk.decideSquatWalkAnimation.f10` | f32 | `0.2f` |
+| `MarioWalk.decideSquatWalkAnimation.f11` | f32 | `0.5f` |
+| `MarioWalk.decideSquatWalkAnimation.f12` | f32 | `20.0f` |
+| `MarioWalk.decideSquatWalkAnimation.f2` | f32 | `60.0f` |
+| `MarioWalk.decideSquatWalkAnimation.f3` | f32 | `0.2f` |
+| `MarioWalk.decideSquatWalkAnimation.f4` | f32 | `0.2f` |
+| `MarioWalk.decideSquatWalkAnimation.f5` | f32 | `20.0f` |
+| `MarioWalk.decideSquatWalkAnimation.f6` | f32 | `30.0f` |
+| `MarioWalk.decideSquatWalkAnimation.f7` | f32 | `30.0f` |
+| `MarioWalk.decideSquatWalkAnimation.f8` | f32 | `0.2f` |
+| `MarioWalk.decideSquatWalkAnimation.f9` | f32 | `20.0f` |
+| `MarioWalk.decideWalkAnimation.f1` | f32 | `0.2f` |
+| `MarioWalk.decideWalkAnimation.f10` | f32 | `20.0f` |
+| `MarioWalk.decideWalkAnimation.f11` | f32 | `0.2f` |
+| `MarioWalk.decideWalkAnimation.f12` | f32 | `0.5f` |
+| `MarioWalk.decideWalkAnimation.f13` | f32 | `20.0f` |
+| `MarioWalk.decideWalkAnimation.f14` | f32 | `0.33f` |
+| `MarioWalk.decideWalkAnimation.f15` | f32 | `0.5f` |
+| `MarioWalk.decideWalkAnimation.f16` | f32 | `60.0f` |
+| `MarioWalk.decideWalkAnimation.f17` | f32 | `0.01f` |
+| `MarioWalk.decideWalkAnimation.f18` | f32 | `10.0f` |
+| `MarioWalk.decideWalkAnimation.f19` | f32 | `5.0f` |
+| `MarioWalk.decideWalkAnimation.f2` | f32 | `0.75f` |
+| `MarioWalk.decideWalkAnimation.f20` | f32 | `4.0f` |
+| `MarioWalk.decideWalkAnimation.f21` | f32 | `4.0f` |
+| `MarioWalk.decideWalkAnimation.f22` | f32 | `2.0f` |
+| `MarioWalk.decideWalkAnimation.f23` | f32 | `2.0f` |
+| `MarioWalk.decideWalkAnimation.f24` | f32 | `1.2f` |
+| `MarioWalk.decideWalkAnimation.f25` | f32 | `0.5f` |
+| `MarioWalk.decideWalkAnimation.f26` | f32 | `60.0f` |
+| `MarioWalk.decideWalkAnimation.f27` | f32 | `0.01f` |
+| `MarioWalk.decideWalkAnimation.f28` | f32 | `2.0f` |
+| `MarioWalk.decideWalkAnimation.f29` | f32 | `0.9f` |
+| `MarioWalk.decideWalkAnimation.f3` | f32 | `0.5f` |
+| `MarioWalk.decideWalkAnimation.f30` | f32 | `0.3f` |
+| `MarioWalk.decideWalkAnimation.f4` | f32 | `100.0f` |
+| `MarioWalk.decideWalkAnimation.f5` | f32 | `0.2f` |
+| `MarioWalk.decideWalkAnimation.f6` | f32 | `20.0f` |
+| `MarioWalk.decideWalkAnimation.f7` | f32 | `30.0f` |
+| `MarioWalk.decideWalkAnimation.f8` | f32 | `30.0f` |
+| `MarioWalk.decideWalkAnimation.f9` | f32 | `0.2f` |
+| `MarioWalk.decideWalkSpeed.f1` | f32 | `0.5f` |
+| `MarioWalk.decideWalkSpeed.f2` | f32 | `0.1f` |
+| `MarioWalk.doBrakingAnimation.f1` | f32 | `0.5f` |
+| `MarioWalk.getTargetWalkSpeed.f1` | f32 | `256.0f` |
+| `MarioWalk.updateOnSand.f1` | f32 | `0.99f` |
+| `MarioWalk.updateOnSand.f2` | f32 | `6.0f` |
+| `MarioWalk.updateOnWater.f1` | f32 | `20.0f` |
+| `MarioWalk.updateOnWater.f2` | f32 | `20.0f` |
+| `MarioWalk.updateOnWater.f3` | f32 | `20.0f` |
+| `MarioWalk.updateOnWater.f4` | f32 | `3.0f` |
+| `MarioWalk.updateWalkSpeed.f1` | f32 | `0.5f` |
+| `MarioWalk.updateWalkSpeed.f2` | f32 | `0.5f` |
+| `MarioWalk.updateWalkSpeed.f3` | f32 | `0.9999f` |
+| `MarioWalk.updateWalkSpeed.f4` | f32 | `0.99f` |
+| `MarioWalk.updateWalkSpeed.f5` | f32 | `1.5f` |
+| `MarioWalk.updateWalkSpeed.f6` | f32 | `256.0f` |
+| `MarioWall.checkStickFrontBack.f1` | f32 | `0.5f` |
+| `MarioWall.checkStickFrontBack.f2` | f32 | `0.5f` |
+| `MarioWall.checkStickWallSide.f1` | f32 | `0.5f` |
+| `MarioWall.checkStickWallSide.f2` | f32 | `0.5f` |
+| `MarioWall.checkWallStick.f1` | f32 | `0.25f` |
+| `MarioWall.fixWallingDir.f1` | f32 | `0.1f` |
+| `MarioWall.fixWallingDir.f2` | f32 | `0.1f` |
+| `MarioWall.fixWallingDist.f1` | f32 | `79.0f` |
+| `MarioWall.fixWallingDist.f2` | f32 | `60.0f` |
+| `MarioWall.fixWallingDist.f3` | f32 | `80.0f` |
+| `MarioWall.fixWallingDist.f4` | f32 | `100.0f` |
+| `MarioWall.fixWallingDist.f5` | f32 | `0.999f` |
+| `MarioWall.fixWallingDist.f6` | f32 | `60.0f` |
+| `MarioWall.fixWallingDist.f7` | f32 | `80.0f` |
+| `MarioWall.isEnableStickWall.f1` | f32 | `80.0f` |
+| `MarioWall.isEnableStickWall.f2` | f32 | `80.0f` |
+| `MarioWall.isEnableStickWall.f3` | f32 | `120.0f` |
+| `MarioWall.isEnableStickWall.f4` | f32 | `120.0f` |
+| `MarioWall.keepDistFrontWall.f1` | f32 | `80.0f` |
+| `MarioWall.keepDistFrontWall.f2` | f32 | `80.0f` |
+| `MarioWall.start.f1` | f32 | `30.0f` |
+| `MarioWall.start.f2` | f32 | `15.0f` |
+| `MarioWall.update.f1` | f32 | `80.0f` |
+| `MarioWall.update.f2` | f32 | `10.0f` |
+| `MarioWall.update.f3` | f32 | `30.0f` |
+| `MarioWall.update.f4` | f32 | `0.9f` |
+| `MarioWall.update.f5` | f32 | `0.7f` |
+| `MarioWarp.calcAxis.f1` | f32 | `0.5f` |
+| `MarioWarp.calcAxis.f2` | f32 | `4.0f` |
+| `MarioWarp.calcAxis.f3` | f32 | `0.4f` |
+| `MarioWarp.calcAxis.f4` | f32 | `0.5f` |
+| `MarioWarp.calcAxis.f5` | f32 | `0.5f` |
+| `MarioWarp.calcAxis.f6` | f32 | `0.5f` |
+| `MarioWarp.calcAxis.f7` | f32 | `25.0f` |
+| `MarioWarp.close.f1` | f32 | `12.0f` |
+| `MarioWarp.close.f2` | f32 | `5.0f` |
+| `MarioWarp.doObjWarp.f1` | f32 | `160.0f` |
+| `MarioWarp.doObjWarp.f2` | f32 | `160.0f` |
+| `MarioWarp.update.f1` | f32 | `2.0f` |
+| `MarioWarp.update.f2` | f32 | `100.0f` |
+| `MarioWarp.update.f3` | f32 | `100.0f` |
+| `MarioWarp.updateJump.f1` | f32 | `0.5f` |
+| `MarioWarp.updateJump.f2` | f32 | `2.0f` |
+| `MarioWarp.updateJump.f3` | f32 | `0.5f` |
+| `MarioWarp.updateJump.f4` | f32 | `0.2f` |
+| `PlayerModel.drawIn.f1` | f32 | `32.0f` |
+| `PlayerModel.drawIn.f2` | f32 | `255.0f` |
+| `PlayerModel.drawIn.f3` | f32 | `255.0f` |
+| `PlayerModel.drawIn.f4` | f32 | `255.0f` |
+| `PlayerModel.drawIn.f5` | f32 | `255.0f` |
+| `PlayerModel.send.f1` | f32 | `255.0f` |
+| `PlayerModel.viewCalcRefPos.f1` | f32 | `0.1f` |
+| `TornadoMario.init.f1` | f32 | `80.0f` |
+| `TornadoMario.init.f2` | f32 | `3000.0f` |
+| `TornadoMario.init.f3` | f32 | `50.0f` |
+
+<a id="p-nebula-tunables--gamerender"></a>
+
+### Game/Render
+
+| Key | Type | Game's value |
+|---|---|---|
+| `Clip.checkPass.f1` | f32 | `0.001f` |
+| `Clip.checkPass.f2` | f32 | `0.001f` |
+| `Clip.colorByte.f1` | f32 | `255.0f` |
+| `Clip.update.f1` | f32 | `0.001f` |
+| `Clip.value.f1` | f32 | `0.5f` |
+| `FrameList.distAttn.f1` | f32 | `0.5f` |
+| `FrameList.distAttn.f2` | f32 | `0.5f` |
+| `FrameList.specularDirHA.f1` | f32 | `1.0e18f` |
+| `GameTexture.createTarget.f1` | f32 | `0.5f` |
+| `GameTexture.createTarget.f2` | f32 | `0.5f` |
+| `Material.calc.f1` | f32 | `0.5f` |
+| `Material.calc.f2` | f32 | `0.5f` |
+| `Material.calc.f3` | f32 | `0.5f` |
+| `Material.calc.f4` | f32 | `0.5f` |
+| `Material.calc.f5` | f32 | `0.5f` |
+| `Material.calc.f6` | f32 | `0.5f` |
+| `Material.calc.f7` | f32 | `0.5f` |
+| `Material.calc.f8` | f32 | `0.5f` |
+| `Material.fillRow.f1` | f32 | `255.0f` |
+| `Material.fillRow.f2` | f32 | `255.0f` |
+| `Material.fillRow.f3` | f32 | `255.0f` |
+| `Material.fillRow.f4` | f32 | `255.0f` |
+| `Material.fillRow.f5` | f32 | `255.0f` |
+| `Material.fillRow.f6` | f32 | `255.0f` |
+| `Material.fillRow.f7` | f32 | `255.0f` |
+| `Material.fillRow.f8` | f32 | `255.0f` |
+| `Material.fillRow.f9` | f32 | `255.0f` |
+| `Material.overrideAlpha.f1` | f32 | `5.0f` |
+| `Material.setColor.f1` | f32 | `255.0f` |
+| `Material.setColor.f2` | f32 | `255.0f` |
+| `Material.setColor.f3` | f32 | `255.0f` |
+| `Material.setColor.f4` | f32 | `255.0f` |
+| `Material.setFog.f1` | f32 | `255.0f` |
+| `Material.setFog.f2` | f32 | `255.0f` |
+| `Material.setFog.f3` | f32 | `255.0f` |
+| `Material.setFog.f4` | f32 | `2.0f` |
+| `Model.cOneScale` | f32[3] | `1.0f, 1.0f, 1.0f` |
+| `Transform.textureMtxMaya.f1` | f32 | `0.5f` |
+| `Transform.textureMtxMaya.f2` | f32 | `0.5f` |
+| `Transform.textureMtxMaya.f3` | f32 | `0.5f` |
+| `Transform.textureMtxMaya.f4` | f32 | `0.5f` |
+| `Transform.textureMtxMayaOld.f1` | f32 | `0.5f` |
+| `Transform.textureMtxMayaOld.f2` | f32 | `0.5f` |
+| `Transform.textureMtxMayaOld.f3` | f32 | `0.5f` |
+| `Transform.textureMtxMayaOld.f4` | f32 | `0.5f` |
+| `TypedDraw.setColor.f1` | f32 | `255.0f` |
+| `TypedDraw.setColor.f2` | f32 | `255.0f` |
+| `TypedDraw.setColor.f3` | f32 | `255.0f` |
+| `TypedDraw.setColor.f4` | f32 | `255.0f` |
 
 <a id="p-nebula-tunables--gameride"></a>
 
@@ -23176,9 +30509,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `BigBubble.addAccelPointing.f1` | f32 | `100.0f` |
+| `BigBubble.addDeformVelocityInternalPressure.f1` | f32 | `0.125f` |
+| `BigBubble.addDeformVelocityInternalPressure.f2` | f32 | `0.01f` |
+| `BigBubble.control.f1` | f32 | `1.2f` |
 | `BigBubble.control.setBinderRadius.1` | f32 | `0.1f` |
 | `BigBubble.control.setBinderRadius.2` | f32 | `0.9f` |
+| `BigBubble.exeAppear.f1` | f32 | `0.01f` |
 | `BigBubble.generate.setBinderRadius.1` | f32 | `0.0f` |
+| `BigBubble.init.f1` | f32 | `0.8f` |
+| `BigBubble.requestAssimilate.f1` | f32 | `8.0f` |
 | `BigBubble.sAccelDeformPower` | f32 | `0.8f` |
 | `BigBubble.sAppearAddMoment` | f32 | `0.03f` |
 | `BigBubble.sBaseRadiusCube` | f32 | `180.0f` |
@@ -23191,7 +30531,12 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BigBubble.sCoriolisAccelPower` | f32 | `0.1f` |
 | `BigBubble.sCorioriRotSpeed` | f32 | `3.0f` |
 | `BigBubble.sEscapeVelocity` | f32 | `30.0f` |
+| `BigBubble.setScale.f1` | f32 | `0.8f` |
+| `BigBubble.setScale.f2` | f32 | `0.95f` |
 | `BigBubble.setScale.setBinderRadius.1` | f32 | `0.9f` |
+| `BigBubble.setShapeType.f1` | f32 | `0.6f` |
+| `BigBubble.setShapeType.f2` | f32 | `0.9f` |
+| `BigBubble.setShapeType.f3` | f32 | `0.1f` |
 | `BigBubble.sMargeableRate` | f32 | `0.9f` |
 | `BigBubble.sMaxDeformSpeed` | f32 | `10.0f` |
 | `BigBubble.sMaxSpinSpeed` | f32 | `0.2f` |
@@ -23229,10 +30574,17 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `BigBubble.sWindAccel` | f32 | `0.25f` |
 | `BigBubble.sWindMaxDistance` | f32 | `0.5f` |
 | `BigBubble.sWindMinDistance` | f32 | `0.0f` |
+| `BigBubble.updateCaptureReduceVolume.f1` | f32 | `0.98f` |
+| `BigBubble.updateCaptureReduceVolume.f2` | f32 | `0.98f` |
+| `BigBubble.updateCaptureWarningColor.f1` | f32 | `0.5f` |
+| `BigBubble.updateCaptureWarningColor.f2` | f32 | `128.0f` |
 | `BigBubble.updateNormalVelocity.reboundVelocityFromEachCollision.1` | f32 | `0.1f` |
 | `BigBubble.updateNormalVelocity.reboundVelocityFromEachCollision.2` | f32 | `0.1f` |
 | `BigBubble.updateNormalVelocity.reboundVelocityFromEachCollision.3` | f32 | `0.1f` |
 | `BigBubble.updateNormalVelocity.reboundVelocityFromEachCollision.4` | f32 | `0.0f` |
+| `Creeper.init.f1` | f32 | `100.0f` |
+| `Creeper.init.f2` | f32 | `100.0f` |
+| `Creeper.init.f3` | f32 | `500.0f` |
 | `Creeper.sAnimInterpoleFrame` | s32 | `15` |
 | `Creeper.sDefaultBendRate` | f32 | `100.0f` |
 | `Creeper.sDefaultJumpSpeedFront` | f32 | `25.0f` |
@@ -23255,6 +30607,22 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Creeper.sPointFrictionFree` | f32 | `0.9f` |
 | `Creeper.sPointFrictionHang` | f32 | `0.7f` |
 | `Creeper.sStepInvalid` | s32 | `20` |
+| `Creeper.updateHangUp.f1` | f32 | `5.0f` |
+| `Creeper.updateHangUp.f2` | f32 | `0.4f` |
+| `Fluff.exeFreeBloom.f1` | f32 | `30.0f` |
+| `Fluff.exeRideFlyOnWind.f1` | f32 | `100.0f` |
+| `Fluff.init.f1` | f32 | `150.0f` |
+| `Fluff.init.f10` | f32 | `80.0f` |
+| `Fluff.init.f11` | f32 | `60.0f` |
+| `Fluff.init.f12` | f32 | `800.0f` |
+| `Fluff.init.f2` | f32 | `150.0f` |
+| `Fluff.init.f3` | f32 | `300.0f` |
+| `Fluff.init.f4` | f32 | `60.0f` |
+| `Fluff.init.f5` | f32 | `50.0f` |
+| `Fluff.init.f6` | f32 | `50.0f` |
+| `Fluff.init.f7` | f32 | `100.0f` |
+| `Fluff.init.f8` | f32 | `80.0f` |
+| `Fluff.init.f9` | f32 | `50.0f` |
 | `Fluff.sBlendRateAxisY` | f32 | `0.01f` |
 | `Fluff.sBlendRateToWind` | f32 | `0.08f` |
 | `Fluff.sBlendRateWindUp` | f32 | `0.5f` |
@@ -23280,7 +30648,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Fluff.sWindAccelNear` | f32 | `0.3f` |
 | `Fluff.sWindDistanceMax` | f32 | `300.0f` |
 | `Fluff.sWindDistanceMin` | f32 | `0.0f` |
+| `FluffWind.calcWindInfo.f1` | f32 | `1000000.0f` |
 | `FluffWind.sEffectEmitterInterval` | f32 | `600.0f` |
+| `JumpBranch.init.f1` | f32 | `80.0f` |
+| `JumpBranch.init.f2` | f32 | `120.0f` |
+| `JumpBranch.init.f3` | f32 | `10.0f` |
+| `JumpBranch.init.f4` | f32 | `10.0f` |
+| `JumpBranch.init.f5` | f32 | `1500.0f` |
+| `JumpBranch.receiveOtherMsg.f1` | f32 | `30.0f` |
 | `JumpBranch.sDistanceStartBindZ` | f32 | `70.0f` |
 | `JumpBranch.sJumpSpeed` | f32 | `10.0f` |
 | `JumpBranch.sJumpSpeedOffsetY` | f32 | `16.0f` |
@@ -23289,6 +30664,14 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `JumpBranch.sPointInterval` | f32 | `30.0f` |
 | `JumpBranch.sSensorMoveDistance` | f32 | `50.0f` |
 | `JumpBranch.sTransDiffMinY` | f32 | `1.0f` |
+| `Plant.init.f1` | f32 | `100.0f` |
+| `Plant.init.f2` | f32 | `500.0f` |
+| `Plant.init.f3` | f32 | `50.0f` |
+| `Plant.init.f4` | f32 | `100.0f` |
+| `Plant.init.f5` | f32 | `300.0f` |
+| `Plant.init.f6` | f32 | `50.0f` |
+| `Plant.init.f7` | f32 | `50.0f` |
+| `Plant.initAfterPlacement.f1` | f32 | `1000.0f` |
 | `Plant.sDefaultJumpSpeed` | f32 | `30.0f` |
 | `Plant.sDefaultJumpSpeedOffsetY` | f32 | `0.0f` |
 | `Plant.sDistanceBody` | f32 | `300.0f` |
@@ -23318,6 +30701,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Plant.sLeafRotateMin` | f32 | `90.0f` |
 | `Plant.sLeafScaleMax` | f32 | `1.5f` |
 | `Plant.sLeafScaleMin` | f32 | `1.0f` |
+| `Plant.updateBindLeaf.f1` | f32 | `20.0f` |
+| `Plant.updateGrowUp.f1` | f32 | `10.0f` |
 | `PlantLeaf.sDistancePush` | f32 | `50.0f` |
 | `PlantLeaf.sPlayerPushRate` | f32 | `0.02f` |
 | `PlantLeaf.sScaleMin` | f32 | `0.0001f` |
@@ -23327,6 +30712,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PlantLeaf.sSpringFrictionRate` | f32 | `0.9f` |
 | `PlantLeaf.sSpringSpeedMax` | f32 | `0.5f` |
 | `PlantLeaf.sSpringSpeedToStop` | f32 | `0.001f` |
+| `PlantStalk.calcPlayerCoord.f1` | f32 | `100000000.0f` |
+| `PlantStalk.calcPlayerCoord.f2` | f32 | `15.0f` |
 | `PlantStalk.sGrowAccelMax` | f32 | `30.0f` |
 | `PlantStalk.sGrowAccelMin` | f32 | `15.0f` |
 | `PlantStalk.sGrowAccelTimeMin` | s32 | `5` |
@@ -23337,6 +30724,24 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PlantStalk.sOffsetPointNum` | s32 | `3` |
 | `PlantStalk.sTexRate` | f32 | `1.0f` |
 | `PlantStalk.sWidthRateMin` | f32 | `0.45f` |
+| `Pole.exeBindHandstandTurn.f1` | f32 | `360.0f` |
+| `Pole.exeBindTurn.f1` | f32 | `360.0f` |
+| `Pole.exeBindTurn.f2` | f32 | `90.0f` |
+| `Pole.exeBindTurn.f3` | f32 | `90.0f` |
+| `Pole.exeBindTurn.f4` | f32 | `90.0f` |
+| `Pole.exeBindTurn.f5` | f32 | `90.0f` |
+| `Pole.exeBindTurn.f6` | f32 | `360.0f` |
+| `Pole.init.f1` | f32 | `60.0f` |
+| `Pole.init.f2` | f32 | `100.0f` |
+| `Pole.init.f3` | f32 | `30.0f` |
+| `Pole.init.f4` | f32 | `800.0f` |
+| `Pole.init.f5` | f32 | `2.0f` |
+| `Pole.init.f6` | f32 | `2.0f` |
+| `Pole.receiveOtherMsg.f1` | f32 | `45.0f` |
+| `Pole.receiveOtherMsg.f2` | f32 | `90.0f` |
+| `Pole.receiveOtherMsg.f3` | f32 | `90.0f` |
+| `Pole.receiveOtherMsg.f4` | f32 | `120.0f` |
+| `Pole.receiveOtherMsg.f5` | f32 | `120.0f` |
 | `Pole.sBindStartRotateSpeed` | f32 | `5.0f` |
 | `Pole.sBindStartRotateSpeedFast` | f32 | `9.0f` |
 | `Pole.sClimbUpAnimFrameRate` | f32 | `1.75f` |
@@ -23369,7 +30774,18 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Pole.sStepJumpReverseHandstandStart` | s32 | `25` |
 | `Pole.sStepSquareJumpChangeDir` | s32 | `7` |
 | `Pole.sTurnStickMin` | f32 | `0.8f` |
+| `Pole.tryJump.f1` | f32 | `180.0f` |
+| `Pole.tryJump.f2` | f32 | `360.0f` |
+| `SlingShooter.exeAim.f1` | f32 | `100.0f` |
 | `SlingShooter.exeAttackSuccess.1` | s32 | `2` |
+| `SlingShooter.init.f1` | f32 | `80.0f` |
+| `SlingShooter.init.f2` | f32 | `150.0f` |
+| `SlingShooter.init.f3` | f32 | `100.0f` |
+| `SlingShooter.init.f4` | f32 | `50.0f` |
+| `SlingShooter.init.f5` | f32 | `50.0f` |
+| `SlingShooter.init.f6` | f32 | `100.0f` |
+| `SlingShooter.init.f7` | f32 | `210.0f` |
+| `SlingShooter.init.f8` | f32 | `50.0f` |
 | `SlingShooter.sAimAnimInterpole` | s32 | `10` |
 | `SlingShooter.sAimDistanceMax` | f32 | `300.0f` |
 | `SlingShooter.sAimDistanceMin` | f32 | `100.0f` |
@@ -23383,6 +30799,17 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SlingShooter.sStepStopSceneAttackSuccess` | s32 | `15` |
 | `SlingShooter.sStepToEnableBindCancel` | s32 | `10` |
 | `SlingShooter.sStepToStopScene` | s32 | `1` |
+| `SpaceCocoon.exeBindAim.f1` | f32 | `100.0f` |
+| `SpaceCocoon.init.f1` | f32 | `200.0f` |
+| `SpaceCocoon.init.f10` | f32 | `100.0f` |
+| `SpaceCocoon.init.f2` | f32 | `100.0f` |
+| `SpaceCocoon.init.f3` | f32 | `50.0f` |
+| `SpaceCocoon.init.f4` | f32 | `50.0f` |
+| `SpaceCocoon.init.f5` | f32 | `150.0f` |
+| `SpaceCocoon.init.f6` | f32 | `50.0f` |
+| `SpaceCocoon.init.f7` | f32 | `50.0f` |
+| `SpaceCocoon.init.f8` | f32 | `300.0f` |
+| `SpaceCocoon.init.f9` | f32 | `50.0f` |
 | `SpaceCocoon.receiveMsgPlayerAttack.addVelocitySeparateHV.1` | f32 | `0.0f` |
 | `SpaceCocoon.sAccelRate` | f32 | `0.02f` |
 | `SpaceCocoon.sAimAnimInterpole` | s32 | `10` |
@@ -23422,6 +30849,17 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SpaceCocoon.sWidthBottom` | f32 | `1.0f` |
 | `SpaceCocoon.sWidthBottomPointNum` | s32 | `3` |
 | `SpaceCocoon.sWidthTop` | f32 | `2.0f` |
+| `SurfRay.calcWaterShadowPos.f1` | f32 | `100.0f` |
+| `SurfRay.exeReady.f1` | f32 | `0.5f` |
+| `SurfRay.exeTutorial.f1` | f32 | `0.5f` |
+| `SurfRay.exeTutorial.f2` | f32 | `0.85f` |
+| `SurfRay.exeTutorial.f3` | f32 | `70.0f` |
+| `SurfRay.exeTutorial.f4` | f32 | `0.6f` |
+| `SurfRay.init.f1` | f32 | `260.0f` |
+| `SurfRay.init.f2` | f32 | `300.0f` |
+| `SurfRay.init.f3` | f32 | `200.0f` |
+| `SurfRay.init.f4` | f32 | `50.0f` |
+| `SurfRay.isRotateStart.f1` | f32 | `3.0f` |
 | `SurfRay.sBlendRatioAxisFrontWall` | f32 | `0.1f` |
 | `SurfRay.sBlendRatioAxisUpAir` | f32 | `0.02f` |
 | `SurfRay.sBlendRatioAxisUpGround` | f32 | `0.1f` |
@@ -23442,17 +30880,99 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SurfRay.sTwistStartDiffMin` | f32 | `0.2f` |
 | `SurfRay.sWindSeMaxSpeed` | f32 | `50.0f` |
 | `SurfRay.sWindSeStartSpeed` | f32 | `32.0f` |
+| `SurfRay.tryInWater.f1` | f32 | `100.0f` |
+| `SurfRay.tryInWater.f2` | f32 | `150.0f` |
+| `SurfRay.tryInWater.f3` | f32 | `90.0f` |
+| `SurfRay.tryInWater.f4` | f32 | `150.0f` |
+| `SurfRay.tryInWater.f5` | f32 | `90.0f` |
+| `SurfRay.tryInWater.f6` | f32 | `150.0f` |
+| `SurfRay.tryInWater.f7` | f32 | `150.0f` |
+| `SurfRay.tryInWater.f8` | f32 | `150.0f` |
+| `SurfRay.tryJumpOrFall.f1` | f32 | `40.0f` |
+| `SurfRay.tryJumpOrFall.f2` | f32 | `70.0f` |
+| `SurfRay.tryJumpOrFall.f3` | f32 | `5.0f` |
+| `SurfRay.tryJumpOrFall.f4` | f32 | `70.0f` |
+| `SurfRay.tryJumpOrFall.f5` | f32 | `15.0f` |
+| `SurfRay.tryJumpOrFall.f6` | f32 | `25.0f` |
+| `SurfRay.tryJumpOrFall.f7` | f32 | `25.0f` |
+| `SurfRay.tryJumpOrFall.f8` | f32 | `23.0f` |
+| `SurfRay.updateAccel.f1` | f32 | `0.5f` |
+| `SurfRay.updateAccel.f2` | f32 | `0.99f` |
+| `SurfRay.updateAccel.f3` | f32 | `40.0f` |
+| `SurfRay.updateAccel.f4` | f32 | `0.9f` |
+| `SurfRay.updateAccel.f5` | f32 | `0.995f` |
+| `SurfRay.updateAccel.f6` | f32 | `0.1f` |
+| `SurfRay.updateAccel.f7` | f32 | `0.95f` |
+| `SurfRay.updateInfo.f1` | f32 | `40.0f` |
+| `SurfRay.updateInfo.f2` | f32 | `100.0f` |
+| `SurfRay.updateInfo.f3` | f32 | `1000.0f` |
+| `SurfRay.updateInfo.f4` | f32 | `10.0f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.1` | f32 | `0.3f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.2` | f32 | `10.0f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.4` | f32 | `0.8f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.5` | f32 | `10.0f` |
 | `SurfRay.updateInfo.reboundVelocityFromCollision.6` | f32 | `1.0f` |
+| `SurfRay.updateRiderMtx.f1` | f32 | `55.0f` |
+| `SurfRay.updateRiderMtx.f2` | f32 | `12.0f` |
+| `SurfRay.updateRiderMtx.f3` | f32 | `55.0f` |
+| `SurfRay.updateRiderMtx.f4` | f32 | `12.0f` |
+| `SurfRay.updateRiderMtx.f5` | f32 | `55.0f` |
+| `SurfRay.updateRiderMtx.f6` | f32 | `12.0f` |
+| `SurfRay.updateRotate.f1` | f32 | `0.7f` |
+| `SurfRay.updateRotate.f10` | f32 | `0.3f` |
+| `SurfRay.updateRotate.f11` | f32 | `0.95f` |
+| `SurfRay.updateRotate.f12` | f32 | `0.1f` |
+| `SurfRay.updateRotate.f13` | f32 | `0.7f` |
+| `SurfRay.updateRotate.f14` | f32 | `70.0f` |
+| `SurfRay.updateRotate.f15` | f32 | `70.0f` |
+| `SurfRay.updateRotate.f16` | f32 | `1.2f` |
+| `SurfRay.updateRotate.f17` | f32 | `0.00028f` |
+| `SurfRay.updateRotate.f2` | f32 | `0.15f` |
+| `SurfRay.updateRotate.f3` | f32 | `1.5f` |
+| `SurfRay.updateRotate.f4` | f32 | `1.5f` |
+| `SurfRay.updateRotate.f5` | f32 | `0.3f` |
+| `SurfRay.updateRotate.f6` | f32 | `0.3f` |
+| `SurfRay.updateRotate.f7` | f32 | `0.95f` |
+| `SurfRay.updateRotate.f8` | f32 | `30.0f` |
+| `SurfRay.updateRotate.f9` | f32 | `30.0f` |
+| `SurfRay.updateSound.f1` | f32 | `0.1f` |
+| `SurfRay.updateSound.f10` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f11` | f32 | `70.0f` |
+| `SurfRay.updateSound.f12` | f32 | `0.45f` |
+| `SurfRay.updateSound.f13` | f32 | `25.0f` |
+| `SurfRay.updateSound.f14` | f32 | `100.0f` |
+| `SurfRay.updateSound.f15` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f2` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f3` | f32 | `0.1f` |
+| `SurfRay.updateSound.f4` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f5` | f32 | `0.1f` |
+| `SurfRay.updateSound.f6` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f7` | f32 | `0.1f` |
+| `SurfRay.updateSound.f8` | f32 | `1000.0f` |
+| `SurfRay.updateSound.f9` | f32 | `0.1f` |
+| `SurfRay.updateToMap.f1` | f32 | `0.1f` |
+| `SurfRay.updateToMap.f2` | f32 | `0.8f` |
+| `SurfRay.updateToWater.f1` | f32 | `20.0f` |
+| `SurfRay.updateToWater.f10` | f32 | `1000.0f` |
+| `SurfRay.updateToWater.f11` | f32 | `20.0f` |
+| `SurfRay.updateToWater.f2` | f32 | `100.0f` |
+| `SurfRay.updateToWater.f3` | f32 | `1000.0f` |
+| `SurfRay.updateToWater.f4` | f32 | `20.0f` |
+| `SurfRay.updateToWater.f5` | f32 | `10.0f` |
+| `SurfRay.updateToWater.f6` | f32 | `1.5f` |
+| `SurfRay.updateToWater.f7` | f32 | `0.01f` |
+| `SurfRay.updateToWater.f8` | f32 | `30.0f` |
+| `SurfRay.updateToWater.f9` | f32 | `200.0f` |
 | `SurfRayTutorial.sPadAccelStraightMinX` | f32 | `0.25f` |
 | `SurfRayTutorial.sPadAccelStraightMinY` | f32 | `0.45f` |
 | `SurfRayTutorial.sPadAccelTurnLimitY` | f32 | `0.5f` |
 | `SurfRayTutorial.sPadAccelTurnMinX` | f32 | `0.65f` |
 | `SurfRayTutorial.sStepToOK` | s32 | `10` |
+| `SwingRope.init.f1` | f32 | `100.0f` |
+| `SwingRope.init.f2` | f32 | `200.0f` |
+| `SwingRope.init.f3` | f32 | `150.0f` |
+| `SwingRope.init.f4` | f32 | `50.0f` |
 | `SwingRope.sAnimInterpoleFrame` | s32 | `10` |
 | `SwingRope.sAnimInterpoleFrameToSlowWait` | s32 | `10` |
 | `SwingRope.sBindPointFrictionRateHead` | f32 | `0.7f` |
@@ -23496,12 +31016,36 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SwingRope.sStepWaitAfterSwing` | s32 | `0` |
 | `SwingRope.sTexRate` | f32 | `0.13f` |
 | `SwingRope.sTransDiffMinY` | f32 | `1.0f` |
+| `SwingRope.updateHangPoint.f1` | f32 | `40.0f` |
+| `SwingRope.updateHangPoint.f2` | f32 | `100.0f` |
+| `Tamakoro.addVelocityOperate.f1` | f32 | `0.4f` |
+| `Tamakoro.addVelocityOperate.f2` | f32 | `0.2f` |
+| `Tamakoro.calcTiltMove.f1` | f32 | `0.0001f` |
 | `Tamakoro.cTiltBaseDegreeYZ` | f32 | `10.0f` |
 | `Tamakoro.cTiltDegreeMargin` | f32 | `5.0f` |
 | `Tamakoro.cTiltDegreeRange` | f32 | `25.0f` |
 | `Tamakoro.exeBindEnd.1` | s32 | `12` |
+| `Tamakoro.exeBindStart.f1` | f32 | `2.0f` |
+| `Tamakoro.exeBindStartLand.f1` | f32 | `2.0f` |
 | `Tamakoro.exeBumpWall.1` | s32 | `15` |
+| `Tamakoro.exeBumpWall.f1` | f32 | `3.0f` |
+| `Tamakoro.exeDashRail.f1` | f32 | `10.0f` |
+| `Tamakoro.exeDashRailEnd.f1` | f32 | `3.0f` |
+| `Tamakoro.exeDashRailEnd.f2` | f32 | `10.0f` |
+| `Tamakoro.exeFall.f1` | f32 | `3.0f` |
+| `Tamakoro.exeJump.f1` | f32 | `3.0f` |
+| `Tamakoro.exeJumpHole.f1` | f32 | `3.0f` |
+| `Tamakoro.exeJumpHoleLaunch.f1` | f32 | `3.0f` |
+| `Tamakoro.exeJumpHoleLaunch.f2` | f32 | `3.0f` |
+| `Tamakoro.exeJumpHoleSetUp.f1` | f32 | `3.0f` |
 | `Tamakoro.exeLand.1` | s32 | `15` |
+| `Tamakoro.exeLand.f1` | f32 | `3.0f` |
+| `Tamakoro.exeStandByBind.f1` | f32 | `0.95f` |
+| `Tamakoro.exeStandByTutorial.f1` | f32 | `0.95f` |
+| `Tamakoro.exeTutorial.f1` | f32 | `0.25f` |
+| `Tamakoro.exeTutorial.f2` | f32 | `3.0f` |
+| `Tamakoro.exeWait.f1` | f32 | `3.0f` |
+| `Tamakoro.initSensor.f1` | f32 | `15.0f` |
 | `Tamakoro.mBaseRadius` | f32 | `150.0f` |
 | `Tamakoro.sBgmStateChangeFrames` | s32 | `30` |
 | `Tamakoro.sBindableUpperDegree` | f32 | `60.0f` |
@@ -23553,19 +31097,49 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Tamakoro.sStampReactionInvalidSpeed` | f32 | `15.0f` |
 | `Tamakoro.sStampReactionV` | f32 | `30.0f` |
 | `Tamakoro.sStandDirInterRate` | f32 | `0.02f` |
+| `Tamakoro.startRotateLevelSound.f1` | f32 | `0.001f` |
+| `Tamakoro.startRotateLevelSound.f2` | f32 | `10000.0f` |
 | `Tamakoro.sTutorialAccel` | f32 | `0.5f` |
 | `Tamakoro.sTutorialFric` | f32 | `0.95f` |
 | `Tamakoro.sWalkBckRate` | f32 | `2.0f` |
 | `Tamakoro.sWalkSpeed` | f32 | `6.0f` |
+| `Tamakoro.tryBumpWall.f1` | f32 | `0.6f` |
+| `Tamakoro.tryBumpWall.f2` | f32 | `0.3f` |
+| `Tamakoro.tryBumpWall.f3` | f32 | `2.0f` |
 | `Tamakoro.tryBumpWall.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `Tamakoro.tryBumpWall.reboundVelocityFromCollision.2` | f32 | `1.0f` |
+| `Tamakoro.tryLand.f1` | f32 | `0.3f` |
 | `Tamakoro.tryLand.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `Tamakoro.tryLand.reboundVelocityFromCollision.2` | f32 | `1.0f` |
+| `Tamakoro.updateMarioPose.f1` | f32 | `0.001f` |
+| `Tamakoro.updateMarioPose.f2` | f32 | `0.1f` |
+| `Tamakoro.updateMarioPose.f3` | f32 | `35.0f` |
+| `Tamakoro.updateMarioPose.f4` | f32 | `20.0f` |
+| `Tamakoro.updateMoment.f1` | f32 | `0.25f` |
+| `Tamakoro.updateMoment.f2` | f32 | `0.98f` |
+| `Tamakoro.updateRideRail.f1` | f32 | `0.5f` |
+| `Tamakoro.updateRideRail.f2` | f32 | `15.0f` |
+| `Tamakoro.updateSquatBckBlend.f1` | f32 | `6.0f` |
+| `Tamakoro.updateSquatBckBlend.f2` | f32 | `2.0f` |
+| `Tamakoro.updateVelocityNormal.f1` | f32 | `0.995f` |
 | `Tamakoro.updateVelocityNormal.reboundVelocityFromCollision.1` | f32 | `0.0f` |
 | `Tamakoro.updateVelocityNormal.reboundVelocityFromCollision.2` | f32 | `0.0f` |
 | `Tamakoro.updateVelocityNormal.reboundVelocityFromCollision.3` | f32 | `1.0f` |
 | `TamakoroTutorial.hDistToStartTutorial` | f32 | `400.0f` |
 | `TamakoroTutorial.hRaiseCheckDegree` | f32 | `30.0f` |
+| `TamakoroTutorial.init.f1` | f32 | `100.0f` |
+| `TamakoroTutorial.init.f2` | f32 | `100.0f` |
+| `TamakoroTutorial.init.f3` | f32 | `200.0f` |
+| `TamakoroTutorial.init.f4` | f32 | `180.0f` |
+| `TamakoroTutorial.init.f5` | f32 | `180.0f` |
+| `Trapeze.draw.f1` | f32 | `2.0f` |
+| `Trapeze.draw.f2` | f32 | `2.0f` |
+| `Trapeze.init.f1` | f32 | `100.0f` |
+| `Trapeze.init.f2` | f32 | `200.0f` |
+| `Trapeze.init.f3` | f32 | `130.0f` |
+| `Trapeze.init.f4` | f32 | `1000.0f` |
+| `Trapeze.receiveOtherMsg.f1` | f32 | `3.0f` |
+| `Trapeze.receiveOtherMsg.f2` | f32 | `3.0f` |
 | `Trapeze.sAnimInterpoleFrame` | s32 | `12` |
 | `Trapeze.sAxisToSwingWait` | f32 | `0.99f` |
 | `Trapeze.sDistanceStartBindZ` | f32 | `80.0f` |
@@ -23599,6 +31173,9 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `Trapeze.sTexRateDiff1` | f32 | `0.7f` |
 | `Trapeze.sTexRateDiff2` | f32 | `0.5f` |
 | `Trapeze.sTransDiffMinY` | f32 | `1.0f` |
+| `Trapeze.tryJump.f1` | f32 | `300.0f` |
+| `Trapeze.updateHangPoint.f1` | f32 | `40.0f` |
+| `Trapeze.updateHangPoint.f2` | f32 | `100.0f` |
 
 <a id="p-nebula-tunables--gamescene"></a>
 
@@ -23606,6 +31183,8 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `MultiSceneActor.calcAnim.f1` | f32 | `1000.0f` |
+| `ScenarioSelectScene.init.f1` | f32 | `1000.0f` |
 | `ScenePlayingResult.cCoinNumMin` | s32 | `0` |
 | `ScenePlayingResult.cCoinStepNum` | s32 | `50` |
 | `ScenePlayingResult.cPurpleCoinPowerStarAppearNum` | s32 | `100` |
@@ -23619,27 +31198,75 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 |---|---|---|
 | `BatteryInfo.sDisplayFrameBatteryLow` | s32 | `120` |
 | `BatteryInfo.sDisplayFrameBatteryNone` | s32 | `450` |
+| `BloomEffect.initDraw.f1` | f32 | `10000.0f` |
+| `BloomEffect.initDraw.f2` | f32 | `10000.0f` |
+| `BloomEffect.postDraw.f1` | f32 | `255.0f` |
+| `BloomEffect.postDraw.f2` | f32 | `255.0f` |
 | `BloomEffect.sL1RoundPoints` | u32 | `6` |
 | `BloomEffect.sL2RoundPoints` | u32 | `12` |
+| `BloomEffectSimple.draw.f1` | f32 | `255.0f` |
+| `BloomEffectSimple.draw.f2` | f32 | `255.0f` |
+| `BloomEffectSimple.draw.f3` | f32 | `1.333f` |
 | `BombTimerLayout.sDangerTransFrame` | s32 | `600` |
 | `ButtonPaneController.cDecidedToDisappearAnimRate` | f32 | `1.5f` |
 | `ButtonPaneController.isTimingForSelectedSe.1` | s32 | `1` |
 | `CoinCounter.cAstroLocationOffsetY` | f32 | `40.0f` |
 | `CoinCounter.cInvalidCountUpInterval` | s32 | `3` |
+| `CoinCounter.init.f1` | f32 | `50.0f` |
 | `CounterLayoutController.cJudgeNotMovingFrame` | s32 | `60` |
 | `CountUpPaneRumbler.cRumbleAmp` | f32 | `8.0f` |
 | `CountUpPaneRumbler.cRumbleFrame` | s32 | `15` |
 | `CountUpPaneRumbler.cRumbleFreq` | f32 | `2.0f` |
+| `CustomTagProcessor.alpha.f1` | f32 | `255.0f` |
+| `CustomTagProcessor.CustomTagProcessor.f1` | f32 | `0.5f` |
+| `CustomTagProcessor.CustomTagProcessor.f2` | f32 | `0.5f` |
+| `CustomTagProcessor.exeDisplayGroupCenter.f1` | f32 | `2.0f` |
+| `CustomTagProcessor.exeDisplayGroupOffset.f1` | f32 | `2.0f` |
+| `CustomTagProcessor.exeFontSizeGroup.f1` | f32 | `0.75f` |
+| `CustomTagProcessor.exeFontSizeGroup.f2` | f32 | `0.75f` |
+| `CustomTagProcessor.exeFontSizeGroup.f3` | f32 | `1.5f` |
+| `CustomTagProcessor.exeFontSizeGroup.f4` | f32 | `1.5f` |
+| `CustomTagProcessor.exeSystemGroupRuby.f1` | f32 | `2.0f` |
 | `CustomTagProcessor.mRubyBaseLineOffset` | f32 | `3.0f` |
 | `CustomTagProcessor.mRubyCharSpace` | f32 | `2.0f` |
+| `DepthOfFieldBlur.createBlurTexture.f1` | f32 | `0.005f` |
+| `DepthOfFieldBlur.drawFinal.f1` | f32 | `255.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f1` | f32 | `2.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f10` | f32 | `2.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f2` | f32 | `128.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f3` | f32 | `0.5f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f4` | f32 | `0.5f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f5` | f32 | `128.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f6` | f32 | `2.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f7` | f32 | `128.0f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f8` | f32 | `0.5f` |
+| `DepthOfFieldBlur.drawZAlphaTex.f9` | f32 | `0.5f` |
+| `DepthOfFieldBlur.finalMaterial.f1` | f32 | `0.5f` |
+| `DepthOfFieldBlur.finalMaterial.f2` | f32 | `2.0f` |
+| `DepthOfFieldBlur.finalMaterial.f3` | f32 | `0.5f` |
+| `DepthOfFieldBlur.finalMaterial.f4` | f32 | `255.0f` |
 | `DepthOfFieldBlur.sScaleExp` | s8 | `1` |
 | `DepthOfFieldBlur.sViewDistance` | f32 | `10000.0f` |
 | `FileSelectInfo.disappear.setAnimRate.1` | f32 | `0.0f` |
 | `FileSelectInfo.exeToLuigi.1` | s32 | `10` |
 | `FileSelectInfo.exeToMario.1` | s32 | `10` |
 | `FileSelectInfo.sDisappearAnimRate` | f32 | `0.25f` |
+| `FullnessMeter.setNumber.f1` | f32 | `128.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f1` | f32 | `30.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f2` | f32 | `30.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f3` | f32 | `2.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f4` | f32 | `2.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f5` | f32 | `2.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f6` | f32 | `2.0f` |
+| `FullScreenBlur.drawFullScreenBlur.f7` | f32 | `2.0f` |
 | `GalaxyMap.sFocusKeepFrame` | s32 | `30` |
 | `GalaxyMap.sPointingRange` | f32 | `20.0f` |
+| `GalaxyMapController.capture.f1` | f32 | `0.5f` |
+| `GalaxyMapController.capture.f2` | f32 | `0.5f` |
+| `GalaxyMapController.capture.f3` | f32 | `1000.0f` |
+| `GalaxyMapController.capture.f4` | f32 | `1000.0f` |
+| `GalaxyMapController.init.f1` | f32 | `0.5f` |
+| `GalaxyMapController.init.f2` | f32 | `0.5f` |
 | `GalaxyMapController.sDisplayKeepFrame` | s32 | `30` |
 | `GalaxyMapController.sMapFadeinoutFrame` | s32 | `12` |
 | `GalaxyMapController.sTicoCometFadeinoutFrame` | s32 | `60` |
@@ -23656,11 +31283,77 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `GameStageClearSequence.sLayoutOffsetYGrandStar` | f32 | `20.0f` |
 | `GameStageClearSequence.sLayoutOffsetYPowerStar` | f32 | `80.0f` |
 | `GameStageClearSequence.sLayoutStartStepPowerStar` | s32 | `247` |
+| `HeatHazeEffect.control.f1` | f32 | `180.0f` |
+| `HeatHazeEffect.control.f2` | f32 | `1000.0f` |
+| `ImageEffectBase.calcAnim.f1` | f32 | `15.0f` |
+| `ImageEffectBase.calcAnim.f2` | f32 | `15.0f` |
 | `ImageEffectDirector.sDOFIntensity` | f32 | `1.0f` |
+| `ImageEffectDirector.setBloomSimpleParams.f1` | f32 | `255.0f` |
 | `ImageEffectDirector.sIntensityCountMax` | s32 | `60` |
+| `ImageEffectLocalUtil.blurTexture.f1` | f32 | `1.333f` |
+| `ImageEffectLocalUtil.blurTexture.f2` | f32 | `160.0f` |
+| `ImageEffectLocalUtil.blurTexture.f3` | f32 | `114.0f` |
+| `ImageEffectLocalUtil.blurTexture.f4` | f32 | `2.0f` |
+| `ImageEffectLocalUtil.blurTexture.f5` | f32 | `6.0f` |
+| `ImageEffectLocalUtil.blurTexture.f6` | f32 | `2.0f` |
+| `ImageEffectLocalUtil.blurTexture.f7` | f32 | `6.0f` |
+| `ImageEffectLocalUtil.setupDrawTexture.f1` | f32 | `10000.0f` |
+| `ImageEffectLocalUtil.setupDrawTexture.f2` | f32 | `10000.0f` |
+| `ImageEffectResource.createBlurTexture.f1` | f32 | `0.5f` |
+| `ImageEffectResource.createDOFTexture.f1` | f32 | `0.25f` |
+| `ImageEffectResource.createDOFTexture.f2` | f32 | `0.5f` |
+| `ImageEffectState.update.f1` | f32 | `0.1f` |
+| `ImageEffectState.update.f10` | f32 | `255.0f` |
+| `ImageEffectState.update.f11` | f32 | `255.0f` |
+| `ImageEffectState.update.f12` | f32 | `255.0f` |
+| `ImageEffectState.update.f13` | f32 | `255.0f` |
+| `ImageEffectState.update.f14` | f32 | `255.0f` |
+| `ImageEffectState.update.f15` | f32 | `255.0f` |
+| `ImageEffectState.update.f2` | f32 | `0.5f` |
+| `ImageEffectState.update.f3` | f32 | `0.5f` |
+| `ImageEffectState.update.f4` | f32 | `0.5f` |
+| `ImageEffectState.update.f5` | f32 | `0.5f` |
+| `ImageEffectState.update.f6` | f32 | `255.0f` |
+| `ImageEffectState.update.f7` | f32 | `255.0f` |
+| `ImageEffectState.update.f8` | f32 | `255.0f` |
+| `ImageEffectState.update.f9` | f32 | `255.0f` |
+| `LayoutAspect.getCanvas.f1` | f32 | `0.5f` |
+| `LayoutAspect.getCanvas.f2` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertLayoutPosToScreenPos.f1` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertLayoutPosToScreenPos.f2` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertLayoutPosToScreenPos.f3` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertLayoutPosToScreenPos.f4` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertScreenPosToLayoutPos.f1` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertScreenPosToLayoutPos.f2` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertScreenPosToLayoutPos.f3` | f32 | `0.5f` |
+| `LayoutCoreUtil.convertScreenPosToLayoutPos.f4` | f32 | `0.5f` |
+| `LayoutManager.calcAnim.f1` | f32 | `0.75f` |
+| `LayoutManager.isPointing.f1` | f32 | `2.0f` |
+| `LayoutManager.isPointing.f2` | f32 | `2.0f` |
+| `LayoutManager.isPointing.f3` | f32 | `2.0f` |
+| `LayoutManager.isPointing.f4` | f32 | `2.0f` |
+| `LensFlare.controlFlare.f1` | f32 | `2.0f` |
+| `LensFlare.controlFlare.f2` | f32 | `2.0f` |
+| `LensFlare.LensFlareGlow.f1` | f32 | `0.05f` |
 | `LensFlare.LensFlareGlow_controlAnim.setBrkRate.1` | f32 | `0.0f` |
+| `LensFlare.LensFlareLine.f1` | f32 | `0.05f` |
 | `LensFlare.LensFlareLine_controlAnim.setBrkRate.1` | f32 | `0.0f` |
+| `LensFlare.LensFlareRing.f1` | f32 | `0.135f` |
+| `LensFlare.LensFlareRing.f2` | f32 | `0.135f` |
+| `LensFlare.LensFlareRing.f3` | f32 | `0.135f` |
+| `LensFlare.LensFlareRing.f4` | f32 | `0.05f` |
 | `LensFlare.LensFlareRing_controlAnim.setBrkRate.1` | f32 | `0.0f` |
+| `MeterLayout.calcMarioHeadPosition.f1` | f32 | `120.0f` |
+| `MeterLayout.control.f1` | f32 | `0.05f` |
+| `MeterLayout.control.f2` | f32 | `0.05f` |
+| `MeterLayout.control.f3` | f32 | `20.0f` |
+| `MeterLayout.exeWait.f1` | f32 | `50.0f` |
+| `MeterLayout.init.f1` | f32 | `20.0f` |
+| `MeterLayout.requestActive.f1` | f32 | `50.0f` |
+| `MeterLayout.requestActive.f2` | f32 | `20.0f` |
+| `MeterLayout.requestPlayerMoving.f1` | f32 | `0.05f` |
+| `MeterLayout.requestPlayerStopped.f1` | f32 | `0.05f` |
+| `MeterLayout.requestPowerUp.f1` | f32 | `20.0f` |
 | `MeterLayout.sBreakDelayTime` | s32 | `40` |
 | `MeterLayout.setAnimBase.setAnimRate.1` | f32 | `4.0f` |
 | `MeterLayout.setAnimBase.setAnimRate.2` | f32 | `2.0f` |
@@ -23670,8 +31363,17 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `MeterLayout.sMinAlpha` | f32 | `0.3f` |
 | `MeterLayout.sMoveToBasePositionTime` | s32 | `25` |
 | `MeterLayout.sRecoveryCountInterval` | s32 | `5` |
+| `MiiSelectIcon.appearMiiDummy.f1` | f32 | `5.0f` |
+| `MiiSelectIcon.appearMiiDummy.f2` | f32 | `5.0f` |
+| `MiiSelectIcon.sCharacterTexFrame` | f32[5] | `0.0f, 4.0f, 3.0f, 2.0f, 1.0f` |
 | `MissLayout.exeActive.1` | s32 | `18` |
+| `MoviePlayerSimple.draw.f1` | f32 | `0.5f` |
+| `MoviePlayerSimple.draw.f2` | f32 | `0.5f` |
+| `MoviePlayerSimple.setVolume.f1` | f32 | `127.0f` |
 | `MoviePlayingSequence.exePlay.1` | s32 | `3` |
+| `MovieStream.feedSound.f1` | f32 | `6.0f` |
+| `MovieStream.pickFrameAtPosition.f1` | f64 | `0.5` |
+| `MovieStream.pickFrameAtPosition.f2` | f64 | `0.5` |
 | `NebulaAchievementBoard.cBackGlyph` | f32 | `18.0f` |
 | `NebulaAchievementBoard.cBackHeight` | f32 | `32.0f` |
 | `NebulaAchievementBoard.cBadge` | f32 | `56.0f` |
@@ -23744,8 +31446,9 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NebulaAchievementToast.cMargin` | f32 | `8.0f` |
 | `NebulaAchievementToast.cPadding` | f32 | `16.0f` |
 | `NebulaAchievementToast.cRiseFrames` | s32 | `24` |
-| `NebulaAchievementToast.cScale` | f32 | `0.5f` |
+| `NebulaAchievementToast.cScale` | f32 | `0.65f` |
 | `NebulaAchievementToast.cTextMax` | f32 | `440.0f` |
+| `NebulaFileSelectButton.cShowDelayFrames` | s32 | `8` |
 | `NebulaIcons.cDarkBottom` | u32 | `0x2E3036FF` |
 | `NebulaIcons.cDarkTop` | u32 | `0x52555EFF` |
 | `NebulaIcons.cGameCubeA` | u32 | `0x2EA65CFF` |
@@ -23795,7 +31498,6 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NebulaPrepare.cText` | u32 | `0x4A5274FF` |
 | `NebulaPrepare.cTitleSize` | f32 | `21.0f` |
 | `NebulaPrepare.cWidth` | f32 | `360.0f` |
-| `NebulaQuitButton.cShowDelayFrames` | s32 | `8` |
 | `NebulaSettingsMenu.cAccent` | u32 | `0x2F6FD0FF` |
 | `NebulaSettingsMenu.cArrowSize` | f32 | `20.0f` |
 | `NebulaSettingsMenu.cArrowWidth` | f32 | `58.0f` |
@@ -23878,12 +31580,15 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `NebulaSettingsMenu.cValueMax` | f32 | `250.0f` |
 | `NebulaSettingsMenu.cValueMin` | f32 | `120.0f` |
 | `NebulaSettingsMenu.cZoomMax` | f32 | `1.8f` |
+| `NoteCounter.exeHideToShow.f1` | f32 | `10.0f` |
+| `NoteCounter.exeShowToHide.f1` | f32 | `10.0f` |
 | `NoteCounter.sStepMove` | s32 | `10` |
 | `NoteCounter.sTransMaxY` | f32 | `0.0f` |
 | `NoteCounter.sTransMinY` | f32 | `-100.0f` |
 | `OneUpBoard.sOffsetY` | f32 | `60.0f` |
 | `OneUpBoard.sOffsetYMin` | f32 | `160.0f` |
 | `PauseMenu.cBackSequenceFadeFrame` | s32 | `90` |
+| `PauseMenu.control.f1` | f32 | `39.0f` |
 | `PictureBookLayout.cBookOpenFrame` | s32 | `60` |
 | `PictureBookLayout.cFadeFrame` | s32 | `60` |
 | `PictureBookLayout.cFadeTextFrame` | s32 | `30` |
@@ -23893,11 +31598,21 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `PictureBookLayout.exeOpen.setAnimRate.1` | f32 | `1.0f` |
 | `PlayerActionGuidance.sChangeSoundFrame` | s32 | `40` |
 | `PlayerActionGuidance.sSuspendFrame` | s32 | `60` |
+| `PlayerLeft.init.f1` | f32 | `50.0f` |
 | `PlayerMissLeft.hCountDownTime` | s32 | `15` |
+| `PlayerMissLeft.init.f1` | f32 | `50.0f` |
 | `PowerStarList.cSeparatorOffset` | f32 | `20.0f` |
 | `PowerStarList.cTimePaneDefaultHeight` | f32 | `72.0f` |
 | `ProloguePictureBook.sBookPageInfo` | s32[7] | `0, 350, 700, 1050, 1400, 1748, -1` |
 | `PurpleCoinCounter.cInvalidCountUpInterval` | s32 | `3` |
+| `PurpleCoinCounter.init.f1` | f32 | `50.0f` |
+| `ScenarioSelectLayout.appear.f1` | f32 | `50.0f` |
+| `ScenarioSelectLayout.appearStar.f1` | f32 | `1000.0f` |
+| `ScenarioSelectLayout.calcWorldPositionFromScreenPos.f1` | f32 | `180.0f` |
+| `ScenarioSelectLayout.calcWorldPositionFromScreenPos.f2` | f32 | `0.5f` |
+| `ScenarioSelectLayout.calcWorldPositionFromScreenPos.f3` | f32 | `0.5f` |
+| `ScenarioSelectLayout.calcWorldPositionFromScreenPos.f4` | f32 | `0.5f` |
+| `ScenarioSelectLayout.calcWorldPositionFromScreenPos.f5` | f32 | `0.5f` |
 | `ScenarioSelectLayout.cCancelFadeOutFrame` | s32 | `90` |
 | `ScenarioSelectLayout.cCometWarningFrame` | s32 | `180` |
 | `ScenarioSelectLayout.cCometWarningWaitFrame` | s32 | `15` |
@@ -23911,7 +31626,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `ScenarioSelectLayout.cSelectedFadeInFrame` | s32 | `180` |
 | `ScenarioSelectLayout.cSelectedFadeOutFrame` | s32 | `30` |
 | `ScenarioSelectLayout.cSkyScale` | f32 | `10.0f` |
+| `ScenarioSelectLayout.cSkyTrans` | f32[3] | `0.0f, 0.0f, -10000.0f` |
+| `ScenarioSelectLayout.tryChangePage.f1` | f32 | `0.5f` |
+| `ScenarioSelectLayout.tryChangePage.f2` | f32 | `0.15f` |
+| `ScenarioSelectLayout.tryChangePage.f3` | f32 | `0.85f` |
+| `ScreenBlurEffect.blurMaterial.f1` | f32 | `255.0f` |
+| `ScreenBlurEffect.blurMaterial.f2` | f32 | `255.0f` |
+| `ScreenBlurEffect.drawBlur.f1` | f32 | `220.0f` |
+| `ScreenBlurEffect.drawBlur.f2` | f32 | `0.5f` |
 | `ScreenBlurEffect.sScale` | f32 | `10000.0f` |
+| `StaffRoll.exeTitleLogoScroll.f1` | f32 | `210.0f` |
 | `StaffRoll.sDoubleInterval` | f32 | `60.0f` |
 | `StaffRoll.sEndLogoPosY` | f32 | `220.0f` |
 | `StaffRoll.sStepForPrepareInfo` | s32 | `100` |
@@ -23920,6 +31644,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StageResultInformer.sWaitAppearInformationWindow` | s32 | `15` |
 | `StageResultInformer.sWaitBeforeCountUpPowerStar` | s32 | `85` |
 | `StageResultInformer.sWaitDisplayStarPieceCount` | s32 | `45` |
+| `StarCounter.init.f1` | f32 | `50.0f` |
 | `StarPieceCounter.cAppearOffsetCenterY` | f32 | `30.0f` |
 | `StarPieceCounter.cAppearOffsetRightX` | f32 | `50.0f` |
 | `StarPieceCounter.cBaseOffsetEatTicoY` | f32 | `-120.0f` |
@@ -23928,6 +31653,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StarPieceCounter.cHideFrameMin` | s32 | `3` |
 | `StarPieceCounter.cHideFrameMinTicoEat` | s32 | `20` |
 | `StarPieceCounter.cInvalidCountUpInterval` | s32 | `3` |
+| `StarPieceCounter.init.f1` | f32 | `30.0f` |
 | `StarPointerBlur.sBeginThick` | f32 | `10.0f` |
 | `StarPointerBlur.sEndThick` | f32 | `0.0f` |
 | `StarPointerCommandStream.hDefaultLength` | f32 | `80.0f` |
@@ -23936,21 +31662,38 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `StarPointerCommandStream.sMaxWidth` | f32 | `32.0f` |
 | `StarPointerCommandStream.sMinLineWidthDistance` | f32 | `40.0f` |
 | `StarPointerCommandStream.sMinWidth` | f32 | `6.0f` |
+| `StarPointerController.calcPastPointingPosOnScreen.f1` | f32 | `0.5f` |
+| `StarPointerController.calcPastPointingPosOnScreen.f2` | f32 | `0.5f` |
+| `StarPointerController.forcePointerOut.f1` | f32 | `20.0f` |
+| `StarPointerController.forcePointerOut.f2` | f32 | `20.0f` |
 | `StarPointerController.hIsOutScreenCounter` | s32 | `5` |
+| `StarPointerController.updatePointerInfo.f1` | f32 | `10.0f` |
 | `StarPointerLayout.hEndAnimRate` | f32 | `2.0f` |
 | `StarPointerLayout.hGripTime` | s32 | `20` |
 | `StarPointerLayout.isChanceToRumble.1` | s32 | `1` |
 | `StarPointerLayout.isChanceToRumble.2` | s32 | `1` |
+| `StarPointerLayout.rotateTest.f1` | f32 | `180.0f` |
 | `StarPointerLayout.sBeginHideTime` | s32 | `0` |
 | `StarPointerLayout.sDegreeMin` | f32 | `0.0f` |
 | `StarPointerLayout.sHandRadius` | f32 | `20` |
 | `StarPointerLayout.sHoldRadius` | f32 | `45` |
 | `StarPointerLayout.sNormalRadius` | f32 | `15` |
 | `StarPointerLayout.sRotateMult` | f32 | `900.0f` |
+| `StarPointerLayout.startAnimHandPaa.f1` | f32 | `2.0f` |
 | `StarPointerLayout.sTouchCount` | s32 | `1` |
 | `StarPointerLayout.tearDownHide.setAnimRate.1` | f32 | `1.0f` |
+| `StarPointerTarget.calcRadius2d.f1` | f32 | `0.5f` |
+| `StarPointerTarget.calcRadius2d.f2` | f32 | `0.5f` |
+| `StarPointerTarget.calcScreenPositionFromView.f1` | f32 | `0.5f` |
+| `StarPointerTarget.calcScreenPositionFromView.f2` | f32 | `0.5f` |
+| `StarPointerTarget.calcScreenPositionFromView.f3` | f32 | `0.5f` |
+| `StarPointerTarget.calcScreenPositionFromView.f4` | f32 | `0.5f` |
 | `StarPointerTarget.hZCheckAddDepth` | f32 | `60.0f` |
+| `SubMeterLayout.control.f1` | f32 | `32.0f` |
 | `SubMeterLayout.control.setAnimRate.1` | f32 | `1.0f` |
+| `SubMeterLayout.setLifeRatio.f1` | f32 | `128.0f` |
+| `SuddenDeathMeter.control.f1` | f32 | `20.0f` |
+| `SuddenDeathMeter.init.f1` | f32 | `20.0f` |
 | `SuddenDeathMeter.sBreakDelayTime` | s32 | `40` |
 | `SuddenDeathMeter.sMarioScreenOffsetX` | f32 | `32.0f` |
 | `SuddenDeathMeter.sMarioScreenOffsetY` | f32 | `-38.0f` |
@@ -23958,17 +31701,64 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SuddenDeathMeter.sMaxAlpha` | f32 | `1.2f` |
 | `SuddenDeathMeter.sMinAlpha` | f32 | `0.3f` |
 | `SuddenDeathMeter.sMoveToBasePositionTime` | s32 | `25` |
+| `SurfingGuidance.exeLevelOffReady.f1` | f32 | `85.0f` |
+| `SurfingGuidance.exeTurnLeftReady.f1` | f32 | `35.0f` |
+| `SurfingGuidance.exeTurnRightReady.f1` | f32 | `35.0f` |
 | `SysInfoWindow.cDimHandOverMs` | s32 | `100` |
 | `SysInfoWindow.cDimLinger` | s32 | `12` |
 | `SysInfoWindow.cDimStep` | f32 | `0.1f` |
+| `SysInfoWindow.drawDim.f1` | f32 | `255.0f` |
+| `SysInfoWindow.drawDim.f2` | f32 | `0.5f` |
+| `SysInfoWindow.getOwnDim.f1` | f32 | `255.0f` |
+| `SysInfoWindow.getOwnDim.f2` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f1` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f2` | f32 | `1.6f` |
+| `SysInfoWindow.shapeFade.f3` | f32 | `1.6f` |
+| `SysInfoWindow.shapeFade.f4` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f5` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f6` | f32 | `0.5f` |
+| `SysInfoWindow.shapeFade.f7` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f8` | f32 | `255.0f` |
+| `SysInfoWindow.shapeFade.f9` | f32 | `0.5f` |
 | `TimeLimitLayout.sFadeinoutFrame` | s32 | `60` |
 | `TimeLimitLayout.sFadeoutBeforeFrame` | s32 | `90` |
 | `TimeLimitLayout.sScaleMaxAdd` | f32 | `0.5f` |
 | `TimeLimitLayout.sScaleUpDownFrame` | s32 | `8` |
 | `TitleSequenceProduct.sPressABAppearFrame` | s32 | `25` |
+| `WaterCameraFilter.control.f1` | f32 | `0.5f` |
+| `WaterCameraFilter.control.f2` | f32 | `360.0f` |
+| `WaterCameraFilter.control.f3` | f32 | `360.0f` |
+| `WaterCameraFilter.control.f4` | f32 | `3000.0f` |
+| `WaterCameraFilter.control.f5` | f32 | `3000.0f` |
+| `WaterCameraFilter.draw.f1` | f32 | `0.5f` |
+| `WaterCameraFilter.exeAirToWater.f1` | f32 | `20.0f` |
+| `WaterCameraFilter.exeAirToWater.f2` | f32 | `255.0f` |
+| `WaterCameraFilter.exeAirToWater.f3` | f32 | `255.0f` |
+| `WaterCameraFilter.exeWaterToAir.f1` | f32 | `20.0f` |
+| `WaterCameraFilter.filterMaterial.f1` | f32 | `0.05f` |
+| `WaterCameraFilter.filterMaterial.f2` | f32 | `0.05f` |
+| `WaterCameraFilter.loadMaterial.f1` | f32 | `10000.0f` |
+| `WaterCameraFilter.loadMaterial.f2` | f32 | `10000.0f` |
+| `WaterCameraFilter.loadMaterial.f3` | f32 | `0.5f` |
+| `WaterCameraFilter.loadMaterial.f4` | f32 | `0.5f` |
+| `WaterCameraFilter.loadMaterial.f5` | f32 | `0.5f` |
+| `WaterCameraFilter.loadMaterial.f6` | f32 | `0.5f` |
+| `WipeFade.draw.f1` | f32 | `255.0f` |
 | `WipeFade.sFadeFrame` | s32 | `30` |
 | `WipeKoopa.sAnimFrame` | s32 | `90` |
+| `WipeRing.calcMaxRadius.f1` | f32 | `900160.0f` |
+| `WipeRing.calcRadius.f1` | f32 | `0.75f` |
+| `WipeRing.canCenterOnMario.f1` | f32 | `15060.0f` |
+| `WipeRing.canCenterOnMario.f2` | f32 | `11800.0f` |
+| `WipeRing.canCenterOnMario.f3` | f32 | `1260.0f` |
+| `WipeRing.canCenterOnMario.f4` | f32 | `600.0f` |
+| `WipeRing.exeWipeIn.f1` | f32 | `0.5f` |
+| `WipeRing.exeWipeOut.f1` | f32 | `0.5f` |
 | `WipeRing.sAnimFrame` | s32 | `60` |
+| `WipeRing.setCenterPos.f1` | f32 | `0.5f` |
+| `WipeRing.setCenterPos.f2` | f32 | `0.5f` |
+| `WipeRing.updatePlayerPos.f1` | f32 | `0.5f` |
+| `WipeRing.updatePlayerPos.f2` | f32 | `0.5f` |
 
 <a id="p-nebula-tunables--gamesound"></a>
 
@@ -23977,16 +31767,141 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | Key | Type | Game's value |
 |---|---|---|
 | `MeTrack.cNullNote` | u8 | `0x7f` |
+| `MeTrack.init.f1` | f32 | `0.5f` |
+| `MeTrack.parse.f1` | f32 | `127.0f` |
+| `MeTrack.parse.f2` | f32 | `127.0f` |
+| `MeTrack.parse.f3` | f32 | `32767.0f` |
+| `MeTrack.parse.f4` | f32 | `32767.0f` |
+| `MeTrack.parse.f5` | f32 | `32767.0f` |
+| `MeTrack.updateChannelParams.f1` | f32 | `3.0f` |
+| `MeTrack.updateChannelParams.f2` | f32 | `0.5f` |
+| `MeTrack.updateChannelParams.f3` | f32 | `0.5f` |
+| `MeTrack.updateChannelParams.f4` | f32 | `0.5f` |
+| `MeTrack.updateChannelParams.f5` | f32 | `0.5f` |
 | `RhythmSystem.cLookAheadSteps` | u32 | `1000` |
 | `RhythmSystem.cRhythmBeat` | s32 | `0` |
 | `RhythmSystem.cRhythmKeys` | u8[5] | `0x18, 0x1e, 0x1b, 0x19, 0x1a` |
 | `RhythmSystem.cRhythmSoftBeat` | s32 | `5` |
+| `RhythmSystem.init.f1` | f32 | `120.0f` |
+| `RhythmSystem.sequenceSeconds.f1` | f64 | `60.0` |
 | `SeqTrack.cIntrTick` | u32 | `6` |
 | `SeqTrack.cIntrTimer` | u32 | `5` |
+| `SeqTrack.gateOn.f1` | f32 | `100.0f` |
+| `SeqTrack.init.f1` | f32 | `0.5f` |
+| `SeqTrack.readReg.f1` | f32 | `32767.0f` |
+| `SeqTrack.readReg.f2` | f32 | `1524.0f` |
+| `SeqTrack.readReg.f3` | f32 | `12192.0f` |
+| `SeqTrack.readReg.f4` | f32 | `256.0f` |
+| `SeqTrack.readReg.f5` | f32 | `64.0f` |
+| `SeqTrack.readReg.f6` | f32 | `64.0f` |
+| `SeqTrack.seqMain.f1` | f64 | `60.0` |
+| `SeqTrack.seqTimeToDspTime.f1` | f32 | `120.0f` |
+| `SeqTrack.seqTimeToDspTime.f2` | f32 | `10.0f` |
+| `SeqTrack.step.f1` | f32 | `32767.0f` |
+| `SeqTrack.step.f2` | f32 | `32767.0f` |
+| `SeqTrack.step.f3` | f32 | `16383.0f` |
+| `SeqTrack.updateTempo.f1` | f32 | `60.0f` |
+| `SeqTrack.updateTrack.f1` | f32 | `0.333333343267f` |
+| `SeqTrack.updateTrack.f2` | f32 | `0.5f` |
+| `SeqTrack.updateTrack.f3` | f32 | `0.5f` |
+| `SeqTrack.updateTrack.f4` | f32 | `0.5f` |
+| `SeqTrack.updateTrack.f5` | f32 | `0.5f` |
+| `SeqTrack.writeReg.f1` | f32 | `32767.0f` |
+| `SeqTrack.writeReg.f2` | f32 | `1524.0f` |
+| `SeqTrack.writeReg.f3` | f32 | `12192.0f` |
+| `SeqTrack.writeReg.f4` | f32 | `256.0f` |
+| `SeqTrack.writeReg.f5` | f32 | `64.0f` |
+| `SeqTrack.writeReg.f6` | f32 | `64.0f` |
+| `Sound.mixOutAll.f1` | f32 | `0.5f` |
+| `SoundAnimator.modifySoundParams.f1` | f32 | `3.0f` |
+| `SoundAnimator.modifySoundParams.f2` | f32 | `3.0f` |
+| `SoundAnimator.modifySoundParams.f3` | f32 | `2.0f` |
+| `SoundAnimator.modifySoundParams.f4` | f32 | `127.0f` |
+| `SoundAnimator.modifySoundParams.f5` | f32 | `32.0f` |
+| `SoundAnimator.modifySoundParams.f6` | f32 | `127.0f` |
+| `SoundAudience.awayFromZero.f1` | f32 | `0.002f` |
+| `SoundAudience.awayFromZero.f2` | f32 | `0.002f` |
+| `SoundAudience.awayFromZero.f3` | f32 | `0.002f` |
+| `SoundAudience.awayFromZero.f4` | f32 | `0.002f` |
+| `SoundAudience.calcDeltaPriority_.f1` | f32 | `2.0f` |
+| `SoundAudience.calcDeltaPriority_.f2` | f32 | `3.0f` |
+| `SoundAudience.calcPan_.f1` | f32 | `0.5f` |
+| `SoundAudience.calcVolume_.f1` | f32 | `2.0f` |
+| `SoundAudience.calcVolume_.f2` | f32 | `3.0f` |
+| `SoundAudience.ease.f1` | f32 | `0.2f` |
+| `SoundAudience.ease.f2` | f32 | `5.0f` |
+| `SoundAudience.ease.f3` | f32 | `0.2f` |
+| `SoundAudience.ease.f4` | f32 | `5.0f` |
+| `SoundAudience.mixChannelOut.f1` | f32 | `0.1f` |
+| `SoundAudience.mixChannelOut.f2` | f32 | `0.5f` |
+| `SoundAudience3D.init.f1` | f32 | `7000.0f` |
+| `SoundAudience3D.init.f10` | f32 | `1.5f` |
+| `SoundAudience3D.init.f2` | f32 | `800.0f` |
+| `SoundAudience3D.init.f3` | f32 | `0.005f` |
+| `SoundAudience3D.init.f4` | f32 | `8000.0f` |
+| `SoundAudience3D.init.f5` | f32 | `4000.0f` |
+| `SoundAudience3D.init.f6` | f32 | `0.1f` |
+| `SoundAudience3D.init.f7` | f32 | `0.8f` |
+| `SoundAudience3D.init.f8` | f32 | `0.5f` |
+| `SoundAudience3D.init.f9` | f32 | `3000.0f` |
+| `SoundBank.effects.f1` | f32 | `2.0f` |
+| `SoundBank.effects.f2` | f32 | `0.9999999f` |
+| `SoundBank.effects.f3` | f64 | `0.5` |
+| `SoundBank.prepareNote.f1` | f32 | `523.0005f` |
+| `SoundEngine.setEffectLine.f1` | f32 | `32768.0f` |
+| `SoundEngine.setEffectLine.f2` | f32 | `32768.0f` |
+| `SoundEngine.setEffectLine.f3` | f32 | `32768.0f` |
+| `SoundEngine.setOutputLevel.f1` | f32 | `4.0f` |
+| `SoundVoices.cCurveLinear` | f32[17] | `1.0f, 0.9375f, 0.875f, 0.8125f, 0.75f, 0.6875f, 0.625f, 0.5625f, 0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f, 0.0f` |
+| `SoundVoices.cCurveSampleCell` | f32[17] | `1.0f, 0.9704890251159668f, 0.7812740206718445f, 0.5462809801101685f, 0.39979198575019836f, 0.28931498527526855f, 0.21210399270057678f, 0.15747599303722382f, 0.1126129999756813f, 0.08178959786891937f, 0.057985201478004456f, 0.04364150017499924f, 0.03082370012998581f, 0.023712899535894394f, 0.015259300358593464f, 0.00915555004030466f, 0.0f` |
+| `SoundVoices.cCurveSqRoot` | f32[17] | `1.0f, 0.8789060115814209f, 0.765625f, 0.6601560115814209f, 0.5625f, 0.4726560115814209f, 0.390625f, 0.3164060115814209f, 0.25f, 0.1914059966802597f, 0.140625f, 0.09765619784593582f, 0.0625f, 0.03515620157122612f, 0.015625f, 0.00390625f, 0.0f` |
+| `SoundVoices.cCurveSquare` | f32[17] | `1.0f, 0.9682459831237793f, 0.9354140162467957f, 0.9013879895210266f, 0.8660249710083008f, 0.8291559815406799f, 0.790569007396698f, 0.75f, 0.7071070075035095f, 0.66143798828125f, 0.6123719811439514f, 0.55901700258255f, 0.5f, 0.433012992143631f, 0.35355299711227417f, 0.25f, 0.0f` |
 | `SoundVoices.cEnvelopeStep` | f32 | `1.5f` |
 | `SoundVoices.cLfoStep` | f32 | `1.000890625f` |
 | `SoundVoices.cNoteGain` | f32 | `0.18310547f` |
+| `SoundVoices.effectorParams.f1` | f32 | `0.5f` |
+| `SoundVoices.effectorParams.f2` | f32 | `127.0f` |
+| `SoundVoices.effectorParams.f3` | f32 | `0.707f` |
+| `SoundVoices.effectOsc.f1` | f64 | `0.5` |
+| `SoundVoices.incCounter.f1` | f32 | `72.0f` |
+| `SoundVoices.initialUpdate.f1` | f32 | `12.0f` |
+| `SoundVoices.initStart.f1` | f32 | `32768.0f` |
+| `SoundVoices.initVoice.f1` | f32 | `32767.0f` |
+| `SoundVoices.initVoice.f2` | f32 | `32768.0f` |
+| `SoundVoices.initVoice.f3` | f32 | `32767.0f` |
+| `SoundVoices.initVoice.f4` | f32 | `32768.0f` |
+| `SoundVoices.mixerVolumes.f1` | f32 | `0.5f` |
+| `SoundVoices.mixerVolumes.f2` | f32 | `0.34776f` |
+| `SoundVoices.mixerVolumes.f3` | f32 | `0.32612f` |
+| `SoundVoices.mixerVolumes.f4` | f32 | `0.5f` |
+| `SoundVoices.mixerVolumes.f5` | f32 | `0.5f` |
+| `SoundVoices.pow2.f1` | f32 | `0.5f` |
+| `SoundVoices.pow2.f10` | f32 | `0.5f` |
+| `SoundVoices.pow2.f11` | f32 | `0.75f` |
+| `SoundVoices.pow2.f12` | f32 | `0.25f` |
+| `SoundVoices.pow2.f2` | f32 | `0.70710677f` |
+| `SoundVoices.pow2.f3` | f32 | `0.6931472f` |
+| `SoundVoices.pow2.f4` | f32 | `0.24022661f` |
+| `SoundVoices.pow2.f5` | f32 | `0.055502914f` |
+| `SoundVoices.pow2.f6` | f32 | `0.009625022f` |
+| `SoundVoices.pow2.f7` | f32 | `0.0013131053f` |
+| `SoundVoices.pow2.f8` | f32 | `1.8300806E-4f` |
+| `SoundVoices.pow2.f9` | f32 | `0.5f` |
+| `SoundVoices.release.f1` | f32 | `32768.0f` |
+| `SoundVoices.setVoiceRate.f1` | f32 | `8000.0f` |
+| `SoundVoices.sumPan.f1` | f32 | `0.5f` |
+| `SoundVoices.sumPan.f2` | f32 | `0.5f` |
+| `SoundVoices.sumPan.f3` | f32 | `0.5f` |
+| `SoundVoices.sumPan.f4` | f32 | `0.5f` |
+| `SoundVoices.update.f1` | f32 | `32768.0f` |
+| `SoundVoices.update.f2` | f32 | `12.0f` |
+| `SoundVoices.updateCurrentValue.f1` | f32 | `16.0f` |
+| `StdSoundInfo.applySound.f1` | f32 | `255.0f` |
+| `StdSoundInfo.applyStream.f1` | f32 | `0.5f` |
 | `StreamPlayer.cAlwaysLive` | u32 | `1` |
+| `StreamPlayer.init.f1` | f32 | `0.5f` |
+| `StreamPlayer.prepare.f1` | f32 | `127.0f` |
+| `StreamSound.managerMixOut_.f1` | f32 | `0.5f` |
 
 <a id="p-nebula-tunables--gamesystem"></a>
 
@@ -24007,8 +31922,16 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `GameRules.cPlayerHealth` | s32 | `3` |
 | `GameSequenceProgress.sTimingPlayingTicoSE` | s32 | `180` |
 | `GameSystemRestartProcess.sFadeinoutFrame` | s32 | `30` |
+| `InputPointer.getPointingPosBasedOnScreen.f1` | f32 | `0.5f` |
+| `InputPointer.getPointingPosBasedOnScreen.f2` | f32 | `0.5f` |
+| `InputPointer.getPointingPosBasedOnScreen.f3` | f32 | `0.5f` |
+| `InputPointer.getPointingPosBasedOnScreen.f4` | f32 | `0.5f` |
 | `InputStick.cIsOnValue` | f32 | `0.2f` |
 | `InputSwing.cSwingFrames` | s32 | `6` |
+| `LumaHost.cEmitDepth` | u32 | `8` |
+| `LumaScript.cKeptBytes` | u32 | `262144` |
+| `LumaScript.cMaxWait` | u32 | `36000` |
+| `LumaScript.cStepBudget` | u32 | `200000` |
 | `NebulaAchievements.cBatchMin` | s32 | `3` |
 | `NebulaAchievements.cStatFlushFrames` | s32 | `60` |
 | `NebulaCutsceneSkip.cEndQuietFrames` | s32 | `2` |
@@ -24021,6 +31944,7 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 | `SaveDataHandler.cVersion` | u32 | `4` |
 | `SaveDataHandleSequence.trySave.1` | s32 | `20` |
 | `SpinDriverPathStorage.cGalaxyHeaderSize` | u32 | `6` |
+| `SpinDriverPathStorage.serialize.f1` | f32 | `256.0f` |
 | `StarPieceAlmsStorage.sMaxValueArray` | u32[16] | `32767, 32767, 32767, 32767, 32767, 32767, 32767, 32767, 400, 400, 600, 1200, 1600, 1000, 800, 32767` |
 
 <a id="p-nebula-tunables--gameui"></a>
@@ -24029,7 +31953,39 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `Animation.AnimateMaterialColor.f1` | f32 | `0.5f` |
+| `Animation.AnimateVertexColor.f1` | f32 | `0.5f` |
+| `Animation.GetHermiteCurveValue.f1` | f32 | `2.0F` |
+| `Animation.GetHermiteCurveValue.f2` | f32 | `3.0F` |
+| `Animation.GetHermiteCurveValue.f3` | f32 | `2.0F` |
+| `Animation.GetHermiteCurveValue.f4` | f32 | `3.0F` |
+| `Animation.GetHermiteCurveValue.f5` | f32 | `2.0F` |
 | `Animation.R_FRAME_TOLERANCE` | f32 | `0.001F` |
+| `Layout.ApplyAnchor.f1` | f32 | `0.5f` |
+| `Layout.ApplyAnchor.f2` | f32 | `2.0f` |
+| `Layout.ApplyAnchor.f3` | f32 | `2.0f` |
+| `Layout.ApplyAnchor.f4` | f32 | `2.0f` |
+| `Layout.ApplyAnchors.f1` | f32 | `60.0f` |
+| `Layout.ApplyAnchors.f2` | f32 | `190.0f` |
+| `Material.CalcTextureMtx.f1` | f32 | `0.5f` |
+| `Material.CalcTextureMtx.f2` | f32 | `0.5f` |
+| `Material.Setup.f1` | f32 | `255.0f` |
+| `Material.Setup.f10` | f32 | `255.0f` |
+| `Material.Setup.f11` | f32 | `255.0f` |
+| `Material.Setup.f12` | f32 | `255.0f` |
+| `Material.Setup.f13` | f32 | `255.0f` |
+| `Material.Setup.f14` | f32 | `255.0f` |
+| `Material.Setup.f2` | f32 | `255.0f` |
+| `Material.Setup.f3` | f32 | `255.0f` |
+| `Material.Setup.f4` | f32 | `255.0f` |
+| `Material.Setup.f5` | f32 | `255.0f` |
+| `Material.Setup.f6` | f32 | `255.0f` |
+| `Material.Setup.f7` | f32 | `255.0f` |
+| `Material.Setup.f8` | f32 | `255.0f` |
+| `Material.Setup.f9` | f32 | `255.0f` |
+| `Pane.CalculateMtxSelf.f1` | f32 | `255.0f` |
+| `TextBox.GetTextMagH.f1` | f32 | `0.5f` |
+| `TextBox.GetTextMagV.f1` | f32 | `0.5f` |
 
 <a id="p-nebula-tunables--gameutil"></a>
 
@@ -24037,23 +31993,1939 @@ plugin with `set_tunable`; `get_tunable` reads one. A list's place is `key[i]`. 
 
 | Key | Type | Game's value |
 |---|---|---|
+| `ActorMovementUtil.calcEulerRadian.f1` | f32 | `3.0f` |
+| `ActorMovementUtil.calcRotate.f1` | f32 | `0.1f` |
+| `ActorMovementUtil.faceToVector.f1` | f32 | `0.95f` |
+| `ActorMovementUtil.faceToVector.f2` | f32 | `0.95f` |
+| `ActorMovementUtil.faceToVector.f3` | f32 | `2.0f` |
+| `ActorMovementUtil.setVelocityBlowAttack.f1` | f32 | `1000.0f` |
+| `ActorMovementUtil.turnDirectionAndGravityH.f1` | f32 | `0.1f` |
+| `ActorMovementUtil.turnQuatUpToGravity.f1` | f32 | `0.999f` |
+| `ActorSensorUtil.calcPosBetweenSensors.f1` | f32 | `2.0f` |
+| `ActorShadowLocalUtil.createShadowControllerSuefaceParam.f1` | f32 | `1000.0f` |
+| `ActorShadowLocalUtil.createShadowControllerVolumeParam.f1` | f32 | `1000.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceBoxFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceBoxFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceBoxFromCSV.f3` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceCircleFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceOvalFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceOvalFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowSurfaceOvalFromCSV.f3` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeBoxFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeBoxFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeBoxFromCSV.f3` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeCylinderFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeLineFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeLineFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalFromCSV.f3` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalPoleFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalPoleFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeOvalPoleFromCSV.f3` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.createShadowVolumeSphereFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.setUpShadowControlFromCSV.f1` | f32 | `1000.0f` |
+| `ActorShadowLocalUtil.setUpShadowVolumeFromCSV.f1` | f32 | `100.0f` |
+| `ActorShadowLocalUtil.setUpShadowVolumeFromCSV.f2` | f32 | `100.0f` |
+| `ActorShadowUtil.calcClippingRangeIncludeShadow.f1` | f32 | `0.5f` |
+| `ActorShadowUtil.calcClippingRangeIncludeShadow.f2` | f32 | `0.5f` |
+| `AreaObjUtil.getWaterAreaInfo.f1` | f32 | `0.5f` |
+| `AreaObjUtil.getWaterAreaInfo.f2` | f32 | `0.707f` |
+| `AreaObjUtil.getWaterAreaInfo.f3` | f32 | `5.0f` |
+| `BezierSurface.calcTrianglePatchNormal.f1` | f32 | `0.000001f` |
+| `BezierSurface.calcTrianglePatchNormal.f2` | f32 | `0.000001f` |
+| `BezierSurface.calcTrianglePatchVertix.f1` | f32 | `0.000001f` |
+| `BezierSurface.sBezierTriangleST0` | f32[9] | `1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f` |
+| `CameraUtil.calcNormalizedScreenPosToScreenPos.f1` | f32 | `0.5f` |
+| `CameraUtil.calcNormalizedScreenPosToScreenPos.f2` | f32 | `0.5f` |
+| `CameraUtil.calcNormalizedScreenPosToScreenPos.f3` | f32 | `0.5f` |
+| `CameraUtil.calcNormalizedScreenPosToScreenPos.f4` | f32 | `0.5f` |
+| `CameraUtil.calcWorldPositionFromCenterScreen.f1` | f32 | `0.5f` |
+| `CameraUtil.calcWorldPositionFromCenterScreen.f2` | f32 | `0.5f` |
+| `CameraUtil.calcWorldPositionFromScreen.f1` | f32 | `0.5f` |
+| `CameraUtil.calcWorldPositionFromScreen.f2` | f32 | `0.5f` |
+| `CameraUtil.declareGlobalEventCameraDead.f1` | f32 | `100.0f` |
+| `CameraUtil.declareLauncherCamera.f1` | f32 | `120.0f` |
+| `CameraUtil.declareLauncherCamera.f2` | f32 | `3.0f` |
+| `CameraUtil.declareLauncherCamera.f3` | f32 | `6.0f` |
+| `CameraUtil.declareLauncherCamera.f4` | f32 | `0.05f` |
+| `CameraUtil.declareLauncherCamera.f5` | f32 | `0.99f` |
+| `CameraUtil.declareLauncherFlightCamera.f1` | f32 | `900.0f` |
+| `CameraUtil.declareLauncherFlightCamera.f2` | f32 | `1.4f` |
+| `DirectDraw.cameraInit2D.f1` | f32 | `2.0f` |
+| `DirectDraw.cameraInit2D.f2` | f32 | `2.0f` |
+| `DirectDraw.cameraInit2D.f3` | f32 | `30.0f` |
+| `DirectDraw.cameraInit2D.f4` | f32 | `2.0f` |
+| `DirectDraw.cameraInit2D.f5` | f32 | `2.0f` |
+| `DirectDraw.drawCircle.f1` | f32 | `6.2831855f` |
+| `DirectDraw.drawFillCircle.f1` | f32 | `2.0f` |
+| `DirectDraw.drawFillCircle.f2` | f32 | `2.0f` |
+| `DirectDraw.drawFillCircle.f3` | f32 | `6.2831855f` |
+| `DirectDraw.invProject.f1` | f32 | `16777215.0f` |
+| `DirectDraw.invProject.f2` | f32 | `2.0f` |
+| `DirectDraw.invProject.f3` | f32 | `2.0f` |
+| `DirectDraw.invProject.f4` | f32 | `2.0f` |
+| `DirectDraw.invProject.f5` | f32 | `2.0f` |
+| `DirectDraw.site.f1` | f32 | `2.0f` |
+| `DirectDraw.site.f2` | f32 | `2.0f` |
+| `DrawUtil.calcTexProjectionMtx.f1` | f32 | `0.5f` |
+| `DrawUtil.calcTexProjectionMtx.f2` | f32 | `0.5f` |
+| `DrawUtil.calcTexProjectionMtx.f3` | f32 | `0.5f` |
+| `DrawUtil.calcTexProjectionMtx.f4` | f32 | `0.5f` |
 | `DrawUtil.cFarZ` | f32 | `10000.0f` |
 | `DrawUtil.cNearZ` | f32 | `-10000.0f` |
+| `DrawUtil.loadProjectionMtxFor2D.f1` | f32 | `30000.0f` |
+| `DrawUtil.loadProjectionMtxFor2D.f2` | f32 | `30000.0f` |
+| `DrawUtil.setupDrawForLayout.f1` | f32 | `2.0f` |
+| `DrawUtil.setupDrawForLayout.f2` | f32 | `0.5f` |
+| `DrawUtil.setupDrawForLayout.f3` | f32 | `1000.0f` |
+| `DrawUtil.setupDrawForLayout.f4` | f32 | `1000.0f` |
+| `DrawUtil.setupScreen2D.f1` | f32 | `30000.0f` |
+| `DrawUtil.setupScreen2D.f2` | f32 | `30000.0f` |
 | `EventUtil.cDarkCometRules` | bool | `true` |
+| `FootPrint.draw.f1` | f32 | `255.0f` |
+| `FootPrint.draw.f2` | f32 | `5.0f` |
+| `FootPrint.initMember.f1` | f32 | `20.0f` |
+| `FootPrint.initMember.f2` | f32 | `20.0f` |
+| `FootPrint.initMember.f3` | f32 | `20.0f` |
+| `FootPrint.initMember.f4` | f32 | `80.0f` |
 | `FootPrint.sFadeBufferCount` | s32 | `10` |
 | `FurDrawer.cAlphaReference` | f32 | `32.0f` |
 | `FurDrawer.cFurMapSeed` | u32 | `1` |
+| `FurDrawer.createFurMap.f1` | f32 | `255.0f` |
+| `FurDrawer.setChannelColor.f1` | f32 | `255.0f` |
+| `FurDrawer.setupLayerMaterial.f1` | f32 | `255.0f` |
+| `FurDrawer.setupLayerMaterial.f2` | f32 | `255.0f` |
+| `FurDrawer.setupLayerMaterial.f3` | f32 | `255.0f` |
+| `FurDrawer.setupMaterial.f1` | f32 | `255.0f` |
+| `FurDrawer.setupMaterial.f2` | f32 | `255.0f` |
+| `FurDrawer.setupMaterial.f3` | f32 | `255.0f` |
+| `FurShader.createFurMesh.f1` | f32 | `0.45f` |
+| `FurShader.createFurMesh.f2` | f32 | `0.45f` |
+| `FurShader.getTexelOrder.f1` | f32 | `65536.0f` |
+| `FurShader.refer.f1` | f32 | `255.0f` |
+| `GameLightSignal.channel.f1` | f32 | `255.0f` |
 | `GameLightSignal.cRequestGap` | u32 | `2` |
+| `GameLightSignal.pointLight.f1` | f32 | `0.5f` |
+| `GameLightSignal.pointLight.f2` | f32 | `0.5f` |
+| `GameLightSignal.pointLight.f3` | f32 | `4.0f` |
+| `GameLightSignal.pointLight.f4` | f32 | `2.0f` |
+| `GameLightSignal.pointRequest.f1` | f32 | `0.95f` |
+| `GameLightSignal.pointRequest.f2` | f32 | `0.999999f` |
+| `GameLightSignal.pointRequest.f3` | f32 | `0.999999f` |
+| `GameLightSignal.pointRequest.f4` | f32 | `0.95f` |
+| `GameLightSignal.pointRequest.f5` | f32 | `15.0f` |
+| `IKJoint.calcIKRootAngleCosign.f1` | f32 | `2.0f` |
+| `IKJoint.update.f1` | f32 | `0.01f` |
+| `LayoutUtil.copyLayoutDrawInfoWithAspect.f1` | f32 | `0.75f` |
+| `LayoutUtil.getCometColorAnimFrameFromId.f1` | f32 | `4.0f` |
+| `LayoutUtil.getCometColorAnimFrameFromId.f2` | f32 | `2.0f` |
+| `LayoutUtil.getCometColorAnimFrameFromId.f3` | f32 | `3.0f` |
+| `LayoutUtil.setLayoutAlphaFloat.f1` | f32 | `255.0f` |
+| `LayoutUtil.setPaneAlphaFloat.f1` | f32 | `255.0f` |
+| `LiveActorUtil.initDefaultPos.f1` | f32 | `360.0f` |
+| `LiveActorUtil.initDefaultPos.f2` | f32 | `360.0f` |
+| `LiveActorUtil.initDefaultPos.f3` | f32 | `360.0f` |
+| `MapPartsUtil.initMapPartsClipping.f1` | f32 | `0.5f` |
+| `MapPartsUtil.initMapPartsShadow.f1` | f32 | `0.70710677f` |
+| `MapUtil.calcMapGroundUpper.f1` | f32 | `2.5f` |
+| `MapUtil.calcMapGroundUpper.f2` | f32 | `4.0f` |
+| `MapUtil.getFirstPolyOnLineBFast.f1` | f32 | `1.0e9f` |
+| `MapUtil.getFirstPolyOnLineBFast.f2` | f32 | `5000.0f` |
+| `MapUtil.getFirstPolyOnLineBFast.f3` | f32 | `5000.0f` |
+| `MapUtil.getFirstPolyOnLineBFast.f4` | f32 | `5.0f` |
+| `MapUtil.getFirstPolyOnLineBFast.f5` | f32 | `35.0f` |
+| `MapUtil.getFirstPolyOnLineCategory.f1` | f32 | `1000000.0f` |
+| `MapUtil.isWallPolygon.f1` | f32 | `0.34202015f` |
+| `MapUtil.trySetMoveLimitCollision.f1` | f32 | `150.0f` |
+| `MapUtil.trySetMoveLimitCollision.f2` | f32 | `1000.0f` |
+| `MathUtil.blendAngle.f1` | f32 | `2.0f` |
+| `MathUtil.blendQuatFrontUp.f1` | f32 | `0.001f` |
+| `MathUtil.blendQuatFrontUp.f2` | f32 | `0.001f` |
+| `MathUtil.blendQuatUpFront.f1` | f32 | `0.001f` |
+| `MathUtil.blendQuatUpFront.f2` | f32 | `0.001f` |
+| `MathUtil.calcParabolicFunctionParam.f1` | f32 | `0.0001f` |
+| `MathUtil.calcParabolicFunctionParam.f2` | f32 | `4.0f` |
+| `MathUtil.calcParabolicFunctionParam.f3` | f32 | `4.0f` |
+| `MathUtil.calcParabolicFunctionParam.f4` | f32 | `2.0f` |
+| `MathUtil.calcRotateY.f1` | f32 | `90.0f` |
+| `MathUtil.crossOrPerpendicular.f1` | f32 | `1.0e-12f` |
+| `MathUtil.diffAngleSignedHorizontal.f1` | f32 | `0.00017453293f` |
+| `MathUtil.getEaseInOutValue.f1` | f32 | `2.0f` |
+| `MathUtil.getEaseInValue.f1` | f32 | `2.0f` |
+| `MathUtil.getEaseOutValue.f1` | f32 | `2.0f` |
+| `MathUtil.getRandomDegree.f1` | f32 | `360.0f` |
+| `MathUtil.getReduceVibrationValue.f1` | f32 | `0.5f` |
+| `MathUtil.getScaleWithReactionValueZeroToOne.f1` | f32 | `0.5f` |
+| `MathUtil.getScaleWithReactionValueZeroToOne.f2` | f32 | `2.0f` |
+| `MathUtil.getScaleWithReactionValueZeroToOne.f3` | f32 | `0.5f` |
+| `MathUtil.getScaleWithReactionValueZeroToOne.f4` | f32 | `2.0f` |
+| `MathUtil.isHalfProbability.f1` | f32 | `0.5f` |
+| `MathUtil.isNearAngleDegree.f1` | f32 | `180.0f` |
+| `MathUtil.lerp.f1` | f32 | `255.0f` |
+| `MathUtil.makeAxisAndCosignVecToVec.f1` | f32 | `0.01f` |
+| `MathUtil.turnQuat.f1` | f32 | `0.001f` |
+| `MathUtil.turnQuat.f2` | f32 | `0.015f` |
+| `MathUtil.turnVecToVecDegree.f1` | f32 | `180.0f` |
+| `MathUtil.vecBlendSphere.f1` | f32 | `0.1f` |
+| `ModelUtil.calcFogStartEnd.f1` | f32 | `100000.0f` |
+| `ModelUtil.calcFogStartEnd.f2` | f32 | `100.0f` |
+| `ModelUtil.calcFogStartEnd.f3` | f32 | `100.0f` |
+| `ModelUtil.calcFogStartEnd.f4` | f32 | `100.0f` |
+| `ModelUtil.calcFogStartEnd.f5` | f32 | `100000.0f` |
+| `ModelUtil.calcFogStartEnd.f6` | f32 | `100000.0f` |
+| `ModelUtil.calcFogStartEnd.f7` | f32 | `100000.0f` |
 | `MotionSignal.cPlayerTeleportDistance` | f32 | `500.0f` |
+| `NPCUtil.calcFloatOffset.f1` | f32 | `0.5f` |
+| `NPCUtil.calcFloatOffset.f2` | f32 | `200.0f` |
+| `NPCUtil.calcFloatOffset.f3` | f32 | `200.0f` |
+| `NPCUtil.calcFloatOffset.f4` | f32 | `0.5f` |
+| `NPCUtil.calcFloatOffset.f5` | f32 | `5.0f` |
+| `NPCUtil.calcPlayerFaceStareVector.f1` | f32 | `2.0f` |
+| `NPCUtil.followRailPoseOnGround.f1` | f32 | `10.0f` |
+| `NPCUtil.followRailPoseOnGround.f2` | f32 | `1000.0f` |
 | `NPCUtil.sStarAppearSeStep` | s32 | `103` |
 | `NPCUtil.sStarAppearSeStepCaretaker` | s32 | `32` |
 | `NPCUtil.sStarAppearSeStepPenguinCoach` | s32 | `95` |
 | `NPCUtil.sStarAppearSeStepTeresaRacer` | s32 | `89` |
 | `NPCUtil.sStarAppearSeStepTrickRabbit` | s32 | `22` |
+| `NPCUtil.startNPCTalkCamera.f1` | f32 | `67.5f` |
+| `NPCUtil.startNPCTalkCamera.f2` | f32 | `0.001f` |
+| `NPCUtil.startNPCTalkCamera.f3` | f32 | `0.75f` |
+| `NPCUtil.startNPCTalkCamera.f4` | f32 | `2.0f` |
+| `NPCUtil.startNPCTalkCamera.f5` | f32 | `6.0f` |
+| `NPCUtil.startNPCTalkCamera.f6` | f32 | `450.0f` |
+| `NPCUtil.startNPCTalkCamera.f7` | f32 | `450.0f` |
+| `NPCUtil.turnPlayerToActor.f1` | f32 | `10.0f` |
+| `NPCUtil.turnPlayerToActor.f2` | f32 | `10.0f` |
+| `NPCUtil.turnPlayerToActor.f3` | f32 | `100.0f` |
+| `NPCUtil.turnPlayerToActor.f4` | f32 | `10.0f` |
 | `ObjUtil.cNearClipScale` | f32 | `1.0f` |
+| `ObjUtil.findNamePosOnGround.f1` | f32 | `100.0f` |
+| `ObjUtil.findNamePosOnGround.f2` | f32 | `1000.0f` |
+| `ObjUtil.shakeCameraInfinity.f1` | f32 | `15.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f1` | f32 | `1000.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f10` | f32 | `200.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f11` | f32 | `0.25f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f12` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f13` | f32 | `0.25f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f14` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f15` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f16` | f32 | `0.25f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f17` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f18` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f19` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f2` | f32 | `400.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f20` | f32 | `0.25f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f21` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f22` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f23` | f32 | `0.75f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f24` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f25` | f32 | `0.75f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f26` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f27` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f28` | f32 | `0.75f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f29` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f3` | f32 | `600.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f30` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f31` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f32` | f32 | `0.75f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f33` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f34` | f32 | `0.5f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f4` | f32 | `600.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f5` | f32 | `400.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f6` | f32 | `400.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f7` | f32 | `600.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f8` | f32 | `600.0f` |
+| `OctahedronBezierSurface.OctahedronBezierSurface.f9` | f32 | `400.0f` |
 | `OctahedronBezierSurface.sCoefTableDivideNum` | s32 | `6` |
+| `PlacementUtil.getPlacementRotate.f1` | f32 | `0.001f` |
+| `PlacementUtil.getPlacementRotate.f2` | f32 | `1.5707964f` |
+| `PlacementUtil.getPlacementRotate.f3` | f32 | `0.001f` |
+| `PlacementUtil.getPlacementRotate.f4` | f32 | `1.5707964f` |
+| `PlayerUtil.getPlayerHitRadius.f1` | f32 | `100.0f` |
+| `PlayerUtil.getPlayerHitRadius.f2` | f32 | `60.0f` |
+| `RailGraphUtil.addRailToGraph.f1` | f32 | `100.0f` |
+| `RailUtil.calcRailClippingInfo.f1` | f32 | `0.5f` |
+| `RailUtil.calcRailClippingInfo.f2` | f32 | `0.5f` |
 | `SceneUtil.cHiddenStarTable` | bool | `true` |
 | `SceneUtil.cSuddenDeathDodoryu` | bool | `true` |
+| `ScreenUtil.getScreenAspect.f1` | f32 | `16.0f` |
+| `ScreenUtil.getScreenAspect.f2` | f32 | `9.0f` |
+| `ScreenUtil.getScreenMargin.f1` | f32 | `0.045f` |
 | `SequenceUtil.cMissStarPieceNum` | s32 | `0` |
+| `SoundUtil.startRemixSound.f1` | f32 | `3.0f` |
+| `SoundUtil.startRemixSound.f2` | f32 | `3.0f` |
+| `SoundUtil.startRemixSound.f3` | f32 | `3600.0f` |
+| `SpringValue.SpringValue.f1` | f32 | `0.3f` |
+| `SpringValue.SpringValue.f2` | f32 | `0.8f` |
+| `StarPointerUtil.calcPointRadius2D.f1` | f32 | `0.5f` |
+| `StarPointerUtil.calcPointRadius2D.f2` | f32 | `0.5f` |
+| `StarPointerUtil.calcStarPointerStrokeRotateMoment.f1` | f32 | `0.00726f` |
+| `StarPointerUtil.calcStarPointerStrokeRotateMoment.f2` | f32 | `0.726f` |
+| `StarPointerUtil.calcStarPointerStrokeRotateMoment.f3` | f32 | `0.726f` |
 | `StarPointerUtil.hPointColRayLength` | f32 | `99999.0f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f1` | f32 | `255.0f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f2` | f32 | `4095.0f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f3` | f32 | `0.5f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f4` | f32 | `4095.0f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f5` | f32 | `0.5f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f6` | f32 | `255.0f` |
+| `StarPointerUtil.reportStarPointerGrabTarget.f7` | f32 | `0.5f` |
 | `StringUtil.cCentisecPerSec` | s32 | `100` |
+| `Tunable.clampTo.f1` | f64 | `0.5` |
+| `Tunable.clampTo.f2` | f64 | `0.5` |
+| `Tunable.store.f1` | f64 | `2147483648.0` |
+| `Tunable.store.f2` | f64 | `2147483647.0` |
+| `Tunable.store.f3` | f64 | `4294967295.0` |
+| `Tunable.store.f4` | f64 | `32768.0` |
+| `Tunable.store.f5` | f64 | `32767.0` |
+| `Tunable.store.f6` | f64 | `65535.0` |
+| `Tunable.store.f7` | f64 | `128.0` |
+| `Tunable.store.f8` | f64 | `127.0` |
+| `Tunable.store.f9` | f64 | `255.0` |
+
+
+<a id="p-nebula-registries"></a>
+
+<a id="p-nebula-registries--registries"></a>
+
+## Registries
+
+Every kind of thing the game has is a registry: its own rows and the ones mods add, by name. Scripts read a row's number with `registry("kind/name")` (`registry("form/fire")`); plugins and scripts list and find rows with `registry_count`, `registry_name`, `registry_find`, `registry_value` and `registry_mod`. A later row of the same name replaces an earlier one: the later mod wins, and the log says so.
+
+The kinds `player_state`, `attack`, `star`, `ride`, `item` and `projectile` take mod rows as their parts of the game become moddable; they hold none of the game's yet.
+
+<a id="p-nebula-registries--object"></a>
+
+### object
+
+Objects levels place, by the name a level uses. Number: its place in the factory table. 1182 rows.
+
+| Name | Number |
+|---|---|
+| `SwitchCube` | 0 |
+| `SwitchSphere` | 1 |
+| `SwitchCylinder` | 2 |
+| `CubeCameraBox` | 3 |
+| `CubeCameraCylinder` | 4 |
+| `CubeCameraSphere` | 5 |
+| `CubeCameraBowl` | 6 |
+| `EffectCylinder` | 7 |
+| `BindEndCube` | 8 |
+| `DeathCube` | 9 |
+| `DeathSphere` | 10 |
+| `DeathCylinder` | 11 |
+| `PullBackCube` | 12 |
+| `PullBackCylinder` | 13 |
+| `RestartCube` | 14 |
+| `WarpCube` | 15 |
+| `TripodBossStepStartArea` | 16 |
+| `ChangeBgmCube` | 17 |
+| `BgmProhibitArea` | 18 |
+| `SoundEmitterCube` | 19 |
+| `SoundEmitterSphere` | 20 |
+| `WaterCube` | 21 |
+| `WaterSphere` | 22 |
+| `WaterCylinder` | 23 |
+| `FallsCube` | 24 |
+| `PlaneModeCube` | 25 |
+| `PlaneCircularModeCube` | 26 |
+| `PipeModeCube` | 27 |
+| `TowerModeCylinder` | 28 |
+| `BloomCube` | 29 |
+| `BloomSphere` | 30 |
+| `BloomCylinder` | 31 |
+| `SimpleBloomCube` | 32 |
+| `SimpleBloomSphere` | 33 |
+| `SimpleBloomCylinder` | 34 |
+| `ScreenBlurCube` | 35 |
+| `ScreenBlurSphere` | 36 |
+| `ScreenBlurCylinder` | 37 |
+| `DepthOfFieldCube` | 38 |
+| `DepthOfFieldSphere` | 39 |
+| `DepthOfFieldCylinder` | 40 |
+| `ClipAreaCenterBox` | 41 |
+| `ClipAreaBottomBox` | 42 |
+| `ClipAreaTopCone` | 43 |
+| `ClipAreaBottomCone` | 44 |
+| `ClipAreaSphere` | 45 |
+| `LightCtrlCube` | 46 |
+| `LightCtrlCylinder` | 47 |
+| `PlaneCollisionCube` | 48 |
+| `ForbidTriangleJumpCube` | 49 |
+| `ForbidWaterSearchCube` | 50 |
+| `QuakeEffectAreaCube` | 51 |
+| `HazeCube` | 52 |
+| `LensFlareArea` | 53 |
+| `CameraRepulsiveSphere` | 54 |
+| `CameraRepulsiveCylinder` | 55 |
+| `SunLightAreaBox` | 56 |
+| `GlaringLightAreaCylinder` | 57 |
+| `BigBubbleGoalAreaBox` | 58 |
+| `BigBubbleGoalAreaCylinder` | 59 |
+| `BigBubbleGoalAreaSphere` | 60 |
+| `BigBubbleCameraBox` | 61 |
+| `BigBubbleCameraCylinder` | 62 |
+| `BigBubbleCameraSphere` | 63 |
+| `BigBubbleSwitchBox` | 64 |
+| `BigBubbleSwitchCylinder` | 65 |
+| `BigBubbleSwitchSphere` | 66 |
+| `ViewGroupCtrlCube` | 67 |
+| `AudioEffectCube` | 68 |
+| `AudioEffectSphere` | 69 |
+| `AudioEffectCylinder` | 70 |
+| `PlayerSeCube` | 71 |
+| `PlayerSeSphere` | 72 |
+| `PlayerSeCylinder` | 73 |
+| `MercatorCube` | 74 |
+| `AstroChangeStageCube` | 75 |
+| `BlueStarGuidanceCube` | 76 |
+| `TicoSeedGuidanceCube` | 77 |
+| `MessageAreaCube` | 78 |
+| `MessageAreaCylinder` | 79 |
+| `SmokeEffectColorAreaCube` | 80 |
+| `BeeWallShortDistAreaCube` | 81 |
+| `ExtraWallCheckArea` | 82 |
+| `ExtraWallCheckCylinder` | 83 |
+| `MirrorAreaCube` | 84 |
+| `SpinGuidanceCube` | 85 |
+| `TamakoroMoveGuidanceCube` | 86 |
+| `TamakoroJumpGuidanceCube` | 87 |
+| `HeavySteeringCube` | 88 |
+| `NonSleepCube` | 89 |
+| `AreaMoveSphere` | 90 |
+| `DodoryuClosedCylinder` | 91 |
+| `DashChargeCylinder` | 92 |
+| `RasterScrollCube` | 93 |
+| `OnimasuCube` | 94 |
+| `ForbidJumpCube` | 95 |
+| `CollisionArea` | 96 |
+| `AstroOverlookAreaCylinder` | 97 |
+| `CelestrialSphere` | 98 |
+| `DarkMatterCube` | 99 |
+| `DarkMatterCylinder` | 100 |
+| `Mario` | 101 |
+| `MarioActor` | 102 |
+| `Caretaker` | 103 |
+| `Rabbit` | 104 |
+| `TalkSyati` | 105 |
+| `CollectTico` | 106 |
+| `TrickRabbit` | 107 |
+| `TrickRabbitFreeRun` | 108 |
+| `TrickRabbitFreeRunCollect` | 109 |
+| `RunawayRabbitCollect` | 110 |
+| `TrickRabbitGhost` | 111 |
+| `Kinopio` | 112 |
+| `KinopioAstro` | 113 |
+| `HoneyBee` | 114 |
+| `HoneyQueen` | 115 |
+| `Peach` | 116 |
+| `Penguin` | 117 |
+| `PenguinCoach` | 118 |
+| `PenguinMaster` | 119 |
+| `PenguinRacer` | 120 |
+| `PenguinRacerLeader` | 121 |
+| `PenguinSkater` | 122 |
+| `PenguinStudent` | 123 |
+| `SignBoard` | 124 |
+| `Syati` | 125 |
+| `Tico` | 126 |
+| `TicoComet` | 127 |
+| `TicoShop` | 128 |
+| `TicoStarRing` | 129 |
+| `TicoAstro` | 130 |
+| `TicoBaby` | 131 |
+| `DemoRabbit` | 132 |
+| `TicoFat` | 133 |
+| `TicoGalaxy` | 134 |
+| `TicoRail` | 135 |
+| `TicoReading` | 136 |
+| `TicoDomeLecture` | 137 |
+| `Rosetta` | 138 |
+| `RosettaReading` | 139 |
+| `RosettaPictureBook` | 140 |
+| `LuigiNPC` | 141 |
+| `LuigiEvent` | 142 |
+| `TeresaRacer` | 143 |
+| `NPCSupportRail` | 144 |
+| `GhostPlayer` | 145 |
+| `Butler` | 146 |
+| `ButlerMap` | 147 |
+| `ButlerExplain` | 148 |
+| `DemoKoopaJrShip` | 149 |
+| `Creeper` | 150 |
+| `JetTurtle` | 151 |
+| `Fluff` | 152 |
+| `FluffWind` | 153 |
+| `Tamakoro` | 154 |
+| `TamakoroWithTutorial` | 155 |
+| `GoldenTurtle` | 156 |
+| `JumpBranch` | 157 |
+| `Plant` | 158 |
+| `Pole` | 159 |
+| `PoleNoModel` | 160 |
+| `PoleSquare` | 161 |
+| `PoleSquareNoModel` | 162 |
+| `SurfRay` | 163 |
+| `SwingRope` | 164 |
+| `SpaceCocoon` | 165 |
+| `Trapeze` | 166 |
+| `TreeCube` | 167 |
+| `WaterRoad` | 168 |
+| `WarpPod` | 169 |
+| `CoinBox` | 170 |
+| `PunchBox` | 171 |
+| `SwitchBox` | 172 |
+| `NormalMapTestObj` | 173 |
+| `Takobo` | 174 |
+| `Karikari` | 175 |
+| `KoteBug` | 176 |
+| `Balloonfish` | 177 |
+| `BombHei` | 178 |
+| `Bomb` | 179 |
+| `Jiraira` | 180 |
+| `BombHeiLauncher` | 181 |
+| `BombLauncher` | 182 |
+| `SpinDriver` | 183 |
+| `SuperSpinDriver` | 184 |
+| `SuperSpinDriverGreen` | 185 |
+| `SuperSpinDriverPink` | 186 |
+| `Kuribo` | 187 |
+| `KuriboChief` | 188 |
+| `KuriboMini` | 189 |
+| `Kabokuri` | 190 |
+| `TakoHei` | 191 |
+| `OtaRock` | 192 |
+| `Meramera` | 193 |
+| `IceMeramera` | 194 |
+| `EyeBeamer` | 195 |
+| `BigBirikyu` | 196 |
+| `Birikyu` | 197 |
+| `HomingKiller` | 198 |
+| `CocoSambo` | 199 |
+| `SamboHead` | 200 |
+| `BegomanBaby` | 201 |
+| `BegomanSpring` | 202 |
+| `BegomanSpringHide` | 203 |
+| `BegomanSpike` | 204 |
+| `BegomanLauncher` | 205 |
+| `TogeBegomanLauncher` | 206 |
+| `BegomanBabyLauncher` | 207 |
+| `FireBubble` | 208 |
+| `BallBeamer` | 209 |
+| `JumpBeamer` | 210 |
+| `JumpGuarder` | 211 |
+| `RingBeamer` | 212 |
+| `Pukupuku` | 213 |
+| `BombTeresa` | 214 |
+| `Teresa` | 215 |
+| `TeresaChief` | 216 |
+| `TeresaWater` | 217 |
+| `Torpedo` | 218 |
+| `Dossun` | 219 |
+| `Onimasu` | 220 |
+| `OnimasuPivot` | 221 |
+| `Unizo` | 222 |
+| `UnizoLand` | 223 |
+| `UnizoShoal` | 224 |
+| `UnizoLauncher` | 225 |
+| `Kiraira` | 226 |
+| `KirairaRail` | 227 |
+| `NokonokoLand` | 228 |
+| `Gesso` | 229 |
+| `Poihana` | 230 |
+| `Snakehead` | 231 |
+| `SnakeheadSmall` | 232 |
+| `Jellyfish` | 233 |
+| `JellyfishElectric` | 234 |
+| `Kanina` | 235 |
+| `KaninaRed` | 236 |
+| `Mogu` | 237 |
+| `Mogucchi` | 238 |
+| `MogucchiRefuseTerritory` | 239 |
+| `KoopaJrShip` | 240 |
+| `Hanachan` | 241 |
+| `JumpSpider` | 242 |
+| `StringSpider` | 243 |
+| `PackunPetit` | 244 |
+| `StinkBugSmall` | 245 |
+| `StinkBugParent` | 246 |
+| `BasaBasa` | 247 |
+| `BasaBasaIce` | 248 |
+| `Metbo` | 249 |
+| `BombBird` | 250 |
+| `MechanicKoopaMini` | 251 |
+| `Karon` | 252 |
+| `HammerHeadPackun` | 253 |
+| `DharmaSambo` | 254 |
+| `SearchBeamer` | 255 |
+| `Petari` | 256 |
+| `MagnumKiller` | 257 |
+| `BossBegoman` | 258 |
+| `BossStinkBug` | 259 |
+| `DinoPackun` | 260 |
+| `DinoPackunVs2` | 261 |
+| `Dodoryu` | 262 |
+| `KoopaVs1` | 263 |
+| `KoopaVs2` | 264 |
+| `KoopaVs3` | 265 |
+| `OtaKing` | 266 |
+| `Polta` | 267 |
+| `SkeletalFishBoss` | 268 |
+| `SkeletalFishBaby` | 269 |
+| `SkeletalFishBossRail` | 270 |
+| `TombSpider` | 271 |
+| `BossKameck` | 272 |
+| `BossKameck2` | 273 |
+| `FireBallBeamKameck` | 274 |
+| `TurtleBeamKameck` | 275 |
+| `TripodBoss` | 276 |
+| `Tripod2Boss` | 277 |
+| `TripodBossBaseJointPosition` | 278 |
+| `TripodBossKillerGenerater` | 279 |
+| `TripodBossStepPoint` | 280 |
+| `TripodBossCore` | 281 |
+| `TripodBossCoin` | 282 |
+| `TripodBossKinokoOneUp` | 283 |
+| `TripodBossShell` | 284 |
+| `TripodBossGuardWall` | 285 |
+| `TriPodBossBodyA` | 286 |
+| `TripodBossBodyABloom` | 287 |
+| `TriPodBossLeg1A` | 288 |
+| `TriPodBossLeg1B` | 289 |
+| `TriPodBossLeg1C` | 290 |
+| `TriPodBossLeg2A` | 291 |
+| `TriPodBossLeg2ABloom` | 292 |
+| `TriPodBossLeg3A` | 293 |
+| `TriPodBossLeg3B` | 294 |
+| `TriPodBossLeg3C` | 295 |
+| `TripodBossFoot` | 296 |
+| `TripodBossFootBloom` | 297 |
+| `TriPodBossLegBottom` | 298 |
+| `TripodBossEyeLight` | 299 |
+| `TripodBossEyeLightBloom` | 300 |
+| `TriPodBossGearA` | 301 |
+| `TriPodBossGearB` | 302 |
+| `TriPodBossGearC` | 303 |
+| `TriPodBossGearSmallA` | 304 |
+| `TriPodBossGearSmallB` | 305 |
+| `TriPodBossGearSmallC` | 306 |
+| `TriPodBossGearBody` | 307 |
+| `TripodBossUpperKillerCannon` | 308 |
+| `TripodBossUnderKillerCannon` | 309 |
+| `TripodBossBottomKillerCannon` | 310 |
+| `SpiderAttachPoint` | 311 |
+| `SpiderCoin` | 312 |
+| `SpiderMapBlock` | 313 |
+| `ArrowSwitch` | 314 |
+| `ArrowSwitchMulti` | 315 |
+| `ArrowSwitchTarget` | 316 |
+| `AstroOverlookObj` | 317 |
+| `BlueStarCupsulePlanet` | 318 |
+| `BigFan` | 319 |
+| `BigFanNoLeg` | 320 |
+| `ClipAreaDropLaser` | 321 |
+| `RevolvingWay` | 322 |
+| `SoundEmitter` | 323 |
+| `JumpHole` | 324 |
+| `BallOpener` | 325 |
+| `DragonHeadFlower` | 326 |
+| `ConcreteBlock` | 327 |
+| `SphereRailDash` | 328 |
+| `SnowplowSwitch` | 329 |
+| `BallRail` | 330 |
+| `FallDownBridge` | 331 |
+| `RockCreator` | 332 |
+| `MeteoContainer` | 333 |
+| `MagicBell` | 334 |
+| `FlowerGroup` | 335 |
+| `FlowerBlueGroup` | 336 |
+| `CutBushGroup` | 337 |
+| `SmallStone` | 338 |
+| `CircleShell` | 339 |
+| `CircleStrawberry` | 340 |
+| `Tsukidashikun` | 341 |
+| `TsukidashikunBig` | 342 |
+| `TimerCoinBlock` | 343 |
+| `SplashCoinBlock` | 344 |
+| `TimerPieceBlock` | 345 |
+| `SplashPieceBlock` | 346 |
+| `ItemBlockSwitch` | 347 |
+| `ExterminationCheckerKuribo` | 348 |
+| `ExterminationKuriboKeySwitch` | 349 |
+| `ExterminationSkeletalFishBaby` | 350 |
+| `ExterminationMeramera` | 351 |
+| `ShootingStar` | 352 |
+| `FlameGun` | 353 |
+| `BenefitItemOneUp` | 354 |
+| `BenefitItemLifeUp` | 355 |
+| `BenefitItemInvincible` | 356 |
+| `CoinSpot` | 357 |
+| `CollisionBlocker` | 358 |
+| `LotusLeaf` | 359 |
+| `PunchingKinoko` | 360 |
+| `DesertMovingLand` | 361 |
+| `DesertMovingLandSmall` | 362 |
+| `NoteFairy` | 363 |
+| `EarthenPipe` | 364 |
+| `EarthenPipeInWater` | 365 |
+| `ElectricRail` | 366 |
+| `ElectricRailMoving` | 367 |
+| `WanwanRolling` | 368 |
+| `WanwanRollingMini` | 369 |
+| `WanwanRollingGold` | 370 |
+| `BreakableCage` | 371 |
+| `BreakableCageRotate` | 372 |
+| `BreakableCageL` | 373 |
+| `BreakableFixation` | 374 |
+| `BreakableTrash` | 375 |
+| `BigBubble` | 376 |
+| `BigBubbleMoveLimitterCylinder` | 377 |
+| `BigBubbleMoveLimitterPlane` | 378 |
+| `BigBubbleGenerator` | 379 |
+| `BigObstructBubbleGenerator` | 380 |
+| `GCaptureTarget` | 381 |
+| `AsteroidA` | 382 |
+| `AsteroidB` | 383 |
+| `AsteroidC` | 384 |
+| `AsteroidD` | 385 |
+| `SpaceStickA` | 386 |
+| `SpaceStickB` | 387 |
+| `BlackHole` | 388 |
+| `BlackHoleCube` | 389 |
+| `KillerGunnerSingle` | 390 |
+| `KillerGunnerDouble` | 391 |
+| `KillerGunnerTriple` | 392 |
+| `PowerStar` | 393 |
+| `GrandStar` | 394 |
+| `PowerStarAppearPoint` | 395 |
+| `CocoNut` | 396 |
+| `CoconutTree` | 397 |
+| `CoconutTreeLeaf` | 398 |
+| `CollapsePlane` | 399 |
+| `WoodBox` | 400 |
+| `ItemBubble` | 401 |
+| `SpinningBox` | 402 |
+| `ElectricBall` | 403 |
+| `SpaceMine` | 404 |
+| `MorphItemNeoHopper` | 405 |
+| `MorphItemNeoBee` | 406 |
+| `MorphItemNeoTeresa` | 407 |
+| `MorphItemNeoIce` | 408 |
+| `MorphItemNeoFire` | 409 |
+| `MorphItemNeoFoo` | 410 |
+| `AirBubble` | 411 |
+| `AirBubbleGenerator` | 412 |
+| `Butterfly` | 413 |
+| `Pompon2Plant` | 414 |
+| `Pompon4Plant` | 415 |
+| `LavaGeyser` | 416 |
+| `LavaProminence` | 417 |
+| `LavaProminenceTriple` | 418 |
+| `LavaProminenceEnvironment` | 419 |
+| `LavaProminenceWithoutShadow` | 420 |
+| `LavaObstacleRockShell` | 421 |
+| `LavaObstacleRockHomeA` | 422 |
+| `LavaObstacleRockHomeB` | 423 |
+| `LavaHomeFloaterB` | 424 |
+| `LavaFloatingStepA` | 425 |
+| `LavaFloatingStepB` | 426 |
+| `LavaFloatingStepC` | 427 |
+| `LavaFloatingStepD` | 428 |
+| `LavaHomeSeesaw` | 429 |
+| `LavaHomeVolcanoFlow` | 430 |
+| `LavaHomeVolcanoInnerFlow` | 431 |
+| `LavaRotatePlanetStartStep` | 432 |
+| `LavaBreakBridge` | 433 |
+| `LavaBreakRockA` | 434 |
+| `LavaBreakRockB` | 435 |
+| `LavaBreakRockC` | 436 |
+| `LavaBreakRockD` | 437 |
+| `LavaBreakColumn` | 438 |
+| `LavaShellTower` | 439 |
+| `LavaFallDownColumnA` | 440 |
+| `LavaFallDownColumnB` | 441 |
+| `LavaShellTowerStep` | 442 |
+| `LavaStepA` | 443 |
+| `LavaStepB` | 444 |
+| `LavaStepC` | 445 |
+| `LavaSteam` | 446 |
+| `LavaStrangeRock` | 447 |
+| `LavaStrangeRockL` | 448 |
+| `LavaStrangeRockTable` | 449 |
+| `LavaSpaceStickA` | 450 |
+| `LavaSpaceStickB` | 451 |
+| `LavaBlackUFO` | 452 |
+| `CrystalCageS` | 453 |
+| `CrystalCageM` | 454 |
+| `CrystalCageL` | 455 |
+| `CrystalCageMoving` | 456 |
+| `ShellfishCoin` | 457 |
+| `ShellfishYellowChip` | 458 |
+| `SeaBottomBigDoorA` | 459 |
+| `SeaBottomBigDoorB` | 460 |
+| `SeaBottomBigDoorC` | 461 |
+| `FloaterLandPartsFrame` | 462 |
+| `OceanFloaterTypeU` | 463 |
+| `DashRing` | 464 |
+| `MeteorStrike` | 465 |
+| `MeteorStrikeEnvironment` | 466 |
+| `MeteorCannon` | 467 |
+| `BrightObj` | 468 |
+| `BrightSun` | 469 |
+| `PhantomTorch` | 470 |
+| `PhantomBonfire` | 471 |
+| `PhantomCandlestand` | 472 |
+| `CandlestandIceVolcano` | 473 |
+| `MarioLauncher` | 474 |
+| `MarioLauncherAttractor` | 475 |
+| `WaterBazooka` | 476 |
+| `ElectricBazooka` | 477 |
+| `WaterPressure` | 478 |
+| `FirePressure` | 479 |
+| `IronCannonLauncher` | 480 |
+| `IronCannonLauncherPoint` | 481 |
+| `FirePressureRadiate` | 482 |
+| `TemplateStageGeometry` | 483 |
+| `SunkenShip` | 484 |
+| `BeeFlowerHover` | 485 |
+| `WaterfallCaveCover` | 486 |
+| `WaterfallCaveNoBreakCover` | 487 |
+| `PalmIsland` | 488 |
+| `IceMerameraKing` | 489 |
+| `OceanPierFloaterA` | 490 |
+| `HeavenlyBeachTopRock` | 491 |
+| `HeavenlyBeachUnderRock` | 492 |
+| `OceanSmallTurtle` | 493 |
+| `OceanHexagonFloater` | 494 |
+| `SpringWaterFloaterA` | 495 |
+| `SpringWaterFloaterB` | 496 |
+| `ShutterDoorB` | 497 |
+| `ShutterDoorC` | 498 |
+| `ShutterDoorD` | 499 |
+| `ShutterDoorE` | 500 |
+| `SeaBottomTriplePropellerStand` | 501 |
+| `SeaBottomTriplePropeller` | 502 |
+| `OceanFloaterTowerRotateStepA` | 503 |
+| `OceanFloaterTowerRotateStepB` | 504 |
+| `OceanFloaterTowerRotateStepC` | 505 |
+| `OceanFloaterTowerRotateStepD` | 506 |
+| `LargeChain` | 507 |
+| `IcicleRock` | 508 |
+| `ItemAppearStoneSpinDriver` | 509 |
+| `SnowFloor` | 510 |
+| `SnowFloorTile` | 511 |
+| `FlipPanel` | 512 |
+| `FlipPanelObserver` | 513 |
+| `FlipPanelReverse` | 514 |
+| `FlipPanelFrame` | 515 |
+| `PhantomTowerMoveStepA` | 516 |
+| `SideSpikeMoveStepA` | 517 |
+| `SpaceMineRailA` | 518 |
+| `SpaceMineRail5m` | 519 |
+| `SandUpDownTowerTop` | 520 |
+| `SandUpDownTowerBottom` | 521 |
+| `SandUpDownKillerGunnerBase` | 522 |
+| `SandUpDownTriRock` | 523 |
+| `JumpStand` | 524 |
+| `CaretakerGarbage` | 525 |
+| `GlassBottleTall` | 526 |
+| `HopperBeltConveyerRotatePartsA` | 527 |
+| `HopperBeltConveyerMovePartsA` | 528 |
+| `ChooChooTrain` | 529 |
+| `SandRiverLightA` | 530 |
+| `SnowMan` | 531 |
+| `SnowBlockA` | 532 |
+| `ShockWaveGenerator` | 533 |
+| `DangerSignBoard` | 534 |
+| `Banekiti` | 535 |
+| `MirrorReflectionTest` | 536 |
+| `MirrorReflectionPeachCastle` | 537 |
+| `MirrorReflectionTwinFallLake` | 538 |
+| `MirrorModelTest` | 539 |
+| `MirrorModelPeachCastle` | 540 |
+| `MirrorModelTwinFallLake` | 541 |
+| `PhantomFirewood` | 542 |
+| `ArrowBoard` | 543 |
+| `TeresaRoomGlaringLight` | 544 |
+| `SpaceDustWoodA` | 545 |
+| `SpaceDustWoodB` | 546 |
+| `TeresaRoomDoor` | 547 |
+| `TrampleStar` | 548 |
+| `ReverseGravityTowerInside` | 549 |
+| `HipDropRock` | 550 |
+| `DropOfWaterCore` | 551 |
+| `WatchTowerRotateStep` | 552 |
+| `ForestAppearStepA` | 553 |
+| `ForestObstacleWoodA` | 554 |
+| `AstroDomeAsteroid` | 555 |
+| `AstroDomeBlueStar` | 556 |
+| `AstroDomeComet` | 557 |
+| `AstroDomeDemoAstroGalaxy` | 558 |
+| `SphereSelectorHandle` | 559 |
+| `ForestWoodCover` | 560 |
+| `KoopaShipManholeCover` | 561 |
+| `StarDustStepA` | 562 |
+| `StarDustStepB` | 563 |
+| `TreasureSpot` | 564 |
+| `CoinFlower` | 565 |
+| `StarDustRollingStepA` | 566 |
+| `AsteroidMoveA` | 567 |
+| `StarPieceCluster` | 568 |
+| `SpaceSeparatorA` | 569 |
+| `SpaceSeparatorB` | 570 |
+| `ForestNarrowStepA` | 571 |
+| `ForestHomeGate` | 572 |
+| `RGTowerPressGroundA` | 573 |
+| `WeatherVane` | 574 |
+| `RainCloud` | 575 |
+| `PowerStarKeeperA` | 576 |
+| `PowerStarKeeperB` | 577 |
+| `PowerStarKeeperC` | 578 |
+| `ForestPoihanaFenceA` | 579 |
+| `ForestPoihanaFenceB` | 580 |
+| `TeresaMansionBridgeA` | 581 |
+| `TeresaMansionBridgeB` | 582 |
+| `DarknessRoomDoorA` | 583 |
+| `TeresaMansionDoorA` | 584 |
+| `TeresaMansionDoorB` | 585 |
+| `TeresaMansionEntranceDoor` | 586 |
+| `WaterBazookaTowerMoveStepA` | 587 |
+| `WaterBazookaTowerMoveStepB` | 588 |
+| `WaterBazookaTowerMoveStepC` | 589 |
+| `QuestionBoxMoveStepA` | 590 |
+| `QuestionBoxMoveStepB` | 591 |
+| `QuestionBoxMoveStepC` | 592 |
+| `ForestHomeBridge` | 593 |
+| `ForestBarricadeRockA` | 594 |
+| `ReverseGravityRoomPressGroundA` | 595 |
+| `ReverseGravityRoomPressGroundB` | 596 |
+| `ReverseGravityRoomPressGroundC` | 597 |
+| `ReverseGravityRoomPressGroundD` | 598 |
+| `ReverseGravityRoomPressGroundE` | 599 |
+| `RollingOvalPlanetParts` | 600 |
+| `TeresaMansionLightA` | 601 |
+| `TeresaMansionLightB` | 602 |
+| `TeresaMansionCandlestand` | 603 |
+| `TeresaMansionHoleCover` | 604 |
+| `KoopaStatue` | 605 |
+| `TeresaPicture` | 606 |
+| `KinokoOneUpPicture` | 607 |
+| `FireBar` | 608 |
+| `BattleShipMovePartsA` | 609 |
+| `BattleShipMovePartsB` | 610 |
+| `BattleShipElevator` | 611 |
+| `BattleShipElevatorCover` | 612 |
+| `TeresaRaceSpaceStickA` | 613 |
+| `TeresaRaceSpaceStickB` | 614 |
+| `TeresaRaceSpaceStickC` | 615 |
+| `TeresaRacePartsA` | 616 |
+| `TeresaRacePartsB` | 617 |
+| `NeedlePlant` | 618 |
+| `NeedlePlantFly` | 619 |
+| `BeeWallClimbPartsA` | 620 |
+| `PeachCastleTownAfterAttack` | 621 |
+| `PeachCastleTownBeforeAttack` | 622 |
+| `PeachCastleTownGate` | 623 |
+| `PhantomDecoratePartsA` | 624 |
+| `PhantomDecoratePartsB` | 625 |
+| `PhantomDecoratePartsHole` | 626 |
+| `CocoonStepA` | 627 |
+| `CocoonStepB` | 628 |
+| `SpaceCannonLauncher` | 629 |
+| `TrapBaseA` | 630 |
+| `SweetsDecoratePartsSpoon` | 631 |
+| `SweetsDecoratePartsFork` | 632 |
+| `SeesawMoveNutA` | 633 |
+| `SeesawMoveNutB` | 634 |
+| `SeesawMoveNutC` | 635 |
+| `TwisterSan` | 636 |
+| `TwisterSanSlim` | 637 |
+| `SunakazeKun` | 638 |
+| `SandStreamMoveStepsA` | 639 |
+| `SandStreamMoveStepsB` | 640 |
+| `WaterLeakPipe` | 641 |
+| `BroadBeanMoveStepA` | 642 |
+| `BroadBeanMoveStepB` | 643 |
+| `ColorPencil` | 644 |
+| `TeresaRacePartsBallA` | 645 |
+| `SandCapsulePressGround` | 646 |
+| `RayGunPlanetPartsScrew` | 647 |
+| `RayGunPlanetPartsGear` | 648 |
+| `BreakDownFixStepA` | 649 |
+| `SandStreamHighTowerMoveStepA` | 650 |
+| `DriftWood` | 651 |
+| `ToyFactoryDecoratePartsGearA` | 652 |
+| `MiniMechaKoopaPartsMoveStepA` | 653 |
+| `MiniMechaKoopaPartsGear` | 654 |
+| `MiniMechaKoopaPartsCage` | 655 |
+| `AsteroidBlockRotateStepA` | 656 |
+| `SandUpDownTowerBreakableWallA` | 657 |
+| `SandUpDownTowerBreakableWallB` | 658 |
+| `HoleDeathSandMoveStepA` | 659 |
+| `SandUpDownTowerMoveStepA` | 660 |
+| `DeathSandLandPartsA` | 661 |
+| `DeathSandLandPartsB` | 662 |
+| `DeathSandLandPlatformStepA` | 663 |
+| `DeathSandEnvironmentSapotenA` | 664 |
+| `DeathSandEnvironmentSapotenB` | 665 |
+| `DeathSandEnvironmentRock` | 666 |
+| `DeathSandEnvironmentPyramid` | 667 |
+| `UFOSandObstacleA` | 668 |
+| `UFOSandObstacleB` | 669 |
+| `UFOSandObstacleC` | 670 |
+| `SweetDecoratePartsOrange` | 671 |
+| `CapsuleCage` | 672 |
+| `KameckShipLv1` | 673 |
+| `LavaBallRisingPlanetLava` | 674 |
+| `StrongBlock` | 675 |
+| `ChoConveyorChocoA` | 676 |
+| `ChoConveyorMoveChocoA` | 677 |
+| `HoneyQueenLeafA` | 678 |
+| `ForestHomePartsTree` | 679 |
+| `ForestHomePartsTreeTower` | 680 |
+| `RosettaChair` | 681 |
+| `GravityLightA` | 682 |
+| `GravityLightRoad` | 683 |
+| `PoltaBattlePlanetPartsA` | 684 |
+| `HeavenlyBeachTimerStepA` | 685 |
+| `HeavenlyBeachTimerStepB` | 686 |
+| `ReverseKingdomTreeA` | 687 |
+| `FloaterOtakingFloaterA` | 688 |
+| `WindMillPropeller` | 689 |
+| `WindMillPropellerMini` | 690 |
+| `LavaRotateStepsRotatePartsA` | 691 |
+| `LavaRotateStepsRotatePartsB` | 692 |
+| `LavaRotateStepsRotatePartsC` | 693 |
+| `LavaRotateStepsRotatePartsD` | 694 |
+| `QuickSand2DMovePartsA` | 695 |
+| `BiriBiriBegomanSpikePistonA` | 696 |
+| `HugeBattleShipPlanetEntrance` | 697 |
+| `MysteryGravityRoomBridgeA` | 698 |
+| `DeadLeaves` | 699 |
+| `PrologueDirector` | 700 |
+| `DeathPromenadeMovePartsSpuareA` | 701 |
+| `DeathPromenadeRotateCircleL` | 702 |
+| `DeathPromenadeRotateCircleS` | 703 |
+| `FlexibleSandPlanetPartsA` | 704 |
+| `DarkHopperRotateStepA` | 705 |
+| `DarkHopperPlanetPartsA` | 706 |
+| `DarkHopperPlanetPartsC` | 707 |
+| `DarkHopperPlanetPartsD` | 708 |
+| `ClockworkHandle` | 709 |
+| `MiniMechaKoopaPartsFan` | 710 |
+| `RockRoadCircleA` | 711 |
+| `AssemblyBlockPartsA` | 712 |
+| `AssemblyBlockPartsB` | 713 |
+| `AssemblyBlockPartsC` | 714 |
+| `AssemblyBlockPartsD` | 715 |
+| `AssemblyBlockPartsE` | 716 |
+| `AssemblyBlockPartsIceB` | 717 |
+| `AssemblyBlockPartsIceC` | 718 |
+| `AssemblyBlockPartsIceD` | 719 |
+| `AssemblyBlockPartsIceE` | 720 |
+| `AssemblyBlockPartsTimerA` | 721 |
+| `HellBallGuidePartsA` | 722 |
+| `HellBallRotatePartsA` | 723 |
+| `HellBallRotatePartsB` | 724 |
+| `HellBallRotatePartsC` | 725 |
+| `HellBallRotatePartsD` | 726 |
+| `HellBallRotatePartsE` | 727 |
+| `HellBallRotatePartsF` | 728 |
+| `HellBallRotatePartsG` | 729 |
+| `IceSlipRoad` | 730 |
+| `CandyLiftA` | 731 |
+| `CandyLiftB` | 732 |
+| `SurfingRaceTutorialParts` | 733 |
+| `SurfingRaceMainGate` | 734 |
+| `SurfingRaceSubGate` | 735 |
+| `SurfingRaceStep` | 736 |
+| `SurfingRaceSignBoard` | 737 |
+| `SurfingRaceVictoryStand` | 738 |
+| `HeavensDoorFlowerA` | 739 |
+| `HeavensDoorHouseDoor` | 740 |
+| `HeavensDoorAppearStepAAfter` | 741 |
+| `HeavensDoorAppearStepA` | 742 |
+| `HeavensDoorMiddleRotatePartsA` | 743 |
+| `HeavensDoorMiddleRotatePartsB` | 744 |
+| `HeavensDoorInsideCage` | 745 |
+| `HeavensDoorInsidePlanetPartsA` | 746 |
+| `HeavensDoorInsideRotatePartsA` | 747 |
+| `HeavensDoorInsideRotatePartsB` | 748 |
+| `HeavensDoorInsideRotatePartsC` | 749 |
+| `MechaKoopaPartsHead` | 750 |
+| `MechaKoopaPartsCollar` | 751 |
+| `MechaKoopaPartsBreast` | 752 |
+| `MechaKoopaPartsArmRight` | 753 |
+| `MechaKoopaPartsArmLeft` | 754 |
+| `MechaKoopaPartsBody` | 755 |
+| `MechaKoopaPartsCaterpillar` | 756 |
+| `MechaKoopaPartsRollerA` | 757 |
+| `MechaKoopaPartsMoveStepA` | 758 |
+| `MechaKoopaPartsWreckA` | 759 |
+| `CannonFortressBreakStepA` | 760 |
+| `CannonFortressRotateBreakStepA` | 761 |
+| `CannonFortressRotateBreakStepB` | 762 |
+| `CannonFortressRotateBreakStepC` | 763 |
+| `CannonFortressMoveWall` | 764 |
+| `SpaceShipStep` | 765 |
+| `QuarterRollGravityRoomArrow` | 766 |
+| `NutShipFleetBridge` | 767 |
+| `IceVolcanoMoveStepA` | 768 |
+| `IceVolcanoBalanceStepA` | 769 |
+| `IceVolcanoBalanceStepB` | 770 |
+| `IceVolcanoFloaterA` | 771 |
+| `IceVolcanoFloaterB` | 772 |
+| `IceVolcanoAppearStepA` | 773 |
+| `IceVolcanoAppearStepB` | 774 |
+| `IceVolcanoClimbingWall` | 775 |
+| `IceMountainFloaterA` | 776 |
+| `IceMountainSeesawNoSlipA` | 777 |
+| `IceMountainSeesawSlipA` | 778 |
+| `IceMountainSeesawSlipB` | 779 |
+| `IceMountainSeesawSlipC` | 780 |
+| `IceMountainSeesawSlipD` | 781 |
+| `IceRingBumpyPartsA` | 782 |
+| `IceWaterUpDownParts` | 783 |
+| `LavaUpDownParts` | 784 |
+| `IceUpDownShutterDoorA` | 785 |
+| `IceLavaIslandSnowStepA` | 786 |
+| `IceLavaIslandIceMovableStepA` | 787 |
+| `IceLavaIslandLavaMovableStepA` | 788 |
+| `HoleBeltConveyerPartsA` | 789 |
+| `HoleBeltConveyerPartsB` | 790 |
+| `HoleBeltConveyerPartsC` | 791 |
+| `HoleBeltConveyerPartsD` | 792 |
+| `HoleBeltConveyerPartsE` | 793 |
+| `HoleBeltConveyerPartsF` | 794 |
+| `HoleBeltConveyerPartsG` | 795 |
+| `HoleBeltConveyerPartsH` | 796 |
+| `ChallengeBallAccelCylinderA` | 797 |
+| `ChallengeBallGearA` | 798 |
+| `ChallengeBallMoveGroundA` | 799 |
+| `ChallengeBallMoveGroundB` | 800 |
+| `ChallengeBallRotateBridgeA` | 801 |
+| `ChallengeBallVanishingRoadA` | 802 |
+| `TrialBubbleTimerMoveWallA` | 803 |
+| `TrialBubbleRotateWallA` | 804 |
+| `TrialBubbleRevolvingPartsA` | 805 |
+| `TrialBubbleMoveWallA` | 806 |
+| `CubeBubbleExHomeStep` | 807 |
+| `CubeBubbleExStartStep` | 808 |
+| `CubeBubbleExRotateWallS` | 809 |
+| `CubeBubbleExRotateWallL` | 810 |
+| `CubeBubbleExPartsA` | 811 |
+| `UFONormalB` | 812 |
+| `UFONormalD` | 813 |
+| `UFOStrongA` | 814 |
+| `UFOBattleStageC` | 815 |
+| `UFOBattleStageD` | 816 |
+| `UFOBattleStageE` | 817 |
+| `UFOKinoko` | 818 |
+| `UFOKinokoLanding` | 819 |
+| `UFOBlueStarCupsule` | 820 |
+| `KoopaShipA` | 821 |
+| `KoopaShipB` | 822 |
+| `KoopaShipC` | 823 |
+| `KoopaShipD` | 824 |
+| `KoopaShipE` | 825 |
+| `KoopaShipSeesawStep` | 826 |
+| `KoopaJrSmallShipA` | 827 |
+| `KoopaJrSmallShipAGuidePoint` | 828 |
+| `KoopaJrKillerShipA` | 829 |
+| `KoopaJrNormalShipA` | 830 |
+| `WaterRoadCaveStepA` | 831 |
+| `WaterRoadCaveStepB` | 832 |
+| `WaterRoadCaveRotateGround` | 833 |
+| `SubmarineVolcanoInside` | 834 |
+| `SubmarineVolcanoBigColumn` | 835 |
+| `SubmarineVolcanoSmallColumn` | 836 |
+| `OnimasuPlanetPartsGoal` | 837 |
+| `OnimasuPlanetObstaclePartsA` | 838 |
+| `OnimasuPlanetRailMovePartsA` | 839 |
+| `OnimasuPlanetRotatePartsA` | 840 |
+| `OnimasuPlanetRotatePartsB` | 841 |
+| `PhantomShipPropellerSmall` | 842 |
+| `PhantomShipPropellerBig` | 843 |
+| `PhantomShipHandle` | 844 |
+| `PhantomShipBridge` | 845 |
+| `TakoBarrelA` | 846 |
+| `TakoBarrelB` | 847 |
+| `KoopaRestarterVs3` | 848 |
+| `KoopaPowerUpSwitch` | 849 |
+| `KoopaSwitchKeeper` | 850 |
+| `KoopaViewSwitchKeeper` | 851 |
+| `KoopaBattleMapStair` | 852 |
+| `KoopaBattleMapPlate` | 853 |
+| `KoopaBattleMapCoinPlate` | 854 |
+| `KoopaBattleMapStairBig` | 855 |
+| `KoopaBattleMapStairTurn` | 856 |
+| `KoopaBattleMapStairturnAppear` | 857 |
+| `KoopaVS1PartsSpiralRoad` | 858 |
+| `KoopaVS1PartsMoveStepA` | 859 |
+| `KoopaVS1PartsMoveStepB` | 860 |
+| `KoopaVS1PartsRotateMoveStepA` | 861 |
+| `KoopaVS1PartsRotateMoveStepB` | 862 |
+| `KoopaVS1PartsReverseGRoad` | 863 |
+| `KoopaVS1PartsStairRoad` | 864 |
+| `KoopaVS1PartsBattleStage` | 865 |
+| `KoopaVS2PartsReverseGRoadA` | 866 |
+| `KoopaVS2PartsReverseGRoadB` | 867 |
+| `KoopaVS2PartsStartRestStep` | 868 |
+| `KoopaVS2PartsRestStepA` | 869 |
+| `KoopaVS2PartsRestStepB` | 870 |
+| `KoopaVS2PartsRestStepC` | 871 |
+| `KoopaVS2PartsRestClipC` | 872 |
+| `KoopaVS2PartsRestStepD` | 873 |
+| `KoopaVS2PartsRestStepE` | 874 |
+| `KoopaVS2PartsRestStepF` | 875 |
+| `KoopaVS2PartsRestStepG` | 876 |
+| `KoopaVS2PartsDarkMatterA` | 877 |
+| `KoopaVS2PartsDarkMatterB` | 878 |
+| `KoopaVS2PartsDarkMatterC` | 879 |
+| `KoopaVS2PartsDarkMatterD` | 880 |
+| `KoopaVS2PartsDarkMatterE` | 881 |
+| `KoopaVS2PartsStartMoveStepA` | 882 |
+| `KoopaVS2PartsStartMoveStepB` | 883 |
+| `KoopaVS2PartsStartMoveStepC` | 884 |
+| `KoopaVS2PartsRollingStep` | 885 |
+| `KoopaVS2Parts2DMoveStepBarA` | 886 |
+| `KoopaVS2Parts2DMoveStepBarB` | 887 |
+| `KoopaVS2Parts2DMoveStepSBarB` | 888 |
+| `KoopaVS2Parts2DMoveStepConvex` | 889 |
+| `KoopaVS2Parts2DMoveStepLShape` | 890 |
+| `KoopaVS2Parts2DMoveStepCross` | 891 |
+| `KoopaVS2PartsJoinedMoveStep` | 892 |
+| `KoopaVS2PartsJoinedMoveClip` | 893 |
+| `KoopaVS2PartsSquareMoveStepA` | 894 |
+| `KoopaVS2PartsSquareMoveClipA` | 895 |
+| `KoopaVS2PartsSquareMoveStepB` | 896 |
+| `KoopaVS2PartsSquareMoveClipB` | 897 |
+| `KoopaVS2PartsClipAreaDisplayA` | 898 |
+| `KoopaVS2PartsStairBig` | 899 |
+| `KoopaVS2Parts2DRailGuideA` | 900 |
+| `KoopaVS3RotateStepA` | 901 |
+| `KoopaVS3RotateStepB` | 902 |
+| `KoopaVS3RotateStepD` | 903 |
+| `KoopaVS3RotateStepsA` | 904 |
+| `KoopaVS3Parts2DWallA` | 905 |
+| `TreasureBoxCrackedEmpty` | 906 |
+| `TreasureBoxCrackedCoin` | 907 |
+| `TreasureBoxCrackedYellowChip` | 908 |
+| `TreasureBoxCrackedBlueChip` | 909 |
+| `TreasureBoxCrackedKinokoOneUp` | 910 |
+| `TreasureBoxCrackedKinokoLifeUp` | 911 |
+| `TreasureBoxCrackedAirBubble` | 912 |
+| `TreasureBoxCrackedPowerStar` | 913 |
+| `TreasureBoxEmpty` | 914 |
+| `TreasureBoxCoin` | 915 |
+| `TreasureBoxYellowChip` | 916 |
+| `TreasureBoxBlueChip` | 917 |
+| `TreasureBoxKinokoOneUp` | 918 |
+| `TreasureBoxKinokoLifeUp` | 919 |
+| `TreasureBoxGoldEmpty` | 920 |
+| `OceanRingRuinsMove` | 921 |
+| `OceanRingRuinsGearSmall` | 922 |
+| `OceanRingRuinsGearBig` | 923 |
+| `OceanRingRuinsColumn` | 924 |
+| `OceanRingRuinsBase` | 925 |
+| `KameckShip` | 926 |
+| `BeachParasol` | 927 |
+| `BeachChair` | 928 |
+| `GhostShipCaveMoveGroundA` | 929 |
+| `GhostShipCaveMoveGroundB` | 930 |
+| `PhantomShipBoxFloaterA` | 931 |
+| `PhantomShipBoxFloaterB` | 932 |
+| `PhantomShipBoxFloaterC` | 933 |
+| `PhantomCaveStepA` | 934 |
+| `GhostShipCaveClosedRockA` | 935 |
+| `GhostShipBrokenHead` | 936 |
+| `CannonUnderConstructionA` | 937 |
+| `CannonUnderConstructionB` | 938 |
+| `GhostShipCavePipeCollision` | 939 |
+| `AstroMapBoard` | 940 |
+| `AstroCore` | 941 |
+| `AstroCountDownPlate` | 942 |
+| `AstroDome` | 943 |
+| `AstroDomeEntrance` | 944 |
+| `AstroStarPlate` | 945 |
+| `AstroBaseA` | 946 |
+| `AstroBaseB` | 947 |
+| `AstroBaseC` | 948 |
+| `AstroBaseKitchen` | 949 |
+| `AstroBaseCenterA` | 950 |
+| `AstroBaseCenterB` | 951 |
+| `AstroBaseCenterTop` | 952 |
+| `AstroRotateStepA` | 953 |
+| `AstroRotateStepB` | 954 |
+| `AstroDecoratePartsA` | 955 |
+| `AstroDecoratePartsGearA` | 956 |
+| `AstroChildRoom` | 957 |
+| `AstroParking` | 958 |
+| `AstroLibrary` | 959 |
+| `AstroRoomLibrary` | 960 |
+| `AstroTorchLightRed` | 961 |
+| `AstroTorchLightBlue` | 962 |
+| `EffectTicoS` | 963 |
+| `EffectTicoL` | 964 |
+| `UFOKinokoUnderConstruction` | 965 |
+| `UFOKinokoLandingAstro` | 966 |
+| `AstroDomeSky` | 967 |
+| `WhiteRoom` | 968 |
+| `VROrbit` | 969 |
+| `VRDarkSpace` | 970 |
+| `VRSandwichSun` | 971 |
+| `SummerSky` | 972 |
+| `GalaxySky` | 973 |
+| `MilkyWaySky` | 974 |
+| `HalfGalaxySky` | 975 |
+| `GreenPlanetOrbitSky` | 976 |
+| `PhantomSky` | 977 |
+| `KoopaVS1Sky` | 978 |
+| `KoopaVS2Sky` | 979 |
+| `FamicomMarioSky` | 980 |
+| `DesertSky` | 981 |
+| `ChildRoomSky` | 982 |
+| `AuroraSky` | 983 |
+| `CloudSky` | 984 |
+| `RockPlanetOrbitSky` | 985 |
+| `StarrySky` | 986 |
+| `AstroDomeSkyA` | 987 |
+| `HomeAir` | 988 |
+| `SphereAir` | 989 |
+| `SunsetAir` | 990 |
+| `FineAir` | 991 |
+| `DimensionAir` | 992 |
+| `DarknessRoomAir` | 993 |
+| `TwilightAir` | 994 |
+| `ZoneHalo` | 995 |
+| `PowerStarHalo` | 996 |
+| `Coin` | 997 |
+| `PurpleCoin` | 998 |
+| `RailCoin` | 999 |
+| `CircleCoinGroup` | 1000 |
+| `PurpleRailCoin` | 1001 |
+| `CirclePurpleCoinGroup` | 1002 |
+| `PurpleCoinStarter` | 1003 |
+| `CoinReplica` | 1004 |
+| `QuestionCoin` | 1005 |
+| `BlueChip` | 1006 |
+| `YellowChip` | 1007 |
+| `BlueChipGroup` | 1008 |
+| `YellowChipGroup` | 1009 |
+| `StarPiece` | 1010 |
+| `StarPieceFlow` | 1011 |
+| `StarPieceGroup` | 1012 |
+| `StarPieceFollowGroup` | 1013 |
+| `StarPieceMother` | 1014 |
+| `StarPieceSpot` | 1015 |
+| `OceanBowl` | 1016 |
+| `OceanRing` | 1017 |
+| `OceanRingAndFlag` | 1018 |
+| `OceanSphere` | 1019 |
+| `WhirlPool` | 1020 |
+| `WhirlPoolAccelerator` | 1021 |
+| `FishGroupA` | 1022 |
+| `FishGroupB` | 1023 |
+| `FishGroupC` | 1024 |
+| `FishGroupD` | 1025 |
+| `FishGroupE` | 1026 |
+| `FishGroupF` | 1027 |
+| `Flag` | 1028 |
+| `FlagKoopaA` | 1029 |
+| `FlagKoopaB` | 1030 |
+| `FlagRaceA` | 1031 |
+| `FlagKoopaCastle` | 1032 |
+| `FlagPeachCastleA` | 1033 |
+| `FlagPeachCastleB` | 1034 |
+| `FlagPeachCastleC` | 1035 |
+| `FlagSurfing` | 1036 |
+| `FlagTamakoro` | 1037 |
+| `SeaGullGroup` | 1038 |
+| `WaterPlant` | 1039 |
+| `HitWallTimerSwitch` | 1040 |
+| `PTimerSwitch` | 1041 |
+| `CrystalSwitch` | 1042 |
+| `HipDropSwitch` | 1043 |
+| `HipDropTimerSwitch` | 1044 |
+| `DesertLandUpSwitch` | 1045 |
+| `DesertLandDownSwitch` | 1046 |
+| `ScrewSwitch` | 1047 |
+| `ScrewSwitchReverse` | 1048 |
+| `PicketSwitch` | 1049 |
+| `PicketSwitchBig` | 1050 |
+| `ValveSwitch` | 1051 |
+| `KeySwitch` | 1052 |
+| `SpinLeverSwitch` | 1053 |
+| `EffectObjSample` | 1054 |
+| `ShootingStarArea` | 1055 |
+| `IcePlanetLight` | 1056 |
+| `IceLayerBreak` | 1057 |
+| `LavaSparksS` | 1058 |
+| `LavaSparksL` | 1059 |
+| `SpaceDustS` | 1060 |
+| `SpaceDustL` | 1061 |
+| `BirdLouseS` | 1062 |
+| `BirdLouseL` | 1063 |
+| `SnowS` | 1064 |
+| `FallingSmallRock` | 1065 |
+| `LavaHomeVolcanoFallingRock` | 1066 |
+| `Fountain` | 1067 |
+| `FountainBig` | 1068 |
+| `WaterfallS` | 1069 |
+| `WaterfallL` | 1070 |
+| `DrainPipeBubbleA` | 1071 |
+| `DrainPipeBubbleB` | 1072 |
+| `WaterDropTop` | 1073 |
+| `WaterDropBottom` | 1074 |
+| `WaterDropMiddle` | 1075 |
+| `SubmarineSteam` | 1076 |
+| `SubmarineVolcano` | 1077 |
+| `WaterLayerBreak` | 1078 |
+| `StarPieceClusterBreak` | 1079 |
+| `FireworksA` | 1080 |
+| `BattleShipExplosionRock` | 1081 |
+| `BattleShipExplosionMetal` | 1082 |
+| `ForestWaterfallS` | 1083 |
+| `ForestWaterfallL` | 1084 |
+| `SandBreezeS` | 1085 |
+| `SandBreezeL` | 1086 |
+| `SpringJetWater` | 1087 |
+| `SandUpDownKGBaseEffect` | 1088 |
+| `SandUpDownTowerTopEffect` | 1089 |
+| `UFOSandObstacleAEffect` | 1090 |
+| `UFOSandObstacleBEffect` | 1091 |
+| `UFOSandObstacleCEffect` | 1092 |
+| `GravityDust` | 1093 |
+| `Steam` | 1094 |
+| `FallRedLeaf` | 1095 |
+| `FallGreenLeaf` | 1096 |
+| `IcicleRockLight` | 1097 |
+| `TwinFallLakeWaterFall` | 1098 |
+| `EffectTeresa` | 1099 |
+| `UFOKinokoLandingBlackSmoke` | 1100 |
+| `InvisibleWall10x10` | 1101 |
+| `InvisibleWall10x20` | 1102 |
+| `InvisibleWallJump10x10` | 1103 |
+| `InvisibleWallJump10x20` | 1104 |
+| `InvisibleWallGCapture10x10` | 1105 |
+| `InvisibleWallGCapture10x20` | 1106 |
+| `PolygonCodeRecoveryPlate` | 1107 |
+| `PolygonCodeRecoveryBowl` | 1108 |
+| `InvisibleWallBattleShipA` | 1109 |
+| `InvisibleWaterfall` | 1110 |
+| `InvisibleWaterfallTwinFallLake` | 1111 |
+| `StatusFloor` | 1112 |
+| `GlobalCubeGravity` | 1113 |
+| `GlobalConeGravity` | 1114 |
+| `GlobalDiskGravity` | 1115 |
+| `GlobalDiskTorusGravity` | 1116 |
+| `GlobalPlaneGravity` | 1117 |
+| `GlobalPlaneGravityInBox` | 1118 |
+| `GlobalPlaneGravityInCylinder` | 1119 |
+| `GlobalPointGravity` | 1120 |
+| `GlobalSegmentGravity` | 1121 |
+| `GlobalWireGravity` | 1122 |
+| `MiniEggStarGalaxy` | 1123 |
+| `MiniHoneyBeeKingdomGalaxy` | 1124 |
+| `MiniFlipPanelExGalaxy` | 1125 |
+| `MiniSurfingLv1Galaxy` | 1126 |
+| `MiniTriLegLv1Galaxy` | 1127 |
+| `MiniStarDustGalaxy` | 1128 |
+| `MiniTamakoroExLv1Galaxy` | 1129 |
+| `MiniBattleShipGalaxy` | 1130 |
+| `MiniBreakDownPlanetGalaxy` | 1131 |
+| `MiniKoopaBattleVs1Galaxy` | 1132 |
+| `MiniHeavenlyBeachGalaxy` | 1133 |
+| `MiniCubeBubbleExLv1Galaxy` | 1134 |
+| `MiniPhantomGalaxy` | 1135 |
+| `MiniOceanFloaterLandGalaxy` | 1136 |
+| `MiniKoopaJrShipLv1Galaxy` | 1137 |
+| `MiniCosmosGardenGalaxy` | 1138 |
+| `MiniIceVolcanoGalaxy` | 1139 |
+| `MiniHoneyBeeExGalaxy` | 1140 |
+| `MiniSandClockGalaxy` | 1141 |
+| `MiniKoopaBattleVs2Galaxy` | 1142 |
+| `MiniReverseKingdomGalaxy` | 1143 |
+| `MiniOceanRingGalaxy` | 1144 |
+| `MiniFactoryGalaxy` | 1145 |
+| `MiniSkullSharkGalaxy` | 1146 |
+| `MiniFloaterOtaKingGalaxy` | 1147 |
+| `MiniOceanPhantomCaveGalaxy` | 1148 |
+| `MiniCannonFleetGalaxy` | 1149 |
+| `MiniDarkRoomGalaxy` | 1150 |
+| `MiniHellProminenceGalaxy` | 1151 |
+| `MiniKoopaBattleVs3Galaxy` | 1152 |
+| `SurprisedGalaxy` | 1153 |
+| `SurpBeltConveyerExGalaxy` | 1154 |
+| `SurpCocoonExGalaxy` | 1155 |
+| `SurpTearDropGalaxy` | 1156 |
+| `SurpTeresaMario2DGalaxy` | 1157 |
+| `SurpSnowCapsuleGalaxy` | 1158 |
+| `SurpTransformationExGalaxy` | 1159 |
+| `SurpFishTunnelGalaxy` | 1160 |
+| `SurpTamakoroExLv2Galaxy` | 1161 |
+| `SurpSurfingLv2Galaxy` | 1162 |
+| `SurpCubeBubbleExLv2Galaxy` | 1163 |
+| `SurpPeachCastleFinalGalaxy` | 1164 |
+| `ClipFieldSwitch` | 1165 |
+| `FallOutFieldDraw` | 1166 |
+| `ClipFieldFillDraw` | 1167 |
+| `SpotLightVolumeDraw` | 1168 |
+| `GroupSwitchWatcher` | 1169 |
+| `RaceRail` | 1170 |
+| `TimerSwitch` | 1171 |
+| `SwitchSynchronizerReverse` | 1172 |
+| `MovieStarter` | 1173 |
+| `DemoGroup` | 1174 |
+| `DemoSubGroup` | 1175 |
+| `AstroDomeDemoStarter` | 1176 |
+| `AstroDomeGalaxySelector` | 1177 |
+| `StarReturnDemoStarter` | 1178 |
+| `GrandStarReturnDemoStarter` | 1179 |
+| `ScenarioStarter` | 1180 |
+| `FileSelector` | 1181 |
+
+<a id="p-nebula-registries--form"></a>
+
+### form
+
+The player's forms. Number: the form id (`power_up` events, `set_value`). A mod's `add_power_up` adds one. 9 rows.
+
+| Name | Number |
+|---|---|
+| `normal` | 0 |
+| `invincible` | 1 |
+| `fire` | 2 |
+| `ice` | 3 |
+| `bee` | 4 |
+| `spring` | 5 |
+| `boo` | 6 |
+| `flying` | 7 |
+| `tornado` | 9 |
+
+<a id="p-nebula-registries--area"></a>
+
+### area
+
+Kinds of area a level places. Number: its place in the table. 67 rows.
+
+| Name | Number |
+|---|---|
+| `SwitchArea` | 0 |
+| `RaceJudgeCube` | 1 |
+| `NinForceWindCube` | 2 |
+| `NinAbyssCube` | 3 |
+| `CubeCamera` | 4 |
+| `BindEndCube` | 5 |
+| `EffectCylinder` | 6 |
+| `DeathArea` | 7 |
+| `WarpCube` | 8 |
+| `TripodBossStepStart` | 9 |
+| `Water` | 10 |
+| `PlaneModeCube` | 11 |
+| `PlaneCircularModeCube` | 12 |
+| `PipeModeCube` | 13 |
+| `TowerModeCylinder` | 14 |
+| `ShadeCube` | 15 |
+| `PullBackCube` | 16 |
+| `PullBackCylinder` | 17 |
+| `RestartCube` | 18 |
+| `ChangeBgmCube` | 19 |
+| `BgmProhibitArea` | 20 |
+| `SoundEmitterCube` | 21 |
+| `SoundEmitterSphere` | 22 |
+| `PlaneCollisionCube` | 23 |
+| `ForbidTriangleJumpCube` | 24 |
+| `ForbidWaterSearchCube` | 25 |
+| `QuakeEffectArea` | 26 |
+| `HazeCube` | 27 |
+| `AudioEffectArea` | 28 |
+| `BigBubbleGoalArea` | 29 |
+| `SunLightArea` | 30 |
+| `GlaringLightArea` | 31 |
+| `ViewGroupCtrlCube` | 32 |
+| `LensFlareArea` | 33 |
+| `CameraRepulsiveArea` | 34 |
+| `LightArea` | 35 |
+| `FallsCube` | 36 |
+| `MercatorCube` | 37 |
+| `AstroChangeStageCube` | 38 |
+| `ImageEffectArea` | 39 |
+| `BlueStarGuidanceCube` | 40 |
+| `TicoSeedGuidanceCube` | 41 |
+| `MessageArea` | 42 |
+| `SmokeEffectColorArea` | 43 |
+| `BeeWallShortDistArea` | 44 |
+| `ExtraWallCheckArea` | 45 |
+| `ExtraWallCheckCylinder` | 46 |
+| `SpinGuidanceCube` | 47 |
+| `HipDropGuidanceCube` | 48 |
+| `TamakoroMoveGuidanceCube` | 49 |
+| `TamakoroJumpGuidanceCube` | 50 |
+| `BigBubbleGuidanceCube` | 51 |
+| `HeavySteeringCube` | 52 |
+| `NonSleepCube` | 53 |
+| `AreaMoveSphere` | 54 |
+| `DodoryuClosedCylinder` | 55 |
+| `DashChargeCylinder` | 56 |
+| `PlayerSeArea` | 57 |
+| `RasterScrollCube` | 58 |
+| `OnimasuCube` | 59 |
+| `ForbidJumpCube` | 60 |
+| `CollisionArea` | 61 |
+| `AstroOverlookArea` | 62 |
+| `CelestrialSphere` | 63 |
+| `MirrorArea` | 64 |
+| `DarkMatterCube` | 65 |
+| `DarkMatterCylinder` | 66 |
+
+<a id="p-nebula-registries--camera"></a>
+
+### camera
+
+Camera types a level or cutscene names. Number: its place in the table. 45 rows.
+
+| Name | Number |
+|---|---|
+| `CAM_TYPE_XZ_PARA` | 0 |
+| `CAM_TYPE_TOWER` | 1 |
+| `CAM_TYPE_FOLLOW` | 2 |
+| `CAM_TYPE_WONDER_PLANET` | 3 |
+| `CAM_TYPE_POINT_FIX` | 4 |
+| `CAM_TYPE_EYEPOS_FIX` | 5 |
+| `CAM_TYPE_SLIDER` | 6 |
+| `CAM_TYPE_INWARD_TOWER` | 7 |
+| `CAM_TYPE_EYEPOS_FIX_THERE` | 8 |
+| `CAM_TYPE_TRIPOD_BOSS` | 9 |
+| `CAM_TYPE_TOWER_POS` | 10 |
+| `CAM_TYPE_TRIPOD_PLANET` | 11 |
+| `CAM_TYPE_DEAD` | 12 |
+| `CAM_TYPE_INWARD_SPHERE` | 13 |
+| `CAM_TYPE_RAIL_DEMO` | 14 |
+| `CAM_TYPE_RAIL_FOLLOW` | 15 |
+| `CAM_TYPE_TRIPOD_BOSS_JOINT` | 16 |
+| `CAM_TYPE_CHARMED_TRIPOD_BOSS` | 17 |
+| `CAM_TYPE_OBJ_PARALLEL` | 18 |
+| `CAM_TYPE_CHARMED_FIX` | 19 |
+| `CAM_TYPE_GROUND` | 20 |
+| `CAM_TYPE_TRUNDLE` | 21 |
+| `CAM_TYPE_CUBE_PLANET` | 22 |
+| `CAM_TYPE_INNER_CYLINDER` | 23 |
+| `CAM_TYPE_SPIRAL_DEMO` | 24 |
+| `CAM_TYPE_TALK` | 25 |
+| `CAM_TYPE_MTXREG_PARALLEL` | 26 |
+| `CAM_TYPE_CHARMED_VECREG` | 27 |
+| `CAM_TYPE_MEDIAN_PLANET` | 28 |
+| `CAM_TYPE_TWISTED_PASSAGE` | 29 |
+| `CAM_TYPE_MEDIAN_TOWER` | 30 |
+| `CAM_TYPE_CHARMED_VECREG_TOWER` | 31 |
+| `CAM_TYPE_FRONT_AND_BACK` | 32 |
+| `CAM_TYPE_RACE_FOLLOW` | 33 |
+| `CAM_TYPE_2D_SLIDE` | 34 |
+| `CAM_TYPE_FOO_FIGHTER` | 35 |
+| `CAM_TYPE_FOO_FIGHTER_PLANET` | 36 |
+| `CAM_TYPE_BLACK_HOLE` | 37 |
+| `CAM_TYPE_ANIM` | 38 |
+| `CAM_TYPE_DPD` | 39 |
+| `CAM_TYPE_WATER_FOLLOW` | 40 |
+| `CAM_TYPE_WATER_PLANET` | 41 |
+| `CAM_TYPE_WATER_PLANET_BOSS` | 42 |
+| `CAM_TYPE_RAIL_WATCH` | 43 |
+| `CAM_TYPE_SUBJECTIVE` | 44 |
+
+<a id="p-nebula-registries--gravity"></a>
+
+### gravity
+
+Gravity shapes a level places. Number: its place in the factory table, as an object. 8 rows.
+
+| Name | Number |
+|---|---|
+| `GlobalCubeGravity` | 1113 |
+| `GlobalConeGravity` | 1114 |
+| `GlobalDiskGravity` | 1115 |
+| `GlobalDiskTorusGravity` | 1116 |
+| `GlobalPlaneGravity` | 1117 |
+| `GlobalPointGravity` | 1120 |
+| `GlobalSegmentGravity` | 1121 |
+| `GlobalWireGravity` | 1122 |
+
+<a id="p-nebula-registries--message"></a>
+
+### message
+
+Messages objects send each other (`on message`). Number: the message. 183 rows.
+
+| Name | Number |
+|---|---|
+| `ACTMES_PLAYER_ATTACK_START` | 0 |
+| `ACTMES_PLAYER_PUNCH` | 1 |
+| `ACTMES_PLAYER_TRAMPLE` | 2 |
+| `ACTMES_PLAYER_HIP_DROP` | 3 |
+| `ACTMES_PLAYER_HIP_DROP_FLOOR` | 4 |
+| `ACTMES_PLAYER_UPPER_PUNCH` | 5 |
+| `ACTMES_JET_TURTLE_ATTACK` | 6 |
+| `ACTMES_FOO_ATTACK` | 7 |
+| `ACTMES_FIREBALL_ATTACK` | 8 |
+| `ACTMES_SEARCHLIGHT_ATTACK` | 9 |
+| `ACTMES_FREEZE_ATTACK` | 10 |
+| `ACTMES_INVINCIBLE_ATTACK` | 11 |
+| `ACTMES_STAR_PIECE_ATTACK` | 12 |
+| `ACTMES_IS_STAR_PIECE_REFLECT` | 13 |
+| `ACTMES_IS_LOCKON_STAR_PIECE_SHOOT` | 14 |
+| `ACTMES_STAR_PIECE_GIFT` | 15 |
+| `ACTMES_STAR_PIECE_GIFT_1` | 16 |
+| `ACTMES_STAR_PIECE_GIFT_MAX` | 25 |
+| `ACTMES_PLAYER_ATTACK_END` | 26 |
+| `ACTMES_IS_PUNCH_ENABLE` | 27 |
+| `ACTMES_HITMARK_EMIT` | 28 |
+| `ACTMES_INVALID_HIT` | 29 |
+| `ACTMES_TAKE` | 30 |
+| `ACTMES_TAKEN` | 31 |
+| `ACTMES_APART` | 33 |
+| `ACTMES_THROW` | 34 |
+| `ACTMES_DAMAGEDROP` | 35 |
+| `ACTMES_RUSHDROP` | 36 |
+| `ACTMES_ATTACKDROP` | 37 |
+| `ACTMES_HANG_CANCEL` | 38 |
+| `ACTMES_SHAKE_OFF_BEE` | 39 |
+| `ACTMES_TAKE_TOUCH` | 40 |
+| `ACTMES_PUSH` | 41 |
+| `ACTMES_PUSH_FORCE` | 42 |
+| `ACTMES_KICK` | 43 |
+| `ACTMES_JUMP` | 44 |
+| `ACTMES_TOUCHJUMP` | 45 |
+| `ACTMES_BILLIARDJUMP` | 46 |
+| `ACTMES_AWAYJUMP` | 47 |
+| `ACTMES_TORNADO_ATTACK` | 49 |
+| `ACTMES_TORNADO_STORM_RANGE` | 50 |
+| `ACTMES_SPIN_STORM_RANGE` | 51 |
+| `ACTMES_BALL_TOUCH_WALL` | 54 |
+| `ACTMES_BALL_DASH_WALL` | 57 |
+| `ACTMES_BALL_DASH_GROUND` | 58 |
+| `ACTMES_BIG_BUBBLE_MERGE` | 60 |
+| `ACTMES_BIG_BUBBLE_ASSIMILATE` | 62 |
+| `ACTMES_REFLECT` | 63 |
+| `ACTMES_REFLECT_V` | 64 |
+| `ACTMES_IS_BROKEN` | 65 |
+| `ACTMES_PASS_RING` | 66 |
+| `ACTMES_FOUNTAINJUMP` | 67 |
+| `ACTMES_TERESA_PLAYER_TOUCH` | 68 |
+| `ACTMES_RUSH_PLAYER_TOUCH` | 69 |
+| `ACTMES_BOMB_TERESA_TONGUE_TOUCH` | 70 |
+| `ACTMES_PUDDLE_TOUCH_GROUND` | 71 |
+| `ACTMES_WARP` | 72 |
+| `ACTMES_ASK_HIDDEN_BY_SNOW` | 73 |
+| `ACTMES_NOTIFY_DISCOVER_SNOW` | 74 |
+| `ACTMES_ENEMY_ATTACK_START` | 75 |
+| `ACTMES_ENEMY_ATTACK_FLIP_VERYWEAK` | 76 |
+| `ACTMES_ENEMY_ATTACK_FLIP_WEAK` | 77 |
+| `ACTMES_ENEMY_ATTACK_FLIP_WEAK_JUMP` | 78 |
+| `ACTMES_ENEMY_ATTACK_FLIP_JUMP` | 79 |
+| `ACTMES_ENEMY_ATTACK_FLIP` | 80 |
+| `ACTMES_ENEMY_ATTACK_FLIP_ROT` | 81 |
+| `ACTMES_ENEMY_ATTACK_FLIP_MAXIMUM` | 82 |
+| `ACTMES_ENEMY_ATTACK` | 83 |
+| `ACTMES_ENEMY_ATTACK_STRONG` | 84 |
+| `ACTMES_ENEMY_ATTACK_MAXIMUM` | 85 |
+| `ACTMES_ENEMY_ATTACK_EXPLOSION` | 86 |
+| `ACTMES_ENEMY_ATTACK_FIREBACK` | 87 |
+| `ACTMES_ENEMY_ATTACK_FIRERUN` | 88 |
+| `ACTMES_ENEMY_ATTACK_FIRERUN_STRONG` | 89 |
+| `ACTMES_ENEMY_ATTACK_ELECTRIC` | 90 |
+| `ACTMES_ENEMY_ATTACK_HEATBEAM` | 91 |
+| `ACTMES_ENEMY_ATTACK_ACID` | 92 |
+| `ACTMES_ENEMY_ATTACK_FREEZE` | 93 |
+| `ACTMES_ENEMY_ATTACK_CRUSH` | 94 |
+| `ACTMES_ENEMY_ATTACK_EXTRA_DAMAGE` | 95 |
+| `ACTMES_ENEMY_ATTACK_COUNTER_SPIN` | 96 |
+| `ACTMES_ENEMY_ATTACK_COUNTER_HIPDROP` | 97 |
+| `ACTMES_TO_ENEMY_ATTACK_BLOW` | 98 |
+| `ACTMES_TO_ENEMY_ATTACK_TRAMPLE` | 99 |
+| `ACTMES_TO_ENEMY_ATTACK_SHOCK_WAVE` | 100 |
+| `ACTMES_ENEMY_ATTACK_END` | 101 |
+| `ACTMES_SUCCESS` | 102 |
+| `ACTMES_FAILURE` | 103 |
+| `ACTMES_GROUP_MOVE_START` | 104 |
+| `ACTMES_GROUP_MOVE_STOP` | 105 |
+| `ACTMES_GROUP_ATTACK` | 106 |
+| `ACTMES_GROUP_SHOW` | 107 |
+| `ACTMES_GROUP_HIDE` | 108 |
+| `ACTMES_GROUP_LOD_LOW` | 109 |
+| `ACTMES_START_DEMO` | 111 |
+| `ACTMES_END_DEMO` | 112 |
+| `ACTMES_FORCE_KILL` | 113 |
+| `ACTMES_INHALE_BLACK_HOLE` | 115 |
+| `ACTMES_START_POWER_STAR_GET` | 116 |
+| `ACTMES_ITEM_GET` | 135 |
+| `ACTMES_IS_PULL_ENABLE` | 136 |
+| `ACTMES_ITEM_PULL` | 137 |
+| `ACTMES_ITEM_SHOW` | 138 |
+| `ACTMES_ITEM_HIDE` | 139 |
+| `ACTMES_ITEM_START_MOVE` | 140 |
+| `ACTMES_ITEM_END_MOVE` | 141 |
+| `ACTMES_OPD_SHOOT` | 142 |
+| `ACTMES_IS_OPD_SITE_IN` | 143 |
+| `ACTMES_RUSH_BEGIN` | 145 |
+| `ACTMES_AUTORUSH_BEGIN` | 146 |
+| `ACTMES_RUSH_CANCEL` | 147 |
+| `ACTMES_RUSH_FORCE_CANCEL` | 148 |
+| `ACTMES_RUSH_DAMAGE_CANCEL` | 149 |
+| `ACTMES_RUSH_END` | 150 |
+| `ACTMES_IS_RUSH_ENABLE` | 151 |
+| `ACTMES_IS_RUSH_TAKEOVER` | 152 |
+| `ACTMES_IS_RUSH_REQUEST` | 153 |
+| `ACTMES_SLING_SHOOT_ACTOR_HANG_START` | 155 |
+| `ACTMES_SLING_SHOOT_ACTOR_HANG_END` | 156 |
+| `ACTMES_SLING_SHOOT_ACTOR_APART` | 157 |
+| `ACTMES_SLING_SHOOT_ATTACK` | 158 |
+| `ACTMES_SLING_SHOOT_PASS_THROUGH_ENABLE` | 159 |
+| `ACTMES_SLING_SHOOT_IS_LAST_DAMAGE` | 160 |
+| `ACTMES_UPDATE_BASEMTX` | 161 |
+| `ACTMES_TRIPODBOSS_LEG_IS_DAMAGE` | 169 |
+| `ACTMES_TRIPODBOSS_STARTED` | 170 |
+| `ACTMES_DISPERSE_BOMB_TERESA` | 171 |
+| `ACTMES_BREAK_POLTA_GROUND_ROCK` | 172 |
+| `ACTMES_SPHERE_PLAYER_BINDED` | 173 |
+| `ACTMES_SET_UP_JUMP_HOLE` | 174 |
+| `ACTMES_SHOOT_JUMP_HOLE` | 175 |
+| `ACTMES_END_JUMP_HOLE` | 176 |
+| `ACTMES_END_RAIL_DASH` | 177 |
+| `ACTMES_END_BALL_RAIL` | 178 |
+| `ACTMES_END_BALL_BIND` | 179 |
+| `ACTMES_FLOOR_TOUCH` | 180 |
+| `ACTMES_WALL_TOUCH` | 181 |
+| `ACTMES_CEIL_TOUCH` | 182 |
+| `ACTMES_REQUEST_CLAP` | 183 |
+| `ACTMES_DINO_PACKUN_PUNCHED_BALL` | 184 |
+| `ACTMES_DINO_PACKUN_PULLED_TAIL` | 185 |
+| `ACTMES_DINO_PACKUN_BALL_ATTACK` | 186 |
+| `ACTMES_TOMB_SPIDER_BATTLE_START` | 187 |
+| `ACTMES_TOMB_SPIDER_DEMO_START` | 188 |
+| `ACTMES_SKELETAL_FISH_BOSS_BATTLE_START` | 190 |
+| `ACTMES_SKELETAL_FISH_BOSS_BATTLE_END` | 191 |
+| `ACTMES_KOOPA_HIP_DROP_ATTACK` | 192 |
+| `ACTMES_KOOPA_PLAYER_DAMAGE` | 193 |
+| `ACTMES_KOOPA_PLATE_DAMAGE` | 194 |
+| `ACTMES_TICO_RAIL_TOUCH` | 195 |
+| `ACTMES_IS_REFLECTION_G_CAPTURE` | 196 |
+| `ACTMES_IS_NO_BREAK_G_CAPTURE` | 197 |
+| `ACTMES_TURNIP_ATTACK` | 198 |
+| `ACTMES_PAKKUN_BALL_ATTACK` | 199 |
+| `ACTMES_MAPPARTS_ON_PLAYER` | 202 |
+| `ACTMES_MAPPARTS_START_ROTATE_AT_POINT` | 203 |
+| `ACTMES_MAPPARTS_END_ROTATE_AT_POINT` | 204 |
+| `ACTMES_MAPPARTS_START_ROTATE_BETWEEN_POINTS` | 205 |
+| `ACTMES_MAPPARTS_DISAPPEAR_WITH_BLINK` | 207 |
+| `ACTMES_NPC_EVENT_START` | 208 |
+| `ACTMES_NPC_EVENT_END` | 209 |
+| `ACTMES_NPC_EVENT_TALK_ENABLE` | 210 |
+| `ACTMES_NPC_EVENT_TALK_DISABLE` | 211 |
+| `ACTMES_NPC_TALK_NEXT` | 212 |
+| `ACTMES_SPHERE_SELECTOR_SELECT_START` | 224 |
+| `ACTMES_SPHERE_SELECTOR_SELECT_END` | 225 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRM_START` | 226 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRM_CANCEL` | 227 |
+| `ACTMES_SPHERE_SELECTOR_CONFIRMED` | 228 |
+| `ACTMES_SPHERE_SELECTOR_TARGET_SELECTED` | 229 |
+| `ACTMES_TUTORIAL_START` | 230 |
+| `ACTMES_TUTORIAL_NEXT` | 231 |
+| `ACTMES_TUTORIAL_PREV` | 232 |
+| `ACTMES_TUTORIAL_PASS` | 233 |
+| `ACTMES_TUTORIAL_OMIT` | 235 |
+| `ACTMES_RACE_READY` | 236 |
+| `ACTMES_RACE_START` | 237 |
+| `ACTMES_RACE_GOAL` | 238 |
+| `ACTMES_RACE_RESET` | 239 |
+| `ACTMES_HEAVENSDOOR_RUNAWAY_RABBIT_WAIT` | 240 |
+| `ACTMES_HEAVENSDOOR_RUNAWAY_RABBIT_START` | 241 |
+| `ACTMES_LAUNCHER_BREAKABLE` | 242 |
+| `ACTMES_PLANT_GROUP_EMIT_ITEM` | 243 |
+
+<a id="p-nebula-registries--floor"></a>
+
+### floor
+
+Floor codes of collision. Number: the code. 36 rows.
+
+| Name | Number |
+|---|---|
+| `Normal` | 0 |
+| `Death` | 1 |
+| `Slip` | 2 |
+| `NoSlip` | 3 |
+| `DamageNormal` | 4 |
+| `Ice` | 5 |
+| `JumpLow` | 6 |
+| `JumpMiddle` | 7 |
+| `JumpHigh` | 8 |
+| `Slider` | 9 |
+| `DamageFire` | 10 |
+| `JumpNormal` | 11 |
+| `FireDance` | 12 |
+| `Sand` | 13 |
+| `Glass` | 14 |
+| `DamageElectric` | 15 |
+| `PullBack` | 16 |
+| `Sink` | 17 |
+| `SinkPoison` | 18 |
+| `Slide` | 19 |
+| `WaterBottomH` | 20 |
+| `WaterBottomM` | 21 |
+| `WaterBottomL` | 22 |
+| `Wet` | 23 |
+| `Needle` | 24 |
+| `SinkDeath` | 25 |
+| `Snow` | 26 |
+| `RailMove` | 27 |
+| `AreaMove` | 28 |
+| `Press` | 29 |
+| `NoStampSand` | 30 |
+| `SinkDeathMud` | 31 |
+| `Brake` | 32 |
+| `GlassIce` | 33 |
+| `JumpParasol` | 34 |
+| `End` | 35 |
+
+<a id="p-nebula-registries--comet"></a>
+
+### comet
+
+Comet kinds a galaxy's scenario names. Number: its id. 5 rows.
+
+| Name | Number |
+|---|---|
+| `Red` | 0 |
+| `Ghost` | 1 |
+| `Dark` | 2 |
+| `Quick` | 3 |
+| `Purple` | 4 |
+
+<a id="p-nebula-registries--hud"></a>
+
+### hud
+
+HUD parts (`show_hud`). Number: its bit. 7 rows.
+
+| Name | Number |
+|---|---|
+| `coins` | 1 |
+| `star_bits` | 2 |
+| `lives` | 4 |
+| `stars` | 8 |
+| `life_meter` | 16 |
+| `pointer` | 32 |
+| `timer` | 64 |
+
+<a id="p-nebula-registries--character"></a>
+
+### character
+
+Who the player plays. Number: 1 for Luigi. 2 rows.
+
+| Name | Number |
+|---|---|
+| `mario` | 0 |
+| `luigi` | 1 |

@@ -282,7 +282,8 @@ Build it with `build.cmd`. The game asks the player before it first runs a mod's
 | [`coin-bank`](../examples/coin-bank) | Keeping numbers and words across plays (`store_get`, `store_set_text`), a message when the player has control |
 | [`goomba-tempo`](../examples/goomba-tempo) | Every object of a kind (`find_actor`), its animation's speed, an option |
 | [`first-person`](../examples/first-person) | A camera of the plugin's own every frame (`set_camera`, `set_camera_near`), the player's model hidden, the game's cameras back for cutscenes ([tutorial 18](tutorials/18-first-person.md)) |
-| [`pulse`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/pulse) | A new object with the game's headers, and a hook |
+| [`scripted-goomba`](../examples/scripted-goomba) | A new object in LumaScript: it follows the player, pays coins, naps |
+| [`coin-rules`](../examples/coin-rules) | A rule for the whole game in LumaScript: every coin counts twice |
 | [`cube`](https://github.com/keepvaibin/nebula/tree/main/native/plugin_sdk/examples/cube) | A new object with the stable interface and a glTF model |
 
 A new object is one call, `register_object`, and then levels place it by its name. A new power-up is `add_power_up`. A new Mario move is the player's buttons and `jump_player` or `play`, or a hook on the player's functions. All of it is in [plugins.md](plugins.md).

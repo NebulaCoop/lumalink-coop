@@ -18,6 +18,7 @@ pub mod inspect;
 pub mod known_patches;
 pub mod object_table;
 pub mod layout;
+pub mod lumascript;
 pub mod messages;
 pub mod package;
 pub mod plan;

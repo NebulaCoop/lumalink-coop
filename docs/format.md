@@ -62,7 +62,8 @@ Any zip tool can make one. `lumalink pack` makes one from a folder and checks it
 | `name` | yes | Text, shown to players. |
 | `version` | yes | Numbers with dots: `2.1.0`. Compared number by number. |
 | `game` | yes | `RMG`: Super Mario Galaxy. Any other value is another game and the mod is refused by name. |
-| `versions` | no | The versions it works on, from `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Only for a mod that truly cannot work on the others. |
+| `regions` | no | `"any"`: every disc (`lumalink new` writes this). Or the discs it is for, from `US`, `PAL` (Europe and Australia), `JP`, `KR`: `["US", "PAL"]`. On another disc the mod is blocked, and its page names the discs it is for. Only for a mod that truly cannot work on the others, such as one that replaces one region's text or layouts. Any other value refuses the file. |
+| `versions` | no | The same by the disc's letter, from older files: `E` (USA), `P` (Europe), `J` (Japan), `K` (Korea), `W` (Taiwan), `C` (China). Left out: all of them. Write `regions` instead. |
 | `nebula` | no | The oldest Nebula it works on: `2.1.0`. |
 | `requires` | no | Names of format features it cannot work without (see "Later additions"). |
 | `authors` | no | Names. |
@@ -106,7 +107,8 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `path` | The layer's folder. May be left out for a layer of rows alone. |
 | `tunables` | The game's tuning numbers by `"<file stem>.<name>"` (or `.<function>.<k>`, `.<function>.<call>.<k>`): a number, `true`/`false`, a list (`null` keeps a place) or `{ "option": "id" }`. The mod says `"requires": ["tunables"]`. See [settings](reference/settings.md). A layer's `switches`, from earlier versions, is refused, naming the tunable for each. |
 | `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](REFERENCE.md#object-changes). |
-| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](tutorials/08-new-objects.md). |
+| `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](reference/lumascript.md#forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
+| `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](tutorials/08-new-objects.md). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](reference/lumascript.md#class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](reference/player-numbers.md). |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
@@ -149,6 +151,8 @@ An option needs `choices` or a `range`, or both.
 `files/` holds files at the paths the game knows them by, in any case: `files/StageData/RedBlueExGalaxy/RedBlueExGalaxyMap.arc`. New paths are new files. Files stay in the form mods use: `.arc`, `.szs`, `.bcsv`, `.bmd`, `.brstm` and the rest. Files can also be modern, turned into the game's forms when the player applies the mod: glTF models and solid ground (`.glb`, `.gltf`, `.kcl.glb`), PNG textures, WAV and Ogg music, and tables as JSON (`.bcsv.json`, a zone's `jmp` tables as `.json`). See [Modern files](REFERENCE.md#modern-files). They need no `requires`.
 
 Text for languages the mod leaves out: if a mod sets files in some language folders and not the one being played, Nebula shows the mod's text anyway, from the same language of another region, then English, then what it has. A player can turn this off for a mod.
+
+A language folder the disc doesn't have (`files/EuGerman/` for a US disc) adds that language: it is listed with the game's languages, and files it lacks come from the disc's English. See [tutorial 5](tutorials/05-text.md#a-language-from-another-release).
 
 ### Saves
 
@@ -406,6 +410,7 @@ A mod that can't be used stays in the list, off, with one line saying why. These
 | THIS MOD NEEDS A NEWER NEBULA | `format` above what it reads, a `requires` name it lacks, or `nebula` above its version. |
 | THIS MOD IS FOR SUPER MARIO GALAXY 2 | `game` is `SB4` or `SB5`. |
 | THIS MOD IS FOR ANOTHER GAME | Any other `game`. |
+| THIS MOD IS ONLY FOR: {REGIONS} | `regions` leaves out the disc being played. The words are in the player's language; the region names stay as written. |
 | THIS MOD DOESN'T WORK ON THIS VERSION OF THE GAME | `versions` leaves out the version being played. |
 | THIS MOD NEEDS: {NAME} | A mod in `needs` is missing, off, or can't be used. |
 | THIS MOD NEEDS A NEWER VERSION OF: {NAME} | A mod in `needs` is older than it says. |
