@@ -1,0 +1,68 @@
+name: nebula-coop match
+
+# The SDK files LumaLink gives a mod are copies of nebula-coop's, and tools/tunable_names.py and tools/book.py write
+# tunable_names.rs and docs/book.md from its docs/modding. This compares them with nebula-coop's main branch.
+#
+# It doesn't block a merge: the two halves of a change (nebula-coop and lumalink-coop) land one after the other, so
+# one side is behind for a while. It runs every day too, so that main falling behind nebula-coop shows.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: nebula-coop branch, tag or commit to compare with
+        default: main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  match:
+    name: Matches nebula-coop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: NebulaCoop/nebula-coop
+          ref: ${{ inputs.ref || 'main' }}
+          path: nebula
+          sparse-checkout: |
+            native/include/nebula_mod_api.h
+            native/petari/include/Game/System/LumaScript.hpp
+            docs/modding
+          sparse-checkout-cone-mode: false
+      - name: SDK files
+        shell: bash
+        run: |
+          echo "nebula-coop $(git -C nebula rev-parse --short HEAD)"
+          failed=0
+          while read -r ours theirs; do
+            if ! diff -u "nebula/$theirs" "$ours" > /dev/null; then
+              echo "::error file=$ours::differs from nebula-coop's $theirs: copy it from there (or land the nebula-coop side first)"
+              diff -u "nebula/$theirs" "$ours" | head -40 || true
+              failed=1
+            fi
+          done <<'EOF'
+          crates/lumalink-core/sdk/nebula_mod_api.h native/include/nebula_mod_api.h
+          crates/lumalink-core/sdk/LumaScript.hpp native/petari/include/Game/System/LumaScript.hpp
+          crates/lumalink-core/sdk/events.tsv docs/modding/events.tsv
+          crates/lumalink-core/sdk/messages.tsv docs/modding/messages.tsv
+          crates/lumalink-core/sdk/toolkit.tsv docs/modding/toolkit.tsv
+          EOF
+          exit $failed
+      - name: Tunable names
+        if: always()
+        run: python3 tools/tunable_names.py nebula --check
+      - name: Book
+        if: always()
+        run: python3 tools/book.py nebula docs/book.md --check
