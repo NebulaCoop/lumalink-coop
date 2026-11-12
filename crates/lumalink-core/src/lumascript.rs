@@ -746,10 +746,11 @@ impl Parser {
                             }
                         }
                     }
-                    if name == "nebula" && self.is(".") {
+                    // The plugin API: nebula.<call>, and NebulaCoop's multiplayer calls as coop.<call>.
+                    if (name == "nebula" || name == "coop") && self.is(".") {
                         self.next();
                         let call = self.name("a Nebula call's name")?;
-                        name = format!("nebula.{call}");
+                        name = format!("{name}.{call}");
                     }
                     if self.eat("(") {
                         let mut args = Vec::new();
@@ -772,6 +773,11 @@ impl Parser {
             other => Err(Problem { line, text: format!("a value expected (found {other:?})") }),
         }
     }
+}
+
+/// A row of the plugin API (called through the host's table): nebula.<name>, or NebulaCoop's coop.<name>.
+fn is_api(row: &str) -> bool {
+    row.starts_with("nebula.") || row.starts_with("coop.")
 }
 
 fn is_keyword(n: &str) -> bool {
@@ -1302,7 +1308,7 @@ impl FnCtx<'_> {
             self.emit(op::CALL_SCRIPT, d, first, args.len() as u8, function as u16, 0);
             return Ok(d);
         }
-        // The toolkit: a game function, or the plugin API as nebula.<name>.
+        // The toolkit: a game function, or the plugin API as nebula.<name> (coop.<name> for co-op's calls).
         let row = if self.toolkit.rows.contains_key(name) {
             name.to_string()
         } else if let Some(choices) = self.toolkit.overloads.get(name) {
@@ -1312,7 +1318,7 @@ impl FnCtx<'_> {
                 [] => return Err(Problem { line, text: format!("{name} takes {} values", choices.iter().map(|c| self.toolkit.rows[c].0.len().to_string()).collect::<Vec<_>>().join(" or ")) }),
                 _ => return Err(Problem { line, text: format!("{name} is several functions: name one ({})", choices.join(", ")) }),
             }
-        } else if name.contains("::") || name.starts_with("nebula.") {
+        } else if name.contains("::") || is_api(name) {
             return Err(Problem { line, text: format!("the game has no {name} (docs/modding/TOOLKIT.md lists every one)") });
         } else {
             return Err(Problem { line, text: format!("{name} is not a function here") });
@@ -1325,7 +1331,7 @@ impl FnCtx<'_> {
         if want > gives.max(if results.is_none() { 1 } else { 0 }) {
             return Err(Problem { line, text: format!("{row} gives {gives} value{}", if gives == 1 { "" } else { "s" }) });
         }
-        let kind = if row.starts_with("nebula.") { IMPORT_API } else { IMPORT_TOOLKIT };
+        let kind = if is_api(&row) { IMPORT_API } else { IMPORT_TOOLKIT };
         let imp = self.out.import(kind, &row, line)?;
         let first = self.args(args, line)?;
         let keep = if results.is_none() { gives.min(1) } else { want };
@@ -1872,6 +1878,33 @@ mod tests {
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_REGISTRY && n == "form/Gold Flower"));
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_FIELD && n == "mVelocity"));
         assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_FIELD && n == "mFlag.mIsHiddenModel"));
+    }
+
+    #[test]
+    fn coop_calls_are_the_plugin_api() {
+        let kit = Toolkit::parse("coop.connected\tc\tc\ncoop.count\t\tc\ncoop.max_players\t\tc\ncoop.same_place\tc\tc\n");
+        let b = compile(r#"
+            var others: int
+            on room_joined(me) {
+                others = 0
+                let i = 0
+                while i < coop.max_players() {
+                    if coop.connected(i) && i != me { others = others + 1 }
+                    i = i + 1
+                }
+            }
+            on player_join(index, name) { others = others + 1 }
+            on player_leave(index, name) { others = others - 1 }
+            on player_place(index, stage) { if coop.same_place(index) { others = coop.count() } }
+            on room_closed { others = 0 }
+        "#, &kit).unwrap_or_else(|p| panic!("line {}: {}", p.line, p.text));
+        let s = verify(&b).expect("verifies");
+        for event in ["room_joined", "player_join", "player_leave", "player_place", "room_closed"] {
+            assert!(s.handlers.iter().any(|h| h == event), "{event}");
+        }
+        assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_API && n == "coop.connected"));
+        assert!(s.imports.iter().any(|(k, n)| *k == IMPORT_API && n == "coop.count"));
+        bad("on frame { coop.no_such() }", "the game has no coop.no_such");
     }
 
     #[test]

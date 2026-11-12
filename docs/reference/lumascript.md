@@ -164,6 +164,10 @@ it.
 | `sound_start` | a sound effect is about to play | its number, its name | the sound played instead (-1: silence) |
 | `effect_start` | an object started an effect | its name, the object | |
 | `screen` | a screen layout was shown (1) or removed (0) | 1 or 0, its name | |
+| `room_joined` | (co-op) this player is in a room | this player's index | |
+| `room_closed` | (co-op) this player's room ended | | |
+| `player_join`, `player_leave` | (co-op) another player came in, left | their index, their name | |
+| `player_place` | (co-op) a player (this one too) reached another galaxy or mission | their index, the stage | |
 
 Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
 
@@ -282,6 +286,40 @@ mod (`log`, `option`, `store_get`, `unlock_achievement`) gets the script's own. 
 a number gives it back: `let position = nebula.get_position(self)`; `let found, value = nebula.get_tunable("key")`.
 Calls that only work while plugins start (adding music, galaxies, story rows) are luma.json rows instead. The plugin
 reference (plugin-api.md) explains every call.
+
+## Co-op calls (coop.*)
+
+NebulaCoop's multiplayer calls are plugin API rows named `coop.<call>`, for mods that say `"requires": ["coop"]`
+(packed as `.lumacoop`, which plain Nebula refuses). A room's players go by index: the host is 0, then each joiner takes
+the lowest free one and keeps it while they stay. Outside a room the game is a room of one: this player is index 0 and
+the host.
+
+| Call | Gives |
+|---|---|
+| `coop.in_room()`, `coop.is_host()`, `coop.me()` | in a room (1 or 0), the host (1 or 0), this player's index |
+| `coop.count()`, `coop.max_players()` | players in the room now, players it takes |
+| `coop.connected(i)` | 1 when someone has index `i` |
+| `coop.name(i)`, `coop.character(i)` | their name; 0 Mario, 1 Luigi, -1 nobody |
+| `coop.stage(i)`, `coop.mission(i)`, `coop.same_place(i)` | where they play; 1 when it is this player's galaxy and mission |
+| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room (Personal Star Counter), round trip in ms |
+
+```text
+var others: int
+
+on room_joined(me) {
+    others = 0
+    let i = 0
+    while i < coop.max_players() {
+        if coop.connected(i) && i != me { others = others + 1 }
+        i = i + 1
+    }
+}
+
+on player_join(index, name) { others = others + 1 }
+on player_leave(index, name) { others = others - 1 }
+```
+
+The plugin reference (plugin-api.md) explains each call as `coop_<call>`.
 
 ## Fields
 
