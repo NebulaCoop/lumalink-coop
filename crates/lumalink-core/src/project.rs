@@ -343,7 +343,7 @@ fn layer_changes(folder: &Path, layer: &Value) -> Vec<Change> {
 /// not what building a plugin leaves beside its libraries in plugins/ (import libraries, objects, debug data).
 fn belongs_in_file(relative: &Path) -> bool {
     let hidden = relative.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
-    let packed = relative.components().count() == 1 && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma") || e.eq_ignore_ascii_case("writing"));
+    let packed = relative.components().count() == 1 && relative.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma") || e.eq_ignore_ascii_case("lumacoop") || e.eq_ignore_ascii_case("writing"));
     let build_leftover = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("plugins"))
         && relative.extension().is_some_and(|e| ["lib", "exp", "pdb", "ilk", "obj", "o"].iter().any(|x| e.eq_ignore_ascii_case(x)));
     let script_source = relative.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("scripts"))
@@ -366,7 +366,17 @@ pub fn compile_script(folder: &Path, script: &str, toolkit: &crate::lumascript::
     crate::lumascript::compile(&text, toolkit).map_err(|p| format!("{file}, line {}: {}", p.line, p.text))
 }
 
-/// Packs a project folder into a `.luma`. A problem `check` calls serious stops it.
+/// Whether a manifest is a co-op mod's: its `requires` lists `coop`, a feature only NebulaCoop has.
+pub fn is_coop(manifest: &Value) -> bool {
+    manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "coop"))
+}
+
+/// The packed file's extension: `lumacoop` for a co-op mod (NebulaCoop's own; upstream Nebula refuses it), else `luma`.
+pub fn file_extension(manifest: &Value) -> &'static str {
+    if is_coop(manifest) { "lumacoop" } else { "luma" }
+}
+
+/// Packs a project folder into a `.luma`, or a `.lumacoop` for a co-op mod. A problem `check` calls serious stops it.
 pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<Outcome> {
     let found = check(folder, store)?;
     if let Some(serious) = found.iter().find(|f| f.serious) {
@@ -429,7 +439,7 @@ pub fn pack(folder: &Path, output: &Path, store: Option<&GameStore>) -> Result<O
             }
             fs::copy(entry.path(), &target)?;
         }
-        let file = output.join(format!("{safe}.luma"));
+        let file = output.join(format!("{safe}.{}", file_extension(&manifest)));
         package::pack_folder(&building, &file)?;
         Ok(Outcome {
             file,
@@ -1829,7 +1839,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
     }
     if let Some(requires) = manifest.get("requires") {
         for feature in string_list(requires, "requires", found) {
-            if feature != "custom-shaders" && feature != "tunables" && feature != "player-animations" {
+            if feature != "custom-shaders" && feature != "tunables" && feature != "player-animations" && feature != "coop" {
                 found.problem(format!("requires {feature}, a feature this version of LumaLink doesn't know"));
             }
         }
@@ -2004,7 +2014,7 @@ mod tests {
                      "layers/base/files/a.lib"] {
             assert!(belongs_in_file(Path::new(good)), "{good}");
         }
-        for bad in [".git/config", ".DS_Store", "layers/.hidden/a", "My Mod.luma", "My Mod.luma.writing", "plugins/a-windows-x64.lib",
+        for bad in [".git/config", ".DS_Store", "layers/.hidden/a", "My Mod.luma", "My Mod.lumacoop", "My Mod.luma.writing", "plugins/a-windows-x64.lib",
                     "plugins/a.pdb", "plugins/a.exp", "plugins/obj/a.o"] {
             assert!(!belongs_in_file(Path::new(bad)), "{bad}");
         }
@@ -2196,6 +2206,35 @@ mod tests {
         assert_eq!(manifest["version"], "1.0.0");
         assert_eq!(manifest["game"], "RMG");
         assert!(opened.join("layers/base/files/StageData/note.bin").is_file());
+    }
+
+    #[test]
+    fn a_coop_project_packs_as_lumacoop() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        new_project(&project, "Coop Mod").unwrap();
+        write(&project, "layers/base/files/StageData/note.bin", "hello");
+        let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(project.join("luma.json")).unwrap()).unwrap();
+        manifest["requires"] = serde_json::json!(["coop"]);
+        fs::write(project.join("luma.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+        let found = check(&project, None).unwrap();
+        assert!(problems(&found).is_empty(), "{found:?}");
+
+        let out = dir.path().join("out");
+        let outcome = pack(&project, &out, None).unwrap();
+        assert!(outcome.file.ends_with("Coop Mod.lumacoop"), "{}", outcome.file.display());
+        assert!(!out.join("Coop Mod.luma").exists());
+        assert!(problems(&check(&outcome.file, None).unwrap()).is_empty());
+        let opened = dir.path().join("opened");
+        unpack(&outcome.file, &opened).unwrap();
+        let back: serde_json::Value = serde_json::from_slice(&fs::read(opened.join("luma.json")).unwrap()).unwrap();
+        assert!(is_coop(&back));
+        // Packed again from inside the project, the earlier file isn't taken in.
+        fs::copy(&outcome.file, project.join("Coop Mod.lumacoop")).unwrap();
+        let again = pack(&project, &out, None).unwrap();
+        let inner = dir.path().join("inner");
+        unpack(&again.file, &inner).unwrap();
+        assert!(!inner.join("Coop Mod.lumacoop").exists());
     }
 
     fn checked(manifest: &str) -> Vec<String> {

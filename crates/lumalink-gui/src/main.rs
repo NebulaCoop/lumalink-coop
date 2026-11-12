@@ -141,7 +141,7 @@ fn about(layout: &Layout, plan: &Plan) -> String {
 fn not_a_mod(path: &Path) -> Option<State> {
     let ending = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     match ending.as_str() {
-        "luma" => Some(State::Done {
+        "luma" | "lumacoop" => Some(State::Done {
             file: path.to_path_buf(),
             summary: word(Word::AlreadyFinished).to_string(),
         }),
@@ -320,7 +320,7 @@ impl App {
     }
 
     fn pick_mods(&mut self) {
-        if let Some(files) = rfd::FileDialog::new().add_filter(word(Word::ModsFilter), &["zip", "7z", "rar", "iso", "wbfs", "rvz", "luma"]).pick_files() {
+        if let Some(files) = rfd::FileDialog::new().add_filter(word(Word::ModsFilter), &["zip", "7z", "rar", "iso", "wbfs", "rvz", "luma", "lumacoop"]).pick_files() {
             for file in files {
                 self.add_path(file);
             }

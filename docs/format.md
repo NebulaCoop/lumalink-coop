@@ -427,6 +427,10 @@ A mod's needs, conflicts, copies and saves are worked out again whenever the pla
 
 Added since version 1 began, each with its `requires` name: `tunables`, `custom-shaders` (a layer naming a material and an HLSL file that Nebula builds for every device) and `player-animations`. Modern asset files came without one.
 
+This co-op fork of LumaLink adds `coop`: a mod made for NebulaCoop's online co-op. `lumalink pack` writes such a mod as
+a `.lumacoop` instead of a `.luma`. It's the same file inside. NebulaCoop reads both; upstream Nebula doesn't know
+`coop`, so it refuses the mod even when it's renamed to `.luma`.
+
 
 The format stays version 1 for as long as a change can be read safely by older games:
 
