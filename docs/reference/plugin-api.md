@@ -205,6 +205,19 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
 | `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
 | `add_form` | `int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)` |
+| `coop_in_room` | `int32_t coop_in_room(void)` |
+| `coop_is_host` | `int32_t coop_is_host(void)` |
+| `coop_me` | `int32_t coop_me(void)` |
+| `coop_count` | `int32_t coop_count(void)` |
+| `coop_max_players` | `int32_t coop_max_players(void)` |
+| `coop_connected` | `int32_t coop_connected(int32_t index)` |
+| `coop_name` | `const char* coop_name(int32_t index)` |
+| `coop_character` | `int32_t coop_character(int32_t index)` |
+| `coop_stage` | `const char* coop_stage(int32_t index)` |
+| `coop_mission` | `int32_t coop_mission(int32_t index)` |
+| `coop_same_place` | `int32_t coop_same_place(int32_t index)` |
+| `coop_stars` | `int32_t coop_stars(int32_t index)` |
+| `coop_ping` | `int32_t coop_ping(int32_t index)` |
 
 ## What each does
 
@@ -1800,6 +1813,110 @@ int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const 
 
 Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame every frame, end when he leaves it. The power-up's number, or -1.
 
+### `coop_in_room`
+
+```c
+int32_t coop_in_room(void)
+```
+
+1 in a room, 0 outside one.
+
+### `coop_is_host`
+
+```c
+int32_t coop_is_host(void)
+```
+
+This player is the room's host (or outside a room): 1, else 0.
+
+### `coop_me`
+
+```c
+int32_t coop_me(void)
+```
+
+This player's index.
+
+### `coop_count`
+
+```c
+int32_t coop_count(void)
+```
+
+How many players the room has now (1 outside a room).
+
+### `coop_max_players`
+
+```c
+int32_t coop_max_players(void)
+```
+
+How many players the room takes (1 outside a room).
+
+### `coop_connected`
+
+```c
+int32_t coop_connected(int32_t index)
+```
+
+1 when a player has `index` now, else 0. The calls below give "", -1 or 0 for an index nobody has.
+
+### `coop_name`
+
+```c
+const char* coop_name(int32_t index)
+```
+
+Their name, as the player list shows it ("" outside a room). Valid until the next frame.
+
+### `coop_character`
+
+```c
+int32_t coop_character(int32_t index)
+```
+
+The character they play: 0 Mario, 1 Luigi; -1 nobody.
+
+### `coop_stage`
+
+```c
+const char* coop_stage(int32_t index)
+```
+
+Where they play: the stage's name ("" until they reach one) and its mission (0 where none was chosen). Their instance is the pair: coop_same_place says whether it is this player's. Valid until the next frame.
+
+### `coop_mission`
+
+```c
+int32_t coop_mission(int32_t index)
+```
+
+Where they play: the stage's name ("" until they reach one) and its mission (0 where none was chosen). Their instance is the pair: coop_same_place says whether it is this player's. Valid until the next frame.
+
+### `coop_same_place`
+
+```c
+int32_t coop_same_place(int32_t index)
+```
+
+1 when they play in this player's galaxy and mission (this player too), else 0.
+
+### `coop_stars`
+
+```c
+int32_t coop_stars(int32_t index)
+```
+
+The Power Stars they got in this room, new to its save (the Personal Star Counter's count); 0 outside a room.
+
+### `coop_ping`
+
+```c
+int32_t coop_ping(int32_t index)
+```
+
+The round trip to them in milliseconds (to the host, for a joiner's view of the others); 0 for this player or when unknown.
+
 ## Numbers and names
 
 ### `NebulaPlugin`
@@ -1878,6 +1995,17 @@ Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by
     /* The player started an action: swimming, hanging, sliding, falling (numbers in docs/modding/EVENTS.md).
        value: the action. */
     NEBULA_MOD_EVENT_PLAYER_ACTION,
+    /* Online co-op (NebulaCoop; coop_* below). Another player came into the room. value: their index (coop_name).
+       name: their name. Not sent for the players already there when this player joins: room_joined comes then. */
+    NEBULA_MOD_EVENT_COOP_PLAYER_JOIN,
+    /* Another player left the room. value: the index they had. name: their name. */
+    NEBULA_MOD_EVENT_COOP_PLAYER_LEAVE,
+    /* This player is in a room: it opened one, or a host let it in. value: this player's index (coop_me). */
+    NEBULA_MOD_EVENT_COOP_ROOM_JOINED,
+    /* This player's room ended: it left, or the host closed it. */
+    NEBULA_MOD_EVENT_COOP_ROOM_CLOSED,
+    /* A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). */
+    NEBULA_MOD_EVENT_COOP_PLAYER_PLACE,
     NEBULA_MOD_EVENT_COUNT
 ```
 

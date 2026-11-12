@@ -2026,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 199 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](#p-reference-plugin-api) lists all 212 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -4318,6 +4318,10 @@ A mod's needs, conflicts, copies and saves are worked out again whenever the pla
 
 Added since version 1 began, each with its `requires` name: `tunables`, `custom-shaders` (a layer naming a material and an HLSL file that Nebula builds for every device) and `player-animations`. Modern asset files came without one.
 
+This co-op fork of LumaLink adds `coop`: a mod made for NebulaCoop's online co-op. `lumalink pack` writes such a mod as
+a `.lumacoop` instead of a `.luma`. It's the same file inside. NebulaCoop reads both; upstream Nebula doesn't know
+`coop`, so it refuses the mod even when it's renamed to `.luma`.
+
 
 The format stays version 1 for as long as a change can be read safely by older games:
 
@@ -4837,6 +4841,19 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `set_class_script` | `int32_t set_class_script(const NebulaPlugin* mod, const char* name, const char* script)` |
 | `set_class_hooks` | `int32_t set_class_hooks(const NebulaPlugin* mod, const char* name, const NebulaClassHooks* hooks)` |
 | `add_form` | `int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const char* script)` |
+| `coop_in_room` | `int32_t coop_in_room(void)` |
+| `coop_is_host` | `int32_t coop_is_host(void)` |
+| `coop_me` | `int32_t coop_me(void)` |
+| `coop_count` | `int32_t coop_count(void)` |
+| `coop_max_players` | `int32_t coop_max_players(void)` |
+| `coop_connected` | `int32_t coop_connected(int32_t index)` |
+| `coop_name` | `const char* coop_name(int32_t index)` |
+| `coop_character` | `int32_t coop_character(int32_t index)` |
+| `coop_stage` | `const char* coop_stage(int32_t index)` |
+| `coop_mission` | `int32_t coop_mission(int32_t index)` |
+| `coop_same_place` | `int32_t coop_same_place(int32_t index)` |
+| `coop_stars` | `int32_t coop_stars(int32_t index)` |
+| `coop_ping` | `int32_t coop_ping(int32_t index)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -6832,6 +6849,136 @@ int32_t add_form(const NebulaPlugin* mod, const NebulaPowerUpClass* form, const 
 
 Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by the mod (registry "form"), and a script (scripts/<script>.lumascript, or null) on the player while he is in it: start when he gets it, frame every frame, end when he leaves it. The power-up's number, or -1.
 
+<a id="p-reference-plugin-api--coopinroom"></a>
+
+#### `coop_in_room`
+
+```c
+int32_t coop_in_room(void)
+```
+
+1 in a room, 0 outside one.
+
+<a id="p-reference-plugin-api--coopishost"></a>
+
+#### `coop_is_host`
+
+```c
+int32_t coop_is_host(void)
+```
+
+This player is the room's host (or outside a room): 1, else 0.
+
+<a id="p-reference-plugin-api--coopme"></a>
+
+#### `coop_me`
+
+```c
+int32_t coop_me(void)
+```
+
+This player's index.
+
+<a id="p-reference-plugin-api--coopcount"></a>
+
+#### `coop_count`
+
+```c
+int32_t coop_count(void)
+```
+
+How many players the room has now (1 outside a room).
+
+<a id="p-reference-plugin-api--coopmaxplayers"></a>
+
+#### `coop_max_players`
+
+```c
+int32_t coop_max_players(void)
+```
+
+How many players the room takes (1 outside a room).
+
+<a id="p-reference-plugin-api--coopconnected"></a>
+
+#### `coop_connected`
+
+```c
+int32_t coop_connected(int32_t index)
+```
+
+1 when a player has `index` now, else 0. The calls below give "", -1 or 0 for an index nobody has.
+
+<a id="p-reference-plugin-api--coopname"></a>
+
+#### `coop_name`
+
+```c
+const char* coop_name(int32_t index)
+```
+
+Their name, as the player list shows it ("" outside a room). Valid until the next frame.
+
+<a id="p-reference-plugin-api--coopcharacter"></a>
+
+#### `coop_character`
+
+```c
+int32_t coop_character(int32_t index)
+```
+
+The character they play: 0 Mario, 1 Luigi; -1 nobody.
+
+<a id="p-reference-plugin-api--coopstage"></a>
+
+#### `coop_stage`
+
+```c
+const char* coop_stage(int32_t index)
+```
+
+Where they play: the stage's name ("" until they reach one) and its mission (0 where none was chosen). Their instance is the pair: coop_same_place says whether it is this player's. Valid until the next frame.
+
+<a id="p-reference-plugin-api--coopmission"></a>
+
+#### `coop_mission`
+
+```c
+int32_t coop_mission(int32_t index)
+```
+
+Where they play: the stage's name ("" until they reach one) and its mission (0 where none was chosen). Their instance is the pair: coop_same_place says whether it is this player's. Valid until the next frame.
+
+<a id="p-reference-plugin-api--coopsameplace"></a>
+
+#### `coop_same_place`
+
+```c
+int32_t coop_same_place(int32_t index)
+```
+
+1 when they play in this player's galaxy and mission (this player too), else 0.
+
+<a id="p-reference-plugin-api--coopstars"></a>
+
+#### `coop_stars`
+
+```c
+int32_t coop_stars(int32_t index)
+```
+
+The Power Stars they got in this room, new to its save (the Personal Star Counter's count); 0 outside a room.
+
+<a id="p-reference-plugin-api--coopping"></a>
+
+#### `coop_ping`
+
+```c
+int32_t coop_ping(int32_t index)
+```
+
+The round trip to them in milliseconds (to the host, for a joiner's view of the others); 0 for this player or when unknown.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -6916,6 +7063,17 @@ Only in nebula_plugin_start. A power-up as add_power_up, its form's row named by
     /* The player started an action: swimming, hanging, sliding, falling (numbers in docs/modding/EVENTS.md).
        value: the action. */
     NEBULA_MOD_EVENT_PLAYER_ACTION,
+    /* Online co-op (NebulaCoop; coop_* below). Another player came into the room. value: their index (coop_name).
+       name: their name. Not sent for the players already there when this player joins: room_joined comes then. */
+    NEBULA_MOD_EVENT_COOP_PLAYER_JOIN,
+    /* Another player left the room. value: the index they had. name: their name. */
+    NEBULA_MOD_EVENT_COOP_PLAYER_LEAVE,
+    /* This player is in a room: it opened one, or a host let it in. value: this player's index (coop_me). */
+    NEBULA_MOD_EVENT_COOP_ROOM_JOINED,
+    /* This player's room ended: it left, or the host closed it. */
+    NEBULA_MOD_EVENT_COOP_ROOM_CLOSED,
+    /* A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). */
+    NEBULA_MOD_EVENT_COOP_PLAYER_PLACE,
     NEBULA_MOD_EVENT_COUNT
 ```
 
@@ -9619,6 +9777,10 @@ it.
 | `sound_start` | a sound effect is about to play | its number, its name | the sound played instead (-1: silence) |
 | `effect_start` | an object started an effect | its name, the object | |
 | `screen` | a screen layout was shown (1) or removed (0) | 1 or 0, its name | |
+| `room_joined` | (co-op) this player is in a room | this player's index | |
+| `room_closed` | (co-op) this player's room ended | | |
+| `player_join`, `player_leave` | (co-op) another player came in, left | their index, their name | |
+| `player_place` | (co-op) a player (this one too) reached another galaxy or mission | their index, the stage | |
 
 Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
 
@@ -9756,6 +9918,42 @@ a number gives it back: `let position = nebula.get_position(self)`; `let found, 
 Calls that only work while plugins start (adding music, galaxies, story rows) are luma.json rows instead. The plugin
 reference (plugin-api.md) explains every call.
 
+<a id="p-reference-lumascript--co-op-calls-coop"></a>
+
+### Co-op calls (coop.*)
+
+NebulaCoop's multiplayer calls are plugin API rows named `coop.<call>`, for mods that say `"requires": ["coop"]`
+(packed as `.lumacoop`, which plain Nebula refuses). A room's players go by index: the host is 0, then each joiner takes
+the lowest free one and keeps it while they stay. Outside a room the game is a room of one: this player is index 0 and
+the host.
+
+| Call | Gives |
+|---|---|
+| `coop.in_room()`, `coop.is_host()`, `coop.me()` | in a room (1 or 0), the host (1 or 0), this player's index |
+| `coop.count()`, `coop.max_players()` | players in the room now, players it takes |
+| `coop.connected(i)` | 1 when someone has index `i` |
+| `coop.name(i)`, `coop.character(i)` | their name; 0 Mario, 1 Luigi, -1 nobody |
+| `coop.stage(i)`, `coop.mission(i)`, `coop.same_place(i)` | where they play; 1 when it is this player's galaxy and mission |
+| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room (Personal Star Counter), round trip in ms |
+
+```text
+var others: int
+
+on room_joined(me) {
+    others = 0
+    let i = 0
+    while i < coop.max_players() {
+        if coop.connected(i) && i != me { others = others + 1 }
+        i = i + 1
+    }
+}
+
+on player_join(index, name) { others = others + 1 }
+on player_leave(index, name) { others = others - 1 }
+```
+
+The plugin reference (plugin-api.md) explains each call as `coop_<call>`.
+
 <a id="p-reference-lumascript--fields"></a>
 
 ### Fields
@@ -9819,6 +10017,11 @@ returns. An event no plugin subscribes to costs the game one load and one branch
 | `NEBULA_MOD_EVENT_SCREEN` | A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its name in the game's code. |
 | `NEBULA_MOD_EVENT_ACTOR_MESSAGE` | An object gets a message from another: an attack, a stomp, a push, a grab (docs/modding/EVENTS.md lists the numbers). actor: who gets it. name: its name. value: the message. Return -1 to refuse it: the object acts as if it never came. Subscribing costs a call per message. |
 | `NEBULA_MOD_EVENT_PLAYER_ACTION` | The player starts an action of their own: a swim, a hang, a slide, a fall (docs/modding/EVENTS.md lists the numbers). value: the action. |
+| `NEBULA_MOD_EVENT_COOP_PLAYER_JOIN` | Online co-op (NebulaCoop; coop_* below). Another player came into the room. value: their index (coop_name). name: their name. Not sent for the players already there when this player joins: room_joined comes then. |
+| `NEBULA_MOD_EVENT_COOP_PLAYER_LEAVE` | Another player left the room. value: the index they had. name: their name. |
+| `NEBULA_MOD_EVENT_COOP_ROOM_JOINED` | This player is in a room: it opened one, or a host let it in. value: this player's index (coop_me). |
+| `NEBULA_MOD_EVENT_COOP_ROOM_CLOSED` | This player's room ended: it left, or the host closed it. |
+| `NEBULA_MOD_EVENT_COOP_PLAYER_PLACE` | A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). |
 
 <a id="p-nebula-events--messages-nebulamodeventactormessage"></a>
 

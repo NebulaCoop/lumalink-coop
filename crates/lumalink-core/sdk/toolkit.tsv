@@ -3391,6 +3391,19 @@ PartsModel::makeActorAppeared	h
 PartsModel::makeActorDead	h	
 PartsModel::movement	h	
 PartsModel::offFixedPosNormalizeScale	h	
+coop.character	c	c
+coop.connected	c	c
+coop.count		c
+coop.in_room		c
+coop.is_host		c
+coop.max_players		c
+coop.me		c
+coop.mission	c	c
+coop.name	c	g
+coop.ping	c	c
+coop.same_place	c	c
+coop.stage	c	g
+coop.stars	c	c
 nebula.actor_name	h	g
 nebula.actor_placed_name	h	g
 nebula.add_hungry_luma	gcc	c
