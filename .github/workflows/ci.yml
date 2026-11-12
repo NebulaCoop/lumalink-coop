@@ -3,23 +3,49 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, so that the CI result check always reports and can be required.
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # The tests and a release build on Windows: the one platform that blocks a merge.
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked -p lumalink -p lumalink-gui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumalink-windows-latest
+          path: |
+            target/release/lumalink.exe
+            target/release/lumalink-gui.exe
+
+  # The same on Linux and macOS. They show their own checks but don't block a merge.
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libarchive-tools libgl1-mesa-dev
+        run: |
+          sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libarchive-tools libgl1-mesa-dev lld-18
+          # clang with every lld beside it (ld64.lld is only here), so the plugin build test runs instead of skipping.
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
       - if: runner.os == 'macOS'
         run: brew install lld
       - uses: dtolnay/rust-toolchain@stable
@@ -31,7 +57,60 @@ jobs:
           name: lumalink-${{ matrix.os }}
           path: |
             target/release/lumalink
-            target/release/lumalink.exe
             target/release/lumalink-gui
-            target/release/lumalink-gui.exe
           if-no-files-found: ignore
+
+  # Every example with a C plugin builds for every device against the SDK header, then checks with its libraries.
+  # A header change that breaks a real plugin fails here.
+  plugins:
+    name: Example plugins
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update && sudo apt-get install -y lld-18
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p lumalink
+      - name: Build and check every example
+        shell: bash
+        run: |
+          for tool in clang lld-link ld.lld ld64.lld; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is missing"; exit 1; }
+          done
+          failed=0
+          built=0
+          for dir in examples/*/; do
+            ls "$dir"source/*.c >/dev/null 2>&1 || continue
+            built=$((built + 1))
+            echo "::group::$dir"
+            if ! target/debug/lumalink build "$dir" || ! target/debug/lumalink check "$dir"; then
+              echo "::error::$dir"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          echo "$built examples built"
+          [ "$built" -ge 20 ] || { echo "::error::only $built examples have a C plugin"; exit 1; }
+          exit $failed
+
+  # docs/reference/plugin-api.md is written from the SDK header by tools/plugin_api_doc.py.
+  docs:
+    name: Plugin API doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/plugin_api_doc.py crates/lumalink-core/sdk/nebula_mod_api.h docs/reference/plugin-api.md --check
+
+  # The one check to require on main. Windows, the example plugins and the plugin API doc must pass (or be skipped).
+  # Linux and macOS, and the nebula-coop match (nebula-coop.yml), show their own checks but don't block a merge.
+  result:
+    name: CI result
+    if: always()
+    needs: [windows, plugins, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
