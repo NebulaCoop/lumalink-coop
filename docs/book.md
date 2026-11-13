@@ -2026,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 212 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](#p-reference-plugin-api) lists all 221 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -3098,7 +3098,8 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `object_changes` | Objects changed or gone |
 | `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](#p-reference-lumascript--forms)) |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](#p-tutorials-08-new-objects)); a `script` runs on every object placed by the name, the game's own too ([class scripts](#p-reference-lumascript--class-scripts)) |
-| `player_constants` | The numbers of how the player moves, by name ([player numbers](#p-reference-player-numbers)) |
+| `player_constants` | The numbers of how the player moves, by name, for `mario`, `luigi`, `both` or a character's id ([player numbers](#p-reference-player-numbers)) |
+| `characters` | Playable characters (NebulaCoop): `{ "id": "wario", "like": "mario", "archive": "Wario" }`, the model `files/ObjectData/<archive>.arc`. The mod says `"requires": ["characters"]` ([format](#p-format)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](#p-tutorials-04-music-and-sound)) |
 | `stages` | Rules for stages ([stage rules](#p-reference-stage-rules)) |
@@ -3968,7 +3969,8 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `object_changes` | One of the game's objects made as another, or gone: `{ "object": "BenefitItemLifeUp", "becomes": "BenefitItemOneUp" }`, with `"in"` of `placed` (the default), `treasure_boxes` or `display_models`. See [Object changes](#p-reference--object-changes). |
 | `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](#p-reference-lumascript--forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
-| `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`. See [player numbers](#p-reference-player-numbers). |
+| `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`; a character's id (`"wario"`) for a mod's character. See [player numbers](#p-reference-player-numbers). |
+| `characters` | Playable characters (NebulaCoop), as sm64coopdx's character table: `{ "id": "wario", "name": "WARIO", "like": "mario", "archive": "Wario" }`. The model is the layer's `files/ObjectData/<archive>.arc` with the base's skeleton; `like` (mario or luigi) gives the animations, voice and the game's code. Its other models follow the game's names with the base's name swapped (`MarioFace` → `WarioFace`, `BeeMario` → `BeeWario`); one left out is the base's. `name` defaults to the id in capitals, `archive` to the id with a capital first letter. Players pick it on Options' PLAYER page; others in a room see it. The mod says `"requires": ["characters"]`. See nebula-coop's docs/modding/CHARACTERS.md. |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
 | `stages` | Rules for stages: `{ "stage": "MyHub", "scenario": 1, "acts_as": ["AstroGalaxy"], "own_rules": true }`. See [stage rules](#p-reference-stage-rules). |
@@ -4316,7 +4318,7 @@ A mod's needs, conflicts, copies and saves are worked out again whenever the pla
 
 ### Later additions
 
-Added since version 1 began, each with its `requires` name: `tunables`, `custom-shaders` (a layer naming a material and an HLSL file that Nebula builds for every device) and `player-animations`. Modern asset files came without one.
+Added since version 1 began, each with its `requires` name: `tunables`, `custom-shaders` (a layer naming a material and an HLSL file that Nebula builds for every device), `player-animations`, and in NebulaCoop `coop` and `characters`. Modern asset files came without one.
 
 This co-op fork of LumaLink adds `coop`: a mod made for NebulaCoop's online co-op. `lumalink pack` writes such a mod as
 a `.lumacoop` instead of a `.luma`. It's the same file inside. NebulaCoop reads both; upstream Nebula doesn't know
@@ -4854,6 +4856,15 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `coop_same_place` | `int32_t coop_same_place(int32_t index)` |
 | `coop_stars` | `int32_t coop_stars(int32_t index)` |
 | `coop_ping` | `int32_t coop_ping(int32_t index)` |
+| `add_character` | `int32_t add_character(const NebulaPlugin* mod, const NebulaCharacterClass* character)` |
+| `character_count` | `int32_t character_count(void)` |
+| `character_id` | `const char* character_id(int32_t index)` |
+| `character_name` | `const char* character_name(int32_t index)` |
+| `character_like` | `int32_t character_like(int32_t index)` |
+| `character_find` | `int32_t character_find(const char* id)` |
+| `player_character` | `int32_t player_character(void)` |
+| `set_player_character_id` | `int32_t set_player_character_id(const char* id)` |
+| `coop_character_id` | `const char* coop_character_id(int32_t index)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -5947,7 +5958,7 @@ Only in nebula_plugin_start. Makes a stage follow another stage's rules: the gam
 int32_t set_player_constant(int32_t character, const char* name, int32_t index, float value)
 ```
 
-Sets a value in the player's constants table by name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi. `index`: position in a list, else 0. Any time. 0: done; -1: no such value.
+Sets a value in the player's constants table by name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi, or a mod's character's index (character_find). `index`: position in a list, else 0. Any time. 0: done; -1: no such value or character.
 
 <a id="p-reference-plugin-api--playerconstant"></a>
 
@@ -6607,7 +6618,7 @@ The save holds Grand Stars 1 to `count` (1-7), and the stage played starts again
 int32_t set_player_character(int32_t luigi)
 ```
 
-The file is played as Luigi (1) or Mario (0) from the next stage. 0: refused; 1: done.
+The player plays Luigi (1) or Mario (0) instead of Options' PLAYER page's character, as set_player_character_id ("luigi" or "mario") does. 0: refused; 1: done.
 
 <a id="p-reference-plugin-api--listmaterials"></a>
 
@@ -6927,7 +6938,7 @@ Their name, as the player list shows it ("" outside a room). Valid until the nex
 int32_t coop_character(int32_t index)
 ```
 
-The character they play: 0 Mario, 1 Luigi; -1 nobody.
+The character they play: 0 Mario, 1 Luigi (a mod character's base); -1 nobody. coop_character_id names it.
 
 <a id="p-reference-plugin-api--coopstage"></a>
 
@@ -6978,6 +6989,96 @@ int32_t coop_ping(int32_t index)
 ```
 
 The round trip to them in milliseconds (to the host, for a joiner's view of the others); 0 for this player or when unknown.
+
+<a id="p-reference-plugin-api--addcharacter"></a>
+
+#### `add_character`
+
+```c
+int32_t add_character(const NebulaPlugin* mod, const NebulaCharacterClass* character)
+```
+
+Only in nebula_plugin_start. Adds a character: its index, or -1 (a bad or taken id, a `like` other than mario or luigi, a bad archive name, or 30 mod characters already).
+
+<a id="p-reference-plugin-api--charactercount"></a>
+
+#### `character_count`
+
+```c
+int32_t character_count(void)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+<a id="p-reference-plugin-api--characterid"></a>
+
+#### `character_id`
+
+```c
+const char* character_id(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+<a id="p-reference-plugin-api--charactername"></a>
+
+#### `character_name`
+
+```c
+const char* character_name(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+<a id="p-reference-plugin-api--characterlike"></a>
+
+#### `character_like`
+
+```c
+int32_t character_like(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+<a id="p-reference-plugin-api--characterfind"></a>
+
+#### `character_find`
+
+```c
+int32_t character_find(const char* id)
+```
+
+A character's index by id (any case), or -1.
+
+<a id="p-reference-plugin-api--playercharacter"></a>
+
+#### `player_character`
+
+```c
+int32_t player_character(void)
+```
+
+The character the player plays in this stage (a switch takes effect at a reload), or the one they will.
+
+<a id="p-reference-plugin-api--setplayercharacterid"></a>
+
+#### `set_player_character_id`
+
+```c
+int32_t set_player_character_id(const char* id)
+```
+
+Picks the player's character for them instead of Options' PLAYER page's, as sm64coopdx's overrideModelIndex: null or "" gives the page's back. In a stage the player's spot reloads as it, as a switch on the page does; the others in a room see it. 1: done; 0: no such character.
+
+<a id="p-reference-plugin-api--coopcharacterid"></a>
+
+#### `coop_character_id`
+
+```c
+const char* coop_character_id(int32_t index)
+```
+
+Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has. coop_character gives its base. Valid until the next frame.
 
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
@@ -7350,6 +7451,18 @@ The round trip to them in milliseconds (to the host, for a joiner's view of the 
     int32_t dome;                   /* its dome: 1 to 6, 0 for none */
     int32_t has_map_position;       /* 1: the game creates the icon's pane at map_position */
     float map_position[2];          /* right and up from the middle of the dome's page (or the grand map with no dome), on a 608 x 456 page */
+```
+
+<a id="p-reference-plugin-api--nebulacharacterclass"></a>
+
+#### `NebulaCharacterClass`
+
+```c
+    uint32_t size;       /* sizeof(NebulaCharacterClass) */
+    const char* id;      /* 1-31 of a-z, 0-9, '_', '-' ("wario"); how luma.json, saves and online co-op name it */
+    const char* name;    /* as menus show it ("WARIO"); null: the id in capitals */
+    const char* like;    /* "mario" or "luigi"; null: "mario" */
+    const char* archive; /* null: the id with a capital first letter ("Wario") */
 ```
 
 <a id="p-reference-plugin-api--nebulapowerupclass"></a>
@@ -9030,9 +9143,12 @@ Every number in the game's table of how the player moves, by the name a layer's 
 "player_constants": {
   "mario": { "mJumpHeight": [null, null, 60.0] },
   "luigi": { "mJumpHeight": [null, null, 45.0] },
-  "both":  { "mFireModeTime": 2400 }
+  "both":  { "mFireModeTime": 2400 },
+  "wario": { "mJumpHeight": [20.0, null, 30.0] }
 }
 ```
+
+Another key is a character's id from a layer's `characters` (this mod's or another one running, NebulaCoop): its own numbers, first its base's as the game has them. `both` is Mario and Luigi.
 
 A number is a number; a list sets places in order, and `null` keeps the game's number at that place. Times are in frames, at 60 a second. Speeds are units a frame; a unit is a centimetre. A plugin reads and writes these with `player_constant` and `set_player_constant`, at any time.
 
@@ -34126,7 +34242,7 @@ HUD parts (`show_hud`). Number: its bit. 7 rows.
 
 ### character
 
-Who the player plays. Number: 1 for Luigi. 2 rows.
+Who the player plays (docs/modding/CHARACTERS.md). Number: its index (character_id); a mod's luma.json "characters" and add_character add more, after these. 2 rows.
 
 | Name | Number |
 |---|---|

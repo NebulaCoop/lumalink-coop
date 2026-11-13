@@ -218,6 +218,15 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `coop_same_place` | `int32_t coop_same_place(int32_t index)` |
 | `coop_stars` | `int32_t coop_stars(int32_t index)` |
 | `coop_ping` | `int32_t coop_ping(int32_t index)` |
+| `add_character` | `int32_t add_character(const NebulaPlugin* mod, const NebulaCharacterClass* character)` |
+| `character_count` | `int32_t character_count(void)` |
+| `character_id` | `const char* character_id(int32_t index)` |
+| `character_name` | `const char* character_name(int32_t index)` |
+| `character_like` | `int32_t character_like(int32_t index)` |
+| `character_find` | `int32_t character_find(const char* id)` |
+| `player_character` | `int32_t player_character(void)` |
+| `set_player_character_id` | `int32_t set_player_character_id(const char* id)` |
+| `coop_character_id` | `const char* coop_character_id(int32_t index)` |
 
 ## What each does
 
@@ -1091,7 +1100,7 @@ Only in nebula_plugin_start. Makes a stage follow another stage's rules: the gam
 int32_t set_player_constant(int32_t character, const char* name, int32_t index, float value)
 ```
 
-Sets a value in the player's constants table by name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi. `index`: position in a list, else 0. Any time. 0: done; -1: no such value.
+Sets a value in the player's constants table by name (mJumpHeight, mFireModeTime). `character`: 0 Mario, 1 Luigi, or a mod's character's index (character_find). `index`: position in a list, else 0. Any time. 0: done; -1: no such value or character.
 
 ### `player_constant`
 
@@ -1619,7 +1628,7 @@ The save holds Grand Stars 1 to `count` (1-7), and the stage played starts again
 int32_t set_player_character(int32_t luigi)
 ```
 
-The file is played as Luigi (1) or Mario (0) from the next stage. 0: refused; 1: done.
+The player plays Luigi (1) or Mario (0) instead of Options' PLAYER page's character, as set_player_character_id ("luigi" or "mario") does. 0: refused; 1: done.
 
 ### `list_materials`
 
@@ -1875,7 +1884,7 @@ Their name, as the player list shows it ("" outside a room). Valid until the nex
 int32_t coop_character(int32_t index)
 ```
 
-The character they play: 0 Mario, 1 Luigi; -1 nobody.
+The character they play: 0 Mario, 1 Luigi (a mod character's base); -1 nobody. coop_character_id names it.
 
 ### `coop_stage`
 
@@ -1916,6 +1925,78 @@ int32_t coop_ping(int32_t index)
 ```
 
 The round trip to them in milliseconds (to the host, for a joiner's view of the others); 0 for this player or when unknown.
+
+### `add_character`
+
+```c
+int32_t add_character(const NebulaPlugin* mod, const NebulaCharacterClass* character)
+```
+
+Only in nebula_plugin_start. Adds a character: its index, or -1 (a bad or taken id, a `like` other than mario or luigi, a bad archive name, or 30 mod characters already).
+
+### `character_count`
+
+```c
+int32_t character_count(void)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+### `character_id`
+
+```c
+const char* character_id(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+### `character_name`
+
+```c
+const char* character_name(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+### `character_like`
+
+```c
+int32_t character_like(int32_t index)
+```
+
+How many characters there are, and one by index: its id and its name (null past the last), its base (0 Mario, 1 Luigi; -1 past the last).
+
+### `character_find`
+
+```c
+int32_t character_find(const char* id)
+```
+
+A character's index by id (any case), or -1.
+
+### `player_character`
+
+```c
+int32_t player_character(void)
+```
+
+The character the player plays in this stage (a switch takes effect at a reload), or the one they will.
+
+### `set_player_character_id`
+
+```c
+int32_t set_player_character_id(const char* id)
+```
+
+Picks the player's character for them instead of Options' PLAYER page's, as sm64coopdx's overrideModelIndex: null or "" gives the page's back. In a stage the player's spot reloads as it, as a switch on the page does; the others in a room see it. 1: done; 0: no such character.
+
+### `coop_character_id`
+
+```c
+const char* coop_character_id(int32_t index)
+```
+
+Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has. coop_character gives its base. Valid until the next frame.
 
 ## Numbers and names
 
@@ -2248,6 +2329,16 @@ The round trip to them in milliseconds (to the host, for a joiner's view of the 
     int32_t dome;                   /* its dome: 1 to 6, 0 for none */
     int32_t has_map_position;       /* 1: the game creates the icon's pane at map_position */
     float map_position[2];          /* right and up from the middle of the dome's page (or the grand map with no dome), on a 608 x 456 page */
+```
+
+### `NebulaCharacterClass`
+
+```c
+    uint32_t size;       /* sizeof(NebulaCharacterClass) */
+    const char* id;      /* 1-31 of a-z, 0-9, '_', '-' ("wario"); how luma.json, saves and online co-op name it */
+    const char* name;    /* as menus show it ("WARIO"); null: the id in capitals */
+    const char* like;    /* "mario" or "luigi"; null: "mario" */
+    const char* archive; /* null: the id with a capital first letter ("Wario") */
 ```
 
 ### `NebulaPowerUpClass`
