@@ -6,9 +6,12 @@ Every number in the game's table of how the player moves, by the name a layer's 
 "player_constants": {
   "mario": { "mJumpHeight": [null, null, 60.0] },
   "luigi": { "mJumpHeight": [null, null, 45.0] },
-  "both":  { "mFireModeTime": 2400 }
+  "both":  { "mFireModeTime": 2400 },
+  "wario": { "mJumpHeight": [20.0, null, 30.0] }
 }
 ```
+
+Another key is a character's id from a layer's `characters` (this mod's or another one running, NebulaCoop): its own numbers, first its base's as the game has them. `both` is Mario and Luigi.
 
 A number is a number; a list sets places in order, and `null` keeps the game's number at that place. Times are in frames, at 60 a second. Speeds are units a frame; a unit is a centimetre. A plugin reads and writes these with `player_constant` and `set_player_constant`, at any time.
 

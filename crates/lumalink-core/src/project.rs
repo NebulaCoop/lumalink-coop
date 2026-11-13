@@ -781,9 +781,13 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
         None
     };
     let says_player_animations = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "player-animations"));
+    let says_characters = manifest.get("requires").and_then(Value::as_array).is_some_and(|r| r.iter().any(|f| f == "characters"));
     for (i, layer) in layers.iter().enumerate() {
         if layer.get("player_animations").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !says_player_animations {
             found.problem("a layer adds player_animations, so requires has to list player-animations");
+        }
+        if layer.get("characters").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !says_characters {
+            found.problem("a layer adds characters, so requires has to list characters");
         }
         if let Some(materials) = layer.get("materials") {
             let Some(materials) = materials.as_object() else {
@@ -909,6 +913,11 @@ fn check_story(value: &Value, name: &str, found: &mut Findings) -> bool {
 }
 
 /// A layer's rows that aren't files. Whether it has any.
+/// A character's id (luma.cpp character_id_ok): 1 to 31 of a-z, 0-9, '_' and '-'.
+fn character_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 31 && id.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_' || c == b'-')
+}
+
 fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore>, found: &mut Findings) -> bool {
     let mut any = false;
     if let Some(rows) = layer.get("object_changes").and_then(Value::as_array) {
@@ -954,8 +963,9 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
             return any;
         };
         for (who, numbers) in people {
-            if !matches!(who.as_str(), "mario" | "luigi" | "both") {
-                found.problem(format!("{name}: player_constants: {who} is none of mario, luigi and both"));
+            // Another key is a character's id (a layer's "characters", this mod's or another's).
+            if !matches!(who.as_str(), "mario" | "luigi" | "both") && !character_id_ok(who) {
+                found.problem(format!("{name}: player_constants: {who} is none of mario, luigi, both and a character's id"));
                 continue;
             }
             let Some(numbers) = numbers.as_object() else {
@@ -1011,6 +1021,50 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                                 found.problem(format!("{name}: {why}"));
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("characters") {
+        // Playable characters (luma.cpp "characters", NebulaCoop's NebulaCharacters): a model on Mario or Luigi.
+        match rows.as_array() {
+            None => found.problem(format!("{name}: characters is a list of rows")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                for row in rows {
+                    let id = row.get("id").and_then(Value::as_str).unwrap_or_default();
+                    if !character_id_ok(id) || id == "mario" || id == "luigi" {
+                        found.problem(format!(
+                            "{name}: a character's id is 1 to 31 of a-z, 0-9, _ and - (not mario or luigi), not \"{id}\""
+                        ));
+                        continue;
+                    }
+                    let like = row.get("like").map(|v| v.as_str().unwrap_or("?")).unwrap_or("mario");
+                    if like != "mario" && like != "luigi" {
+                        found.problem(format!("{name}: {id} is like mario or luigi, not {like}"));
+                    }
+                    if row.get("name").is_some_and(|n| !n.as_str().is_some_and(|n| n.len() <= 31)) {
+                        found.problem(format!("{name}: {id}'s name is text of at most 31 bytes"));
+                    }
+                    let archive = match row.get("archive") {
+                        None => {
+                            let mut chars = id.chars();
+                            chars.next().map(|c| c.to_ascii_uppercase().to_string() + chars.as_str()).unwrap_or_default()
+                        }
+                        Some(a) => a.as_str().unwrap_or_default().to_string(),
+                    };
+                    if archive.is_empty() || archive.len() > 31 || !archive.chars().all(|c| c > ' ' && c <= '~' && c != '/' && c != '\\' && c != '.') {
+                        found.problem(format!("{name}: {id}'s archive is a name in ObjectData without .arc, not \"{archive}\""));
+                        continue;
+                    }
+                    let layer_path = layer.get("path").and_then(Value::as_str).unwrap_or_default();
+                    let objects = folder.join(layer_path).join("files").join("ObjectData");
+                    let shipped = std::fs::read_dir(&objects).ok().is_some_and(|entries| {
+                        entries.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&format!("{archive}.arc")))
+                    });
+                    if !layer_path.is_empty() && !shipped {
+                        found.note(format!("{name}: {id}'s model {archive}.arc isn't in this layer's files/ObjectData"));
                     }
                 }
             }
@@ -1839,7 +1893,7 @@ fn check_folder(folder: &Path, store: Option<&GameStore>, found: &mut Findings) 
     }
     if let Some(requires) = manifest.get("requires") {
         for feature in string_list(requires, "requires", found) {
-            if feature != "custom-shaders" && feature != "tunables" && feature != "player-animations" && feature != "coop" {
+            if feature != "custom-shaders" && feature != "tunables" && feature != "player-animations" && feature != "coop" && feature != "characters" {
                 found.problem(format!("requires {feature}, a feature this version of LumaLink doesn't know"));
             }
         }
@@ -2143,6 +2197,28 @@ mod tests {
         assert_eq!(problems(json!({ "name": "x", "acts_like": "lava" })), 1);
         assert_eq!(problems(json!({ "name": "x", "frames": 1.5 })), 1);
         assert_eq!(problems(json!({ "name": "x", "script": "missing" })), 1);
+    }
+
+    #[test]
+    fn characters_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("layers/base/files/ObjectData")).unwrap();
+        fs::write(dir.path().join("layers/base/files/ObjectData/Wario.arc"), b"").unwrap();
+        let check = |layer: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &layer, "base", None, &mut found);
+            (found.0.iter().filter(|f| f.serious).count(), found.0.iter().filter(|f| !f.serious).count())
+        };
+        let row = |row: Value| check(json!({ "path": "layers/base", "characters": [row] }));
+        assert_eq!(row(json!({ "id": "wario", "name": "WARIO" })), (0, 0));
+        assert_eq!(row(json!({ "id": "waluigi", "like": "luigi" })), (0, 1), "no Waluigi.arc: a note");
+        assert_eq!(row(json!({ "id": "Wario" })).0, 1);
+        assert_eq!(row(json!({ "id": "mario" })).0, 1);
+        assert_eq!(row(json!({ "id": "w", "like": "wario" })).0, 1);
+        assert_eq!(row(json!({ "id": "w", "archive": "../Wario" })).0, 1);
+        assert_eq!(check(json!({ "path": "layers/base", "characters": { "id": "w" } })).0, 1);
+        assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "wario": { "mJumpHeight": 20 } } })).0, 0);
+        assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "Wario Bros": { "mJumpHeight": 20 } } })).0, 1);
     }
 
     #[test]

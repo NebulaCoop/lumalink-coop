@@ -233,7 +233,8 @@ A layer is a folder and when to use it. Layers apply in order; a later layer's f
 | `object_changes` | Objects changed or gone |
 | `forms` | Power-ups from data: name, `acts_like` (what the player can do: one of the game's forms), `looks_like`, `color_frame` or `model`, `frames`, `music`, a `script` on the player ([forms](reference/lumascript.md#forms)) |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`, its files `ObjectData/<name>.arc` ([tutorial](tutorials/08-new-objects.md)); a `script` runs on every object placed by the name, the game's own too ([class scripts](reference/lumascript.md#class-scripts)) |
-| `player_constants` | The numbers of how the player moves, by name ([player numbers](reference/player-numbers.md)) |
+| `player_constants` | The numbers of how the player moves, by name, for `mario`, `luigi`, `both` or a character's id ([player numbers](reference/player-numbers.md)) |
+| `characters` | Playable characters (NebulaCoop): `{ "id": "wario", "like": "mario", "archive": "Wario" }`, the model `files/ObjectData/<archive>.arc`. The mod says `"requires": ["characters"]` ([format](format.md)) |
 | `player_animations` | New player animations from one of the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`; `rate` over 0 up to 100, `blend_frames` up to 600. The mod says `"requires": ["player-animations"]`. A plugin plays one by name |
 | `sound_effects` | A sound the game has, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`; `@luigi` after the name for Luigi's own ([tutorial](tutorials/04-music-and-sound.md)) |
 | `stages` | Rules for stages ([stage rules](reference/stage-rules.md)) |
