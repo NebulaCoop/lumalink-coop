@@ -2062,6 +2062,29 @@ mod tests {
         assert!(count >= 15, "{count} examples");
     }
 
+    /// NebulaCoop's built-in mods (builtin/, copied into nebula-coop's runtime/src/builtin_mods.inc) check with no
+    /// problem, and Character Movesets sets Luigi's numbers alone, among them NebulaCoop's own.
+    #[test]
+    fn every_builtin_mod_checks() {
+        let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builtin");
+        let mut count = 0;
+        for entry in fs::read_dir(&builtin).unwrap() {
+            let folder = entry.unwrap().path();
+            if !folder.join("luma.json").is_file() {
+                continue;
+            }
+            count += 1;
+            let found = check(&folder, None).unwrap();
+            assert!(problems(&found).is_empty(), "{}: {:?}", folder.display(), problems(&found));
+            assert!(is_coop(&read_manifest(&folder).unwrap()), "{}: a built-in mod is a co-op mod", folder.display());
+        }
+        assert!(count >= 1);
+        let movesets = read_manifest(&builtin.join("character-movesets")).unwrap();
+        let numbers = &movesets["layers"][0]["player_constants"];
+        assert_eq!(numbers.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["luigi"]);
+        assert_eq!(numbers["luigi"]["mBrakeSlide"], json!(1));
+    }
+
     #[test]
     fn a_shader_names_a_material_of_the_mods_models() {
         let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
