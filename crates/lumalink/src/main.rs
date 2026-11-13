@@ -392,7 +392,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     }
                 }
                 "player" => {
-                    for field in lumalink_core::player_constants::FIELDS.iter().filter(|f| keep(f.name)) {
+                    for field in lumalink_core::player_constants::FIELDS.iter().chain(lumalink_core::player_constants::NEBULA_FIELDS).filter(|f| keep(f.name)) {
                         if field.count > 1 {
                             println!("{}[{}]", field.name, field.count);
                         } else {

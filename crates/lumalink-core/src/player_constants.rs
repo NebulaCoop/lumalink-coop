@@ -512,6 +512,16 @@ pub const FIELDS: &[Field] = &[
     Field { name: "mRushInBlendTimer", offset: 1952, kind: b'H', count: 1 },
 ];
 
+/// NebulaCoop's own numbers, after the game's in its table: what Super Mario Galaxy did in code for Luigi alone, so a
+/// moveset (the built-in Character Movesets, builtin/character-movesets) gives them to any character. 0 for everyone
+/// unless a mod sets them. The Wii's tables don't have them, so no patch writes them (`write` reads only `FIELDS`).
+pub const NEBULA_FIELDS: &[Field] = &[
+    // 1: braking starts from a slower run, its animation plays at half speed with a sliding sound, and a wall stops it.
+    Field { name: "mBrakeSlide", offset: TABLE_SIZE - 2, kind: b'B', count: 1 },
+    // 1: a spin while swimming costs a sixteenth of the oxygen.
+    Field { name: "mSwimSpinOxygen", offset: TABLE_SIZE - 1, kind: b'B', count: 1 },
+];
+
 /// `{ "mario": { "mJumpHeight": [22.0, null, 40.0] } }`: a null keeps the game's number at that place.
 pub type Constants = BTreeMap<String, BTreeMap<String, Vec<Option<f64>>>>;
 
@@ -535,11 +545,12 @@ fn read_element(kind: u8, bytes: &[u8]) -> f64 {
 
 /// Whether a name is a number of the table.
 pub fn is_known(name: &str) -> bool {
-    FIELDS.iter().any(|f| f.name == name)
+    field(name).is_some()
 }
 
+/// A number by its name: the game's, or NebulaCoop's own.
 pub fn field(name: &str) -> Option<&'static Field> {
-    FIELDS.iter().find(|f| f.name == name)
+    FIELDS.iter().chain(NEBULA_FIELDS).find(|f| f.name == name)
 }
 
 /// A write over a table: which numbers it sets to what. None: not over a table, or not lying on whole numbers.
@@ -619,5 +630,8 @@ mod tests {
     fn the_table_has_every_field() {
         assert_eq!(FIELDS.len(), 493);
         assert!(is_known("mFireModeTime"));
+        assert!(is_known("mBrakeSlide") && is_known("mSwimSpinOxygen"));
+        // The Wii table's last two bytes are padding: a patch over them sets none of NebulaCoop's numbers.
+        assert!(write(LUIGI_TABLE + TABLE_SIZE - 2, &[1, 1]).is_none());
     }
 }

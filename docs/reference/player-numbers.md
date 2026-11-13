@@ -17,6 +17,10 @@ A number is a number; a list sets places in order, and `null` keeps the game's n
 
 `lumalink list player` prints the names.
 
+In NebulaCoop, Luigi's table starts as Mario's: the Luigi column is Super Mario Galaxy's, which the built-in
+Character Movesets mod ([builtin/character-movesets](../../builtin/character-movesets)) gives him back. NebulaCoop
+also has two numbers of its own, after the game's; see [NebulaCoop's numbers](#nebulacoops-numbers).
+
 | Name | Kind | Reads as | Mario | Luigi |
 |---|---|---|---|---|
 | `mJumpHeight` | number, 9 of them | Jump height | {22.0, 26.0, 36.0, 24.0, 32.0, 15.0, 32.0, 22.0, 1.0} | {22.0, 26.0, 34.71, 24.0, 32.0, 15.0, 32.0, 22.0, 1.0} |
@@ -512,3 +516,13 @@ A number is a number; a list sets places in order, and `null` keeps the game's n
 | `mLookMaxAngleVM` | number | Look max angle vm | 0.1 | same |
 | `mLookShoulderMoveMax` | number | Look shoulder move max | 8.0 | same |
 | `mRushInBlendTimer` | whole | Rush in blend timer | 4 | same |
+
+## NebulaCoop's numbers
+
+What Super Mario Galaxy did in code for Luigi alone, as numbers of each character's table, so a moveset gives them to
+any character. Only NebulaCoop has them, so a mod that sets them says `"requires": ["coop"]`.
+
+| Name | Kind | Reads as | Mario | Luigi |
+|---|---|---|---|---|
+| `mBrakeSlide` | whole | 1: braking starts from a slower run, its animation plays at half speed with a sliding sound, and running into a wall stops it (with `mBrakeFirstTimer` and `mBrakeSecondTimer`) | 0 | 0 (1 with Character Movesets) |
+| `mSwimSpinOxygen` | whole | 1: a spin while swimming costs a sixteenth of the oxygen | 0 | 0 (1 with Character Movesets) |
