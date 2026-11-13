@@ -67,7 +67,11 @@ jobs:
         shell: python
         run: |
           import pathlib, re, sys
-          theirs = pathlib.Path("nebula/runtime/src/builtin_mods.inc").read_text(encoding="utf-8")
+          inc = pathlib.Path("nebula/runtime/src/builtin_mods.inc")
+          if not inc.is_file():
+              print("::error::nebula-coop has no runtime/src/builtin_mods.inc: land the nebula-coop side of the built-in mods first")
+              sys.exit(1)
+          theirs = inc.read_text(encoding="utf-8")
           copies = dict(re.findall(r'\{"([^"]+)", R"luma\(\n(.*?)\)luma"\}', theirs, re.S))
           failed = False
           for manifest in sorted(pathlib.Path("builtin").glob("*/luma.json")):
