@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon/lumalink.svg" width="128" height="128" alt="LumaLink icon"></p>
+
 # LumaLink
 
 Makes, checks, builds and packs mods for [Nebula](https://github.com/keepvaibin/nebula) (`.luma` files). It checks

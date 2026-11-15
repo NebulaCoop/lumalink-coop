@@ -1,5 +1,6 @@
 // LumaLink's icon, drawn in code (no picture files): a sky-blue rounded square with two white four-point sparkles.
 // Build scripts include this file: lumalink-gui's (the window's icon and the program's) and lumalink-setup's.
+// tools/icon_files.py draws the same icon as files for the README and web pages (assets/icon): change both together.
 //
 // - `rgba(size)`: the icon as RGBA pixels, 4 x 4 samples a pixel.
 // - `png(size)`: one size as a PNG file.
