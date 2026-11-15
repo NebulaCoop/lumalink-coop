@@ -1211,7 +1211,7 @@ mod tests {
         let store = store();
         let plan = build(&Layout::of(dir.path()), "RMGE01", Some(&store)).unwrap();
         let text: Vec<_> = plan.notes.iter().map(|n| n.text.as_str()).collect();
-        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("rise while jump is held") && t.contains("code/")), "{text:?}");
+        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("rise while jump is held") && t.contains("source/")), "{text:?}");
         assert!(!text.iter().any(|t| t.contains("HUD hidden")), "a code that is off says nothing: {text:?}");
         assert!(plan.unknown_code.is_empty(), "{:?}", plan.unknown_code);
     }

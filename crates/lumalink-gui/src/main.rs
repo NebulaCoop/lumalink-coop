@@ -422,35 +422,13 @@ fn watch(path: &Path, id: &str, mods: &Path, game: jobs::Game, inputs: &Inputs, 
     Ok(())
 }
 
-/// Every file's time of change under `dir`.
-fn times(dir: &Path) -> Vec<std::time::SystemTime> {
-    let mut out = vec![];
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if let Ok(t) = e.metadata().and_then(|m| m.modified()) {
-                out.push(t);
-            }
-        }
-    }
-    out
-}
-
 /// Builds a mod folder's code when a source file is newer than its libraries (or it has none); nothing for a .luma or
 /// a mod without code. Its lines and whether the mod can go on.
 fn build_if_changed(path: &Path, installed: Option<&Installed>) -> anyhow::Result<(Vec<Line>, bool)> {
-    if !path.is_dir() || !jobs::has_source(path) {
+    if !jobs::code_out_of_date(path) {
         return Ok((vec![], true));
     }
-    let newest_source = times(&path.join("source")).into_iter().chain(std::fs::metadata(path.join("luma.json")).and_then(|m| m.modified()).ok()).max();
-    let oldest_code = times(&path.join("code")).into_iter().min();
-    match (newest_source, oldest_code) {
-        (Some(source), Some(code)) if code >= source => Ok((vec![], true)),
-        _ => build_lines(path, installed),
-    }
+    build_lines(path, installed)
 }
 
 struct Item {

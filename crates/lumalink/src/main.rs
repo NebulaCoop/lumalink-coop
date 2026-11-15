@@ -941,7 +941,16 @@ fn convert(from: &Path, folder: &Path, game: Option<PathBuf>, name: Option<Strin
 }
 
 fn pack(folder: &Path, output: Option<PathBuf>, inputs: &Inputs) -> Result<ExitCode> {
-    let (report, outcome) = jobs::pack(folder, output, &inputs.resolved())?;
+    let inputs = inputs.resolved();
+    // Code older than its source is built first, as the window and `lumalink run` do: what is packed is the source.
+    if jobs::code_out_of_date(folder) {
+        let names = inputs.names.clone().with_context(|| say!("LumaLink.NoNames"))?;
+        if build_mod(folder, &names, None, None, None, &[])?.is_some() {
+            println!("{}", say!("LumaLink.NotPacked.Errors"));
+            return Ok(ExitCode::from(1));
+        }
+    }
+    let (report, outcome) = jobs::pack(folder, output, &inputs)?;
     print_pack(&report, outcome)
 }
 

@@ -85,6 +85,26 @@ pub fn mod_folder(folder: &Path, checked: &Path) -> Result<Vec<luma_validate::In
     Ok(out)
 }
 
+/// With no mod folder given, the mods the mod at `mod_path` needs, found where its build finds them
+/// ([`crate::build::needed_folder`]: beside it, the installed game's mods, the mods the game comes with). A need found
+/// nowhere is left out, and the validator says it is not checked.
+fn needed_mods(mod_path: &Path, inputs: &Inputs) -> Vec<luma_validate::Installed> {
+    let manifest = if mod_path.is_dir() { std::fs::read(mod_path.join("luma.json")).ok() } else { crate::luma_file::read_entry(mod_path, "luma.json").ok() };
+    let Some(json) = manifest.and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) else { return Vec::new() };
+    let ids: Vec<String> = json.get("needs").and_then(|n| n.as_array()).into_iter().flatten().filter_map(|n| n.get("id")?.as_str().map(str::to_string)).collect();
+    let shipped = inputs.names.as_ref().map(|n| n.join("mods")).filter(|p| p.is_dir());
+    let mut out = Vec::new();
+    for id in ids {
+        let Some(folder) = crate::build::needed_folder(mod_path, &id, shipped.as_deref()) else { continue };
+        let report = luma_validate::validate(&luma_validate::Input { source: luma_validate::Source::Folder(&folder), game: None, installed: &[], platforms: &[], options: None, position: None });
+        if let Some(a) = report.about {
+            let file = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            out.push(luma_validate::Installed { id: a.id, version: a.version, on: true, file, conflicts: a.conflicts, needs: a.needs, touches: report.touches });
+        }
+    }
+    out
+}
+
 /// Why the folder of the game's function rows and types file does not read, in the chosen language.
 pub fn rows_error(folder: &Path, e: luma_validate::names::RowsError) -> anyhow::Error {
     use luma_validate::names::RowsError;
@@ -143,7 +163,7 @@ fn validate_as(path: &Path, mod_path: &Path, inputs: &Inputs) -> Result<Report> 
     };
     let others = match &inputs.mods {
         Some(folder) => mod_folder(folder, mod_path)?,
-        None => Vec::new(),
+        None => needed_mods(mod_path, inputs),
     };
     let mut report = luma_validate::validate(&luma_validate::Input { source, game: game.as_ref(), installed: &others, platforms: &platforms, options: None, position: None });
     if inputs.mods.is_none() {
@@ -1072,6 +1092,40 @@ fn test_name(test: &Path) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// With no mod folder given, a mod's needs are found beside it, so a library's schemas reach the check.
+    #[test]
+    fn needs_beside_the_mod_are_found_without_a_mod_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = |id: &str, more: &str| format!(r#"{{"format": "1.0", "id": "{id}", "version": "1.0.0", "name": "T", "summary": "A test.", "authors": ["G"], "game": {{"id": "RMG"}}{more}}}"#);
+        let lib = dir.path().join("lib.mod");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("luma.json"), manifest("lib.mod", "")).unwrap();
+        let user = dir.path().join("user");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(user.join("luma.json"), manifest("user.mod", r#", "needs": [{"id": "lib.mod", "version": ">=1.0.0"}, {"id": "nowhere.mod"}]"#)).unwrap();
+        let found = needed_mods(&user, &Inputs { no_installed: true, ..Inputs::default() });
+        assert_eq!(found.iter().map(|m| (m.id.as_str(), m.file.as_str())).collect::<Vec<_>>(), vec![("lib.mod", "lib.mod")]);
+    }
+
+    /// Code is out of date with no code, or with source newer than the oldest library; a mod with no source never is.
+    #[test]
+    fn code_is_out_of_date_when_source_is_newer() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = dir.path();
+        assert!(!code_out_of_date(m), "no source");
+        std::fs::create_dir_all(m.join("source")).unwrap();
+        std::fs::create_dir_all(m.join("code")).unwrap();
+        std::fs::write(m.join("source/main.lum"), "").unwrap();
+        assert!(code_out_of_date(m), "no code");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        let main = std::fs::OpenOptions::new().write(true).open(m.join("source/main.lum")).unwrap();
+        main.set_modified(old).unwrap();
+        std::fs::write(m.join("code/m.lumi"), "").unwrap();
+        assert!(!code_out_of_date(m), "code newer than source");
+        main.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60)).unwrap();
+        assert!(code_out_of_date(m), "source newer than code");
+    }
+
     /// A library in the mod folder gives its data schemas to the check of a mod that uses it, as in the game.
     #[test]
     fn a_library_in_the_mod_folder_gives_its_schemas_to_the_mods_that_use_it() {
@@ -1366,6 +1420,32 @@ pub struct BuildOutcome {
 pub fn sdk_folder(sdk: Option<PathBuf>, names: Option<&Path>) -> Option<PathBuf> {
     sdk.or_else(|| std::env::var_os("LUMA_INCLUDE").filter(|v| !v.is_empty()).map(PathBuf::from))
         .or_else(|| names.map(|n| n.join("sdk")).filter(|s| s.join("luma.h").is_file()))
+}
+
+/// Whether a mod folder's code needs building before it is packed or played: it has source, and a source file or
+/// luma.json is newer than its oldest library (or it has none).
+pub fn code_out_of_date(folder: &Path) -> bool {
+    fn times(dir: &Path) -> Vec<std::time::SystemTime> {
+        let mut out = vec![];
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if let Ok(t) = e.metadata().and_then(|m| m.modified()) {
+                    out.push(t);
+                }
+            }
+        }
+        out
+    }
+    if !folder.is_dir() || !has_source(folder) {
+        return false;
+    }
+    let newest_source = times(&folder.join("source")).into_iter().chain(std::fs::metadata(folder.join("luma.json")).and_then(|m| m.modified()).ok()).max();
+    let oldest_code = times(&folder.join("code")).into_iter().min();
+    !matches!((newest_source, oldest_code), (Some(source), Some(code)) if code >= source)
 }
 
 /// Whether a mod folder has code to build: LumaScript or C under `source/`.
