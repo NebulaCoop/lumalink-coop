@@ -5,14 +5,20 @@ name: Release
 # silicon and Intel (installer/build-setup.sh), each on its own system. The Setups built here are not signed: the release key stays on
 # the release PC, where installer/sign-release.ps1 signs them. Updates offer a release once its Setups' signatures are
 # there. A Setup the release already has with its signature is left as it is.
+# Run by hand with "dry run", it builds every Setup from the chosen branch and keeps them as the run's artifacts:
+# no tag, no release.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: The release's tag (v1.2.3)
-        required: true
+        description: The release's tag (v1.2.3); not needed for a dry run
+        required: false
+      dry_run:
+        description: Build the Setups only (no release)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -22,6 +28,7 @@ env:
 
 jobs:
   release:
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +50,7 @@ jobs:
 
   setup:
     needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || (inputs.dry_run && needs.release.result == 'skipped')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ inputs.dry_run && github.sha || env.TAG }}
       - name: Nebula at the pinned commit
         shell: bash
         run: |
@@ -119,7 +127,15 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: sh installer/build-setup.sh --llvm "$RUNNER_TEMP/llvm" --output "$RUNNER_TEMP/dist"
+      - name: Keep it (dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-${{ matrix.os }}
+          path: ${{ runner.temp }}/dist/LumaLink-*Setup*
+          if-no-files-found: error
       - name: Add it to the release
+        if: ${{ !inputs.dry_run }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
