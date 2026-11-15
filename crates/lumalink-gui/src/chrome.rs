@@ -406,8 +406,8 @@ pub fn mark(painter: &Painter, centre: Pos2, r: f32, mark: Mark) {
 /// The small pictures drawn on tiles and buttons.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Icon {
-    /// LumaLink's own: a four-pointed sparkle.
-    Sparkle,
+    /// Settings: a gear.
+    Gear,
     /// Add.
     Plus,
     /// A mod folder.
@@ -432,13 +432,107 @@ pub fn sparkle(painter: &Painter, centre: Pos2, r: f32, color: Color32) {
     fill(painter, &points, color, color);
 }
 
+/// The gear's outline for a gear of radius 1 (a tooth's top), `GEAR_POINTS` points at equal steps along it, the first
+/// on the tooth pointing right, going round by increasing angle. The shape: a disk of radius 0.74 and 8 teeth, each a
+/// box 0.33 wide from 0.6 to 1 along its axis with corners rounded to 0.07, joined to the disk by fillets of 0.1 (a
+/// polynomial smooth minimum of the distances). The outline is where that distance is 0, found along each ray from the
+/// centre (the shape is star-shaped: each ray leaves it once), then walked at equal steps so every curve has its points.
+const GEAR_POINTS: usize = 1024;
+fn gear_outline() -> &'static [Vec2] {
+    static OUTLINE: std::sync::OnceLock<Vec<Vec2>> = std::sync::OnceLock::new();
+    OUTLINE.get_or_init(|| {
+        let distance = |x: f64, y: f64| {
+            let mut d = (x * x + y * y).sqrt() - 0.74;
+            for k in 0..8 {
+                let a = std::f64::consts::TAU * k as f64 / 8.0;
+                let (u, v) = (x * a.cos() + y * a.sin(), -x * a.sin() + y * a.cos());
+                let (corner, (qx, qy)) = (0.07, ((u - 0.8).abs() - 0.2 + 0.07, v.abs() - 0.165 + 0.07));
+                let tooth = (qx.max(0.0).hypot(qy.max(0.0))) + qx.max(qy).min(0.0) - corner;
+                let k = 0.1;
+                let h = (k - (d - tooth).abs()).max(0.0) / k;
+                d = d.min(tooth) - h * h * k * 0.25;
+            }
+            d
+        };
+        // The edge along a fine fan of rays, then its length walked in equal steps.
+        let rays = 16 * GEAR_POINTS;
+        let fine: Vec<(f64, f64)> = (0..=rays)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / rays as f64;
+                let (c, s) = (a.cos(), a.sin());
+                let (mut inside, mut outside) = (0.3, 1.2);
+                for _ in 0..32 {
+                    let m = 0.5 * (inside + outside);
+                    if distance(m * c, m * s) < 0.0 { inside = m } else { outside = m }
+                }
+                let r = 0.5 * (inside + outside);
+                (r * c, r * s)
+            })
+            .collect();
+        let mut along = vec![0.0f64; fine.len()];
+        for i in 1..fine.len() {
+            along[i] = along[i - 1] + (fine[i].0 - fine[i - 1].0).hypot(fine[i].1 - fine[i - 1].1);
+        }
+        let total = along[fine.len() - 1];
+        let mut out = Vec::with_capacity(GEAR_POINTS);
+        let mut j = 0;
+        for i in 0..GEAR_POINTS {
+            let want = total * i as f64 / GEAR_POINTS as f64;
+            while along[j + 1] < want {
+                j += 1;
+            }
+            let t = (want - along[j]) / (along[j + 1] - along[j]).max(1e-12);
+            let (x, y) = (fine[j].0 + (fine[j + 1].0 - fine[j].0) * t, fine[j].1 + (fine[j + 1].1 - fine[j].1) * t);
+            out.push(vec2(x as f32, y as f32));
+        }
+        out
+    })
+}
+
+/// A gear of 8 teeth around `centre`, `r` from its centre to a tooth's top (`gear_outline`): a ring whose middle is a
+/// round hole of 0.32 r (transparent: the face shows through). Its teeth point right, down, left and up, so it is the
+/// same mirrored about both axes through `centre`. Both edges are softened over a pixel.
+pub fn gear(centre: Pos2, r: f32, color: Color32) -> Mesh {
+    let hole = 0.32 * r;
+    let unit = gear_outline();
+    let n = unit.len();
+    let outer: Vec<Pos2> = unit.iter().map(|p| centre + *p * r).collect();
+    let mut mesh = Mesh::default();
+    for i in 0..n {
+        let dir = unit[i].normalized();
+        let (before, here, after) = (outer[(i + n - 1) % n], outer[i], outer[(i + 1) % n]);
+        let along = (after - before).normalized();
+        let mut out = vec2(along.y, -along.x);
+        if out.dot(dir) < 0.0 {
+            out = -out;
+        }
+        // Four vertices a sample: the outer edge inside and outside, the hole's edge inside the ring and in the hole.
+        mesh.colored_vertex(here - out * 0.5, color);
+        mesh.colored_vertex(here + out * 0.5, Color32::TRANSPARENT);
+        mesh.colored_vertex(centre + dir * (hole + 0.5), color);
+        mesh.colored_vertex(centre + dir * (hole - 0.5), Color32::TRANSPARENT);
+    }
+    for i in 0..n as u32 {
+        let (a, b) = (4 * i, 4 * ((i + 1) % n as u32));
+        // The ring.
+        mesh.add_triangle(a, b, a + 2);
+        mesh.add_triangle(a + 2, b, b + 2);
+        // The outer edge's soft pixel.
+        mesh.add_triangle(a, a + 1, b);
+        mesh.add_triangle(b, a + 1, b + 1);
+        // The hole's soft pixel.
+        mesh.add_triangle(a + 2, a + 3, b + 2);
+        mesh.add_triangle(b + 2, a + 3, b + 3);
+    }
+    mesh
+}
+
 /// `icon` in a square `size` wide around `centre`, in `color`; `cut` is the colour of what is cut out of it.
 pub fn paint_icon(painter: &Painter, icon: Icon, centre: Pos2, size: f32, color: Color32, cut: Color32) {
     let s = size / 2.0;
     match icon {
-        Icon::Sparkle => {
-            sparkle(painter, centre + vec2(-0.08, 0.06) * s, 0.62 * s, color);
-            sparkle(painter, centre + vec2(0.36, -0.36) * s, 0.24 * s, color);
+        Icon::Gear => {
+            painter.add(Shape::mesh(gear(centre, 0.8 * s, color)));
         }
         Icon::Plus => {
             let (long, thick) = (0.84 * s, 0.15 * size);
@@ -689,5 +783,105 @@ pub fn switch(painter: &Painter, rect: Rect, on: f32, lit: f32) {
     painter.circle_filled(knob, r - 2.5, Color32::WHITE);
     if lit > 0.0 {
         painter.rect_stroke(rect.expand(2.0), r + 2.0, Stroke::new(2.0, faded(BLUE, 0.5 * lit)), StrokeKind::Outside);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mesh's coverage (0 to 1) on a `size` x `size` grid of pixels, 4 x 4 samples a pixel, from its vertices' alpha.
+    fn coverage(mesh: &Mesh, size: usize) -> Vec<f32> {
+        let mut out = vec![0.0f32; size * size];
+        let tris: Vec<[usize; 3]> = mesh.indices.chunks(3).map(|t| [t[0] as usize, t[1] as usize, t[2] as usize]).collect();
+        for py in 0..size {
+            for px in 0..size {
+                let mut sum = 0.0;
+                for sy in 0..4 {
+                    for sx in 0..4 {
+                        let p = pos2(px as f32 + (sx as f32 + 0.5) / 4.0, py as f32 + (sy as f32 + 0.5) / 4.0);
+                        for t in &tris {
+                            let [a, b, c] = t.map(|i| mesh.vertices[i].pos);
+                            let d = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+                            if d.abs() < 1e-9 {
+                                continue;
+                            }
+                            let u = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / d;
+                            let v = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / d;
+                            let w = 1.0 - u - v;
+                            if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                                let alpha = t.map(|i| mesh.vertices[i].color.a() as f32 / 255.0);
+                                sum += u * alpha[0] + v * alpha[1] + w * alpha[2];
+                                break;
+                            }
+                        }
+                    }
+                }
+                out[py * size + px] = sum / 16.0;
+            }
+        }
+        out
+    }
+
+    /// The gear at the Settings button's size and at a large size: centred on both axes, the same mirrored left to
+    /// right and top to bottom, a clear hole, a solid ring, and an outline with no corner. LUMALINK_GEAR_RAW=<folder>
+    /// also writes each coverage as raw 8-bit grey (gear-<size>.raw) to look at.
+    #[test]
+    fn gear_is_centred_symmetric_and_round() {
+        for size in [32usize, 48, 256] {
+            let c = size as f32 / 2.0;
+            let mesh = gear(pos2(c, c), 0.42 * size as f32, Color32::WHITE);
+            let cov = coverage(&mesh, size);
+            if let Some(dir) = std::env::var_os("LUMALINK_GEAR_RAW") {
+                let bytes: Vec<u8> = cov.iter().map(|a| (a * 255.0).round() as u8).collect();
+                std::fs::write(std::path::Path::new(&dir).join(format!("gear-{size}.raw")), bytes).unwrap();
+            }
+            let at = |x: usize, y: usize| cov[y * size + x];
+            let (mut total, mut mx, mut my) = (0.0f64, 0.0f64, 0.0f64);
+            for y in 0..size {
+                for x in 0..size {
+                    let a = at(x, y) as f64;
+                    total += a;
+                    mx += a * (x as f64 + 0.5);
+                    my += a * (y as f64 + 0.5);
+                    // Mirrored left to right and top to bottom.
+                    assert!((at(x, y) - at(size - 1 - x, y)).abs() < 0.03, "size {size}: not mirrored left-right at {x},{y}");
+                    assert!((at(x, y) - at(x, size - 1 - y)).abs() < 0.03, "size {size}: not mirrored top-bottom at {x},{y}");
+                }
+            }
+            let (cx, cy) = (mx / total, my / total);
+            assert!((cx - c as f64).abs() < 0.01 && (cy - c as f64).abs() < 0.01, "size {size}: centred at {cx},{cy}, not {c}");
+            let mid = size / 2;
+            assert!(at(mid, mid) < 0.01, "size {size}: the hole is not clear");
+            // The ring between the hole (0.33 r) and the root (0.76 r): solid.
+            let ring = (c + 0.55 * 0.42 * size as f32) as usize;
+            assert!(at(ring, mid) > 0.99 && at(mid, ring) > 0.99, "size {size}: the ring is not solid");
+        }
+        // No corner: along the outer edge (every fourth vertex, its inside), each turn is small.
+        let mesh = gear(pos2(0.0, 0.0), 100.0, Color32::WHITE);
+        let edge: Vec<Pos2> = mesh.vertices.iter().step_by(4).map(|v| v.pos).collect();
+        let n = edge.len();
+        for i in 0..n {
+            let (a, b, c) = (edge[(i + n - 1) % n], edge[i], edge[(i + 1) % n]);
+            let turn = (b - a).angle().sub_angle((c - b).angle());
+            assert!(turn.abs() < 0.2, "a corner at vertex {i}: it turns {turn} radians");
+        }
+    }
+
+    trait SubAngle {
+        fn sub_angle(self, other: f32) -> f32;
+    }
+    impl SubAngle for f32 {
+        /// self - other, wrapped to -pi..pi.
+        fn sub_angle(self, other: f32) -> f32 {
+            let d = (self - other) % TAU;
+            if d > PI {
+                d - TAU
+            } else if d < -PI {
+                d + TAU
+            } else {
+                d
+            }
+        }
     }
 }

@@ -281,7 +281,7 @@ impl App {
         // Settings and Add mods, set into the bar, their words under them.
         let settings_words = say!("LumaLink.Window.Settings");
         let add_words = say!("LumaLink.Window.Add");
-        if chrome::round_button(ui, Id::new("settings"), left, r, &settings_words, Icon::Sparkle).clicked() {
+        if chrome::round_button(ui, Id::new("settings"), left, r, &settings_words, Icon::Gear).clicked() {
             self.view = View::Settings;
         }
         if chrome::round_button(ui, Id::new("add"), right, r, &add_words, Icon::Plus).clicked() {
