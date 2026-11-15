@@ -224,8 +224,9 @@ enum Command {
         /// then the installed game's version folder.
         #[arg(long, value_name = "FOLDER")]
         bin: Option<PathBuf>,
-        /// The harness's runner (luma_test.py). Default: LUMA_TEST_RUNNER, then the one in the bin folder's luma/test,
-        /// then tools/lumacore/luma_test.py above it.
+        /// The harness's runner (luma_test.py). Default: LUMA_TEST_RUNNER, then the test kit's tools/lumacore/luma_test.py.
+        /// With a --bin build folder that has its own test parts: the one in its luma/test, then tools/lumacore/luma_test.py
+        /// above it.
         #[arg(long, value_name = "FILE")]
         runner: Option<PathBuf>,
         /// The Python that runs it. Default: LUMALINK_PYTHON, then python.
