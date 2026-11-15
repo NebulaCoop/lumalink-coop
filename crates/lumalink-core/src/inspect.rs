@@ -340,8 +340,12 @@ pub fn extract(store: &Path, path: &str, output: &Path, names: &ColumnNames) -> 
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).with_context(|| say!("LumaLink.CannotMake", path = parent.display()))?;
         }
-        // A table or a particle file comes with its JSON beside it; nothing already there is written over.
-        let readable = table_to_json(&bytes, names).ok().or_else(|| particles_to_json(store, &place, &bytes).ok());
+        // A table, a particle file or a layout comes with its JSON beside it (a layout's as a patch that changes
+        // nothing: every pane by name, with its values); nothing already there is written over.
+        let readable = table_to_json(&bytes, names)
+            .ok()
+            .or_else(|| particles_to_json(store, &place, &bytes).ok())
+            .or_else(|| nebula_import::cook::layout_patch::as_patch(&bytes));
         let mut json = target.as_os_str().to_owned();
         json.push(".json");
         let json = std::path::PathBuf::from(json);

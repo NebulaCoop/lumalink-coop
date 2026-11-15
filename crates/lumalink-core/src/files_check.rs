@@ -14,7 +14,7 @@ use luma_validate::Finding;
 use nebula_import::cook::audio_data::WavePlace;
 use nebula_import::cook::beside;
 use nebula_import::cook::overlay::{cook_source, is_sound_archive, mod_wave_layout};
-use nebula_import::cook::overlay_patches::placement_args_finding;
+use nebula_import::cook::overlay_patches::{layout_patch_finding, placement_args_finding};
 use nebula_import::cook::refuse;
 use nebula_import::store_view::PakStore;
 use std::cell::RefCell;
@@ -83,13 +83,24 @@ fn cooked_files(source: &Path, names: Vec<String>, store: &Path, mod_id: Option<
         let (Some("layers"), Some(layer), Some(place), Some(path)) = (parts.next(), parts.next(), parts.next(), parts.next()) else { continue };
         // A patch of a stage's placement table whose rows give arguments by name: applied to the game's table as the
         // start applies it (docs/modding/content/stages.md, section 1). Not JSON, or any other fault, is the validator's.
+        // A patch of a game layout: applied alone to the game's layout, as the start applies it (screens.md section 5).
         if place == "patches" {
             let Some(table) = path.strip_suffix(".json") else { continue };
-            let Ok(patch) = serde_json::from_slice::<serde_json::Value>(&beside::read(&source.join(&name))?) else { continue };
+            let bytes = beside::read(&source.join(&name))?;
             if game.is_none() {
                 game = Some(PakStore::open(store)?);
             }
             let Some(pak) = game.as_ref() else { continue };
+            refuse::take_notes();
+            let layout = layout_patch_finding(pak, table, &bytes)?;
+            refuse::take_notes();
+            if let Some(mut finding) = layout {
+                finding.file = name.clone();
+                finding.mod_id = mod_id.map(str::to_string);
+                out.push(finding);
+                continue;
+            }
+            let Ok(patch) = serde_json::from_slice::<serde_json::Value>(&bytes) else { continue };
             if let Some(mut finding) = placement_args_finding(pak, table, mod_id.unwrap_or("mod"), &name, &patch)? {
                 finding.file = name.clone();
                 finding.mod_id = mod_id.map(str::to_string);
