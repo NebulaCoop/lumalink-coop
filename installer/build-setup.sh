@@ -12,6 +12,7 @@
 #   toolchain/bin/clang, lld             Setup adds lld's other names (ld.lld, ld64.lld, lld-link) as links
 #   toolchain/lib/clang/<major>/include  clang's own headers
 #   lumakit/                             LumaKit's source (Nebula ships it built, as lumakit.luma)
+#   editors/lumascript.vsix              the LumaScript extension for Visual Studio Code (installer/vsix.py)
 #   licenses/                            LLVM's licence, the window font's and the Rust crates'
 #   LICENSE, README.md
 #
@@ -80,6 +81,7 @@ cp "$clang" "$stage/toolchain/bin/clang"
 cp "$llvm/bin/lld" "$stage/toolchain/bin/lld"
 cp -R "$llvm/lib/clang/$major/include" "$stage/toolchain/lib/clang/$major/include"
 cp -R "$repo/lumakit" "$stage/lumakit"
+python3 "$repo/installer/vsix.py" "$stage/editors/lumascript.vsix"
 cp "$repo/installer/licenses/LLVM.txt" "$stage/licenses/LLVM.txt"
 cp "$repo/crates/lumalink-gui/assets/MPLUSRounded1c-OFL.txt" "$stage/licenses/M PLUS Rounded 1c.txt"
 python3 "$repo/installer/rust_licenses.py" "$target" "$stage/licenses/rust-crates.txt" lumalink lumalink-gui lumalink-setup

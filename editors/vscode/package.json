@@ -26,7 +26,7 @@
     "lumascript.lumalink": {
      "type": "string",
      "default": "lumalink",
-     "markdownDescription": "LumaLink's program. `lumalink` when it is on the PATH (LumaLink's setup offers that); otherwise its full path."
+     "markdownDescription": "LumaLink's program. The default, `lumalink`, is the copy LumaLink Setup installed, else the one on the PATH. For another copy, its full path."
     },
     "lumascript.names": {
      "type": "string",

@@ -128,8 +128,8 @@ PACKAGE = {
     "contributes": {
         "configuration": {"title": "LumaScript", "properties": {
             "lumascript.lumalink": {"type": "string", "default": "lumalink", "markdownDescription":
-                                    "LumaLink's program. `lumalink` when it is on the PATH (LumaLink's setup offers "
-                                    "that); otherwise its full path."},
+                                    "LumaLink's program. The default, `lumalink`, is the copy LumaLink Setup "
+                                    "installed, else the one on the PATH. For another copy, its full path."},
             "lumascript.names": {"type": "string", "default": "", "markdownDescription":
                                  "The game's self-description folder (the `luma` folder beside Nebula's program). "
                                  "Empty: the installed game's."},

@@ -1732,6 +1732,11 @@ impl<'a> Gen<'a> {
                 let (x, xt) = vals[0].clone();
                 self.json_decode(fx, e, &x, &xt, t)
             }
+            "keep" => {
+                let (x, xt) = vals[0].clone();
+                self.keep_value(fx, e, &x, &xt, &args[0].value)
+            }
+            "kept" => self.kept_value(fx, e, t),
             "min" | "max" => {
                 let ct = self.c_type(t).ok_or_else(lost)?;
                 let o = if s == "min" { "<" } else { ">" };

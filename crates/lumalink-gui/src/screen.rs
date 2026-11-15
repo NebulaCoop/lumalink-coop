@@ -680,6 +680,25 @@ impl App {
         if chrome::row(ui, size, Id::new("new-mod"), &say!("LumaLink.Window.New"), None, End::Nothing, true).clicked() {
             self.new_form = Some(NewForm::default());
         }
+        // LumaScript in Visual Studio Code: errors, completion and help as a mod's code is typed.
+        self.vscode.poll();
+        let working = matches!(self.vscode, VsCode::Working(_));
+        ui.add_space(gap);
+        if chrome::row(ui, size, Id::new("vscode"), &say!("LumaLink.Window.VsCode"), None, End::Nothing, !working).clicked() && !working {
+            self.vscode = VsCode::start();
+        }
+        let said = match &self.vscode {
+            VsCode::Idle => None,
+            VsCode::Working(_) => {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                Some((say!("LumaLink.Window.VsCode.Working"), SOFT))
+            }
+            VsCode::Said(text, color) => Some((text.clone(), *color)),
+        };
+        if let Some((text, color)) = said {
+            ui.add_space(gap / 2.0);
+            ui.add_sized(vec2(size.x - 56.0, 0.0), Label::new(RichText::new(text).size(14.0).color(color)).wrap());
+        }
         ui.add_space(gap);
         ui.label(RichText::new(say!("LumaLink.Window.Version", version = lumalink_core::update::VERSION)).size(13.0).color(SOFT));
         go

@@ -30,6 +30,7 @@ pub mod plan;
 pub mod table_patch;
 pub mod text;
 pub mod update;
+pub mod vscode;
 pub mod player_constants;
 pub mod ppc;
 pub mod region_map;

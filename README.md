@@ -91,9 +91,11 @@ another; `--no-installed` leaves it out. Messages and help come in any of the ga
 ## Editors
 
 `editors/vscode` is the LumaScript extension for Visual Studio Code: colours, brackets, snippets, and errors as you
-type, completion, hover, go to definition, rename and formatting from `lumalink lsp`. Copy the folder into VS Code's
-extensions folder (`~/.vscode/extensions/lumascript`) and restart it. Other editors run `lumalink lsp` with their own
-Language Server Protocol client; Nebula's `docs/modding/lumalink/editor.md` has Neovim and Helix settings.
+type, completion, hover, go to definition, rename and formatting from `lumalink lsp`. To install it, open LumaLink,
+then **Settings** > **Add LumaScript to Visual Studio Code**. Setup installs the extension packed
+(`editors/lumascript.vsix`, made by `installer/vsix.py`); `code --install-extension` takes that file too. Other editors
+run `lumalink lsp` with their own Language Server Protocol client; Nebula's modding docs have Neovim and Helix
+settings.
 
 ## Building
 

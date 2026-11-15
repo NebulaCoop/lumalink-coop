@@ -15,6 +15,8 @@ The installed files:
                                         other names (ld.lld.exe, lld-link.exe, ld64.lld.exe) as links
   toolchain\lib\clang\<major>\include   clang's own headers
   lumakit\                              LumaKit's source (Nebula ships it built, as lumakit.luma)
+  editors\lumascript.vsix               the LumaScript extension for Visual Studio Code (installer/vsix.py), which
+                                        Settings > Add LumaScript to Visual Studio Code installs
   licenses\                             LLVM's licence, the window font's and the Rust crates' (rust-crates.txt,
                                         installer/rust_licenses.py)
   LICENSE, README.md
@@ -77,6 +79,7 @@ try {
     New-Item -ItemType Directory -Force (Join-Path $stage "toolchain\lib\clang\$major") | Out-Null
     Copy-Item -LiteralPath $headers -Destination (Join-Path $stage "toolchain\lib\clang\$major\include") -Recurse
     Copy-Item -LiteralPath (Join-Path $repo 'lumakit') -Destination (Join-Path $stage 'lumakit') -Recurse
+    Invoke-Checked python @((Join-Path $installer 'vsix.py'), (Join-Path $stage 'editors\lumascript.vsix'))
     Copy-Into (Join-Path $installer 'licenses\LLVM.txt') (Join-Path $stage 'licenses\LLVM.txt')
     Copy-Into (Join-Path $repo 'crates\lumalink-gui\assets\MPLUSRounded1c-OFL.txt') (Join-Path $stage 'licenses\M PLUS Rounded 1c.txt')
     foreach ($name in 'LICENSE', 'README.md') { Copy-Into (Join-Path $repo $name) (Join-Path $stage $name) }

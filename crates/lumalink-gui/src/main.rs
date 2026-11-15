@@ -477,6 +477,39 @@ struct NewForm {
     refused: Vec<Line>,
 }
 
+/// Settings' Add LumaScript to Visual Studio Code (lumalink_core::vscode).
+enum VsCode {
+    Idle,
+    /// VS Code is installing it on a thread of its own (a few seconds).
+    Working(Receiver<Result<Result<(), lumalink_core::vscode::Missing>, String>>),
+    /// What came of it, and its colour.
+    Said(String, Color32),
+}
+
+impl VsCode {
+    fn start() -> VsCode {
+        let (sender, answer) = channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(lumalink_core::vscode::install().map_err(|e| format!("{e:#}")));
+        });
+        VsCode::Working(answer)
+    }
+
+    /// The answer, once it came.
+    fn poll(&mut self) {
+        let VsCode::Working(answer) = self else { return };
+        let said = match answer.try_recv() {
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Ok(Ok(Ok(()))) => (say!("LumaLink.Window.VsCode.Done"), GREEN),
+            Ok(Ok(Err(lumalink_core::vscode::Missing::Code))) => (say!("LumaLink.Window.VsCode.NoCode"), AMBER),
+            Ok(Ok(Err(lumalink_core::vscode::Missing::Extension))) => (say!("LumaLink.Window.VsCode.NoExtension"), AMBER),
+            Ok(Err(why)) => (say!("LumaLink.Window.VsCode.Failed", why = why), RED),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => (say!("LumaLink.Window.VsCode.Failed", why = "-"), RED),
+        };
+        *self = VsCode::Said(said.0, said.1);
+    }
+}
+
 struct App {
     items: Vec<Item>,
     next_id: u64,
@@ -495,6 +528,8 @@ struct App {
     update: Update,
     /// The settings' "check for updates when LumaLink opens".
     check_for_updates: bool,
+    /// Settings' Add LumaScript to Visual Studio Code: its answer while it runs, then what came of it.
+    vscode: VsCode,
     /// Home, Settings or the languages (a mod's own screen is `chosen`).
     view: screen::View,
     /// The page of tiles shown, and the wheel turned toward the next.
@@ -524,6 +559,7 @@ impl App {
             receiver,
             update: Update::Quiet,
             check_for_updates: lumalink_core::update::Settings::load().check_for_updates,
+            vscode: VsCode::Idle,
             view: screen::View::Home,
             sheet: 0,
             per_page: 12,

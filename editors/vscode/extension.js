@@ -279,7 +279,28 @@ function settings() {
     if (sdk) {
         args.push('--sdk', sdk);
     }
-    return { command: c.get('lumalink') || 'lumalink', args };
+    return { command: lumalink(c.get('lumalink') || 'lumalink'), args };
+}
+
+/// LumaLink's program: the setting when it names one; for the default `lumalink`, the copy LumaLink Setup installed
+/// (its folder: %LOCALAPPDATA%\Programs\LumaLink, ~/Library/LumaLink, $XDG_DATA_HOME/lumalink), else `lumalink` from
+/// the PATH.
+function lumalink(setting) {
+    if (setting !== 'lumalink') {
+        return setting;
+    }
+    const fs = require('fs');
+    const os = require('os');
+    const env = process.env;
+    let installed = null;
+    if (process.platform === 'win32') {
+        installed = env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Programs', 'LumaLink', 'lumalink.exe') : null;
+    } else if (process.platform === 'darwin') {
+        installed = path.join(os.homedir(), 'Library', 'LumaLink', 'lumalink');
+    } else {
+        installed = path.join(env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'lumalink', 'lumalink');
+    }
+    return installed && fs.existsSync(installed) ? installed : setting;
 }
 
 async function start() {

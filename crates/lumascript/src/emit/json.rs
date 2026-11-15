@@ -225,12 +225,46 @@ impl<'a> Gen<'a> {
     /// `json.decode<T>(data)`: `data` (already read: text, or bytes as UTF-8) read as a whole `T` by T's reader; none
     /// when it does not read, or when anything but white space follows.
     pub(super) fn json_decode(&mut self, fx: &mut Fx, e: &Expr, data: &str, dt: &Ty, t: &Ty) -> Ex {
-        let Ty::Opt(target) = t else { return self.not_yet(fx, e, "json.decode of this type") };
-        let (file, line) = (c_string(&fx.file), e.at.line);
+        if !matches!(t, Ty::Opt(_)) {
+            return self.not_yet(fx, e, "json.decode of this type");
+        }
         let (p, n) = match dt {
             Ty::Bytes => (format!("lumart_bytes_p({data})"), format!("lumart_list_n({data})")),
             _ => (format!("lumart_text_p({data})"), format!("lumart_text_n({data})")),
         };
+        self.json_read_whole(fx, e, &p, &n, t).map(|(r, _)| r)
+    }
+
+    /// `keep(value)`: the value as json handed to LumaCore's `keep` (reload.md 4); true when kept. Over 1 MiB encoded
+    /// (or no memory in the game) is false and one line in the mod log.
+    pub(super) fn keep_value(&mut self, fx: &mut Fx, e: &Expr, x: &str, xt: &Ty, arg: &Expr) -> Ex {
+        let text = self.json_encode(fx, e, x, xt, arg)?;
+        let r = fx.fresh("uint8_t");
+        fx.emit(format!(
+            "{r} = lumart_text_n({text}) <= 1048576u && luma_rt_core->keep(luma_rt_self, lumart_text_p({text}), (uint32_t)lumart_text_n({text})) == 0;"
+        ));
+        fx.emit(format!("if (!{r}) lumart_log(\"keep: the value was not kept (more than 1 MiB as json)\");"));
+        Ok(r)
+    }
+
+    /// `kept<T>()`: the bytes the mod's previous load kept (LumaCore's `kept`) read as a whole T; none when nothing was
+    /// kept, or when they are not a T (a struct changed between the loads), the latter one line in the mod log.
+    pub(super) fn kept_value(&mut self, fx: &mut Fx, e: &Expr, t: &Ty) -> Ex {
+        let Ty::Opt(inner) = t else { return Err(super::lost()) };
+        let what = c_string(&format!("kept: the kept value is not a {}; none", self.ty_text(inner)));
+        let n = fx.fresh("uint32_t");
+        let p = fx.fresh("const void*");
+        fx.emit(format!("{p} = luma_rt_core->kept(luma_rt_self, &{n});"));
+        let (r, st) = self.json_read_whole(fx, e, &p, &format!("(uint64_t){n}"), t)?;
+        fx.emit(format!("if ({p} != 0 && {st} != 0) lumart_log({what});"));
+        Ok(r)
+    }
+
+    /// `n` bytes at `p` read as a whole `t` (an option) by its inner type's reader: the option and the status (0 read,
+    /// 1 no memory, 2 not a value of the type).
+    fn json_read_whole(&mut self, fx: &mut Fx, e: &Expr, p: &str, n: &str, t: &Ty) -> Result<(String, String), NotWritten> {
+        let Ty::Opt(target) = t else { return Err(super::lost()) };
+        let (file, line) = (c_string(&fx.file), e.at.line);
         let reader = self.json_reader(fx, target, e)?;
         let ct = self.c_type(t).ok_or_else(super::lost)?;
         let r = fx.fresh(&ct);
@@ -247,7 +281,7 @@ impl<'a> Gen<'a> {
             fx.emit(format!("if ({st} != 0) {r} = ({ct}){{0}};"));
         }
         fx.fail_if(&format!("{st} == 1"));
-        Ok(r)
+        Ok((r, st))
     }
 
     /// The reader function of `t` (made once per type; a struct holding a list of itself calls its own).

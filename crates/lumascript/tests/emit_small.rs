@@ -2296,3 +2296,28 @@ fn peek(r: input.Request) {
     })
     .unwrap();
 }
+
+/// `keep(value)` hands the value as json to LumaCore's keep, refused over 1 MiB; `kept<T>()` reads LumaCore's kept
+/// bytes with T's reader, none when nothing was kept, and a log line when the bytes are not a T.
+#[test]
+fn keep_and_kept_cross_a_reload_as_json() {
+    let c = build("struct Saved { coins: int, best: u32 }
+var coins = 0
+var best: u32 = 0
+on start {
+    if let s = kept<Saved>() { coins = s.coins; best = s.best }
+}
+on stop {
+    let ok = keep(Saved { coins: coins, best: best })
+    log \"{ok}\"
+}
+").unwrap();
+    assert!(c.contains("luma_rt_core->kept(luma_rt_self, &t"), "kept asks LumaCore:
+{c}");
+    assert!(c.contains("lumart_jr_init(&"), "the kept bytes are read as json:
+{c}");
+    assert!(c.contains("lumart_log(\"kept: the kept value is not a Saved; none\")"), "{c}");
+    assert!(c.contains("<= 1048576u && luma_rt_core->keep(luma_rt_self, lumart_text_p(t"), "keep hands over the json:
+{c}");
+    assert!(c.contains("lumart_log(\"keep: the value was not kept"), "{c}");
+}
