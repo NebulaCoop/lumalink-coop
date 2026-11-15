@@ -43,10 +43,13 @@ jobs:
           [ "$version" = "$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" ] ||
             { echo "$TAG is not the version in Cargo.toml"; exit 1; }
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 && exit 0
+          # Each release's notes are written beforehand in .github/release-notes/<version>.md: no notes, no release.
+          notes=".github/release-notes/$version.md"
+          [ -s "$notes" ] || { echo "$notes is missing: write the release notes before tagging"; exit 1; }
           prerelease=
           case $version in *-*) prerelease=--prerelease ;; esac
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "LumaLink $version" $prerelease \
-            --notes "LumaLink $version. Download the Setup for your system: LumaLink-Setup.exe for Windows (x64), LumaLink-Setup-windows-arm64.exe for Windows on ARM, LumaLink-Setup-linux-x64 or LumaLink-Setup-linux-arm64 for Linux, LumaLink-Setup-macos-arm64 for a Mac with Apple silicon, LumaLink-Setup-macos-x64 for an Intel Mac. It installs LumaLink, the compiler it builds mods with and LumaKit, and can add LumaLink to PATH."
+            --notes-file "$notes"
 
   setup:
     needs: release

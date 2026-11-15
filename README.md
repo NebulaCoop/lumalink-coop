@@ -111,7 +111,8 @@ git -C nebula checkout $(cat nebula.commit)
 cargo test --workspace
 ```
 
-A release: pushing a tag `v<version>` runs the release workflow, which makes the release and adds each Setup as its
+A release: write its notes in `.github/release-notes/<version>.md`, then push a tag `v<version>`. That runs the
+release workflow, which makes the release with those notes and adds each Setup as its
 system finishes building it (`installer/build-setup.ps1` on Windows, `installer/build-setup.sh` on Linux and macOS).
 On the PC that holds the release key, `installer/sign-release.ps1 -Tag <tag>` signs the Setups the release has so
 far; run it again for any Setup added later.
