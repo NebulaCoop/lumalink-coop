@@ -5,12 +5,14 @@ Signs LumaLink Setups with the release key: each file gets a .sig beside it (RSA
 .DESCRIPTION
 LumaLink's updates run a downloaded Setup only when its .sig verifies against installer/release-public-key.xml and the
 version written into it (LUMALINK-SETUP-VERSION=<version>;) is the release's. The release key's private half stays on
-this PC, so the Linux and macOS Setups the release workflow builds are signed here:
+this PC, so the Setups the release workflow builds are signed here:
 
   installer/sign-release.ps1 -Tag v1.2.3
 
-downloads the release's Linux and macOS Setups (gh, signed in to GitHub), checks that each carries the release's
-version, signs it and uploads the .sig files. Until then updates do not offer that release on those systems.
+downloads each Setup the release has without a .sig (gh, signed in to GitHub), checks that it carries the release's
+version, signs it and uploads the .sig files. Setups already signed are left as they are, and it names the Setups the
+release does not have yet: run it again once the workflow adds them. Until a Setup is signed, updates do not offer that
+release on its system.
 
   installer/sign-release.ps1 -Files <setup> [<setup> ...] -Version 1.2.3
 
@@ -70,10 +72,20 @@ try {
     $folder = Join-Path ([IO.Path]::GetTempPath()) ('lumalink-sign-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory $folder | Out-Null
     try {
-        # The Linux and macOS Setups (LumaLink-Setup-<platform>, LumaLink-Beta-Setup-<platform>), not their .sig files.
-        $assets = Invoke-Checked gh @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets', '--jq', '.assets[].name')
-        $names = @($assets | Where-Object { $_ -match '^LumaLink-(Beta-)?Setup-[a-z0-9-]+$' })
-        if (-not $names.Count) { throw "Release $Tag has no Linux or macOS Setup yet (the release workflow adds them)" }
+        # A release's Setups, as update::package_name names them (LumaLink-Beta-Setup... for a beta, update::is_beta).
+        $setup = if ($version.ToLowerInvariant().Contains('-beta.')) { 'LumaLink-Beta-Setup' } else { 'LumaLink-Setup' }
+        $expected = @("$setup.exe", "$setup-windows-arm64.exe", "$setup-linux-x64", "$setup-linux-arm64",
+                      "$setup-macos-arm64", "$setup-macos-x64")
+        $assets = @(Invoke-Checked gh @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets', '--jq', '.assets[].name'))
+        $missing = @($expected | Where-Object { $assets -notcontains $_ })
+        $signed = @($expected | Where-Object { ($assets -contains $_) -and ($assets -contains "$_.sig") })
+        $names = @($expected | Where-Object { ($assets -contains $_) -and ($assets -notcontains "$_.sig") })
+        foreach ($name in $signed) { Write-Host "$name is signed already." }
+        if ($missing.Count) { Write-Host "Not on $Tag yet (run this again once the release workflow adds them): $($missing -join ', ')" }
+        if (-not $names.Count) {
+            Write-Host "Nothing to sign on $Tag."
+            return
+        }
         foreach ($name in $names) {
             Invoke-Checked gh @('release', 'download', $Tag, '--repo', $Repository, '--pattern', $name, '--dir', $folder)
             Sign-Setup (Join-Path $folder $name) $version $rsa

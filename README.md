@@ -111,9 +111,9 @@ git -C nebula checkout $(cat nebula.commit)
 cargo test --workspace
 ```
 
-A release: `installer/build-setup.ps1` on the Windows PC that holds the release key builds and signs
-`LumaLink-Setup.exe`. Publishing the release with it and its `.sig` runs the release workflow, which builds the Linux
-and macOS Setups (`installer/build-setup.sh`) and adds them. `installer/sign-release.ps1 -Tag <tag>` then signs those
-on the same PC.
+A release: pushing a tag `v<version>` runs the release workflow, which makes the release and adds each Setup as its
+system finishes building it (`installer/build-setup.ps1` on Windows, `installer/build-setup.sh` on Linux and macOS).
+On the PC that holds the release key, `installer/sign-release.ps1 -Tag <tag>` signs the Setups the release has so
+far; run it again for any Setup added later.
 
 GPL-3.0-only.
