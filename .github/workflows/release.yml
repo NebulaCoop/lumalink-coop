@@ -116,9 +116,11 @@ jobs:
           llvm=${{ steps.llvm.outputs.version }}
           archive=$(echo '${{ matrix.llvm }}' | sed "s/{0}/$llvm/")
           curl -fsSL -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/$archive.tar.xz"
-          mkdir "$RUNNER_TEMP/llvm"
-          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "$RUNNER_TEMP/llvm" --strip-components=1
-          rm "$RUNNER_TEMP/llvm.tar.xz"
+          # Relative paths: Git Bash's tar reads "D:\..." as a remote host.
+          cd "$RUNNER_TEMP"
+          mkdir llvm
+          tar -xJf llvm.tar.xz -C llvm --strip-components=1
+          rm llvm.tar.xz
       - name: Build the Setup (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
