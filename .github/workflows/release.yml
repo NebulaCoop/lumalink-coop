@@ -63,7 +63,7 @@ jobs:
             llvm: LLVM-{0}-Linux-X64
           - os: ubuntu-22.04-arm
             llvm: LLVM-{0}-Linux-ARM64
-          - os: macos-14
+          - os: macos-15
             llvm: LLVM-{0}-macOS-ARM64
           # LLVM publishes no Intel Mac archive: this job builds clang and lld from LLVM's source release (cached).
           - os: macos-15-intel
