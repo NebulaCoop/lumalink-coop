@@ -1,34 +1,61 @@
-name: Release Setups
+name: Release
 
-# A LumaLink release is made on a Windows PC with installer/build-setup.ps1: LumaLink-Setup.exe and its signature,
-# signed with the release key, which never leaves that PC. Publishing the release runs this workflow, which builds the
-# Linux and macOS Setups (installer/build-setup.sh) and adds them to it. installer/sign-release.ps1 then signs them on
-# that PC; updates offer the release on Linux and macOS once their signatures are there.
+# Pushing a tag v<version> (or running this workflow with one) makes the GitHub release "LumaLink <version>" and builds
+# the Setups into it: Windows (installer/build-setup.ps1), Linux x64 and ARM64, and macOS on Apple silicon
+# (installer/build-setup.sh), each on its own system. The Setups built here are not signed: the release key stays on
+# the release PC, where installer/sign-release.ps1 signs them. Updates offer a release once its Setups' signatures are
+# there. A Setup the release already has with its signature is left as it is.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: The release to add the Setups to (v1.2.3)
+        description: The release's tag (v1.2.3)
         required: true
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: The release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${TAG#v}
+          [ "$version" = "$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" ] ||
+            { echo "$TAG is not the version in Cargo.toml"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 && exit 0
+          prerelease=
+          case $version in *-*) prerelease=--prerelease ;; esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "LumaLink $version" $prerelease \
+            --notes "LumaLink $version. Download the Setup for your system: LumaLink-Setup.exe for Windows, LumaLink-Setup-linux-x64 or LumaLink-Setup-linux-arm64 for Linux, LumaLink-Setup-macos-arm64 for a Mac with Apple silicon. It installs LumaLink, the compiler it builds mods with and LumaKit, and can add LumaLink to PATH."
+
   setup:
+    needs: release
     strategy:
       fail-fast: false
       matrix:
         include:
+          - os: windows-2022
+            llvm: clang+llvm-{0}-x86_64-pc-windows-msvc
           - os: ubuntu-22.04
-            llvm: Linux-X64
+            llvm: LLVM-{0}-Linux-X64
+          - os: ubuntu-22.04-arm
+            llvm: LLVM-{0}-Linux-ARM64
           - os: macos-14
-            llvm: macOS-ARM64
+            llvm: LLVM-{0}-macOS-ARM64
     runs-on: ${{ matrix.os }}
-    env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,18 +66,35 @@ jobs:
           git clone --filter=blob:none https://github.com/keepvaibin/nebula.git nebula
           git -C nebula checkout "$(cat nebula.commit)"
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: The pinned LLVM
         shell: bash
         run: |
           llvm=$(sed -n 's/^pub const LLVM: &str = "\([0-9.]*\)";/\1/p' crates/lumalink-core/src/build.rs)
-          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/LLVM-$llvm-${{ matrix.llvm }}.tar.xz"
+          archive=$(echo '${{ matrix.llvm }}' | sed "s/{0}/$llvm/")
+          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/$archive.tar.xz"
           mkdir "$RUNNER_TEMP/llvm"
           tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "$RUNNER_TEMP/llvm" --strip-components=1
+          rm "$RUNNER_TEMP/llvm.tar.xz"
+      - name: Build the Setup (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./installer/build-setup.ps1 -Llvm "$env:RUNNER_TEMP\llvm" -OutputDirectory "$env:RUNNER_TEMP\dist" -SigningKey ''
       - name: Build the Setup
+        if: runner.os != 'Windows'
         shell: bash
         run: sh installer/build-setup.sh --llvm "$RUNNER_TEMP/llvm" --output "$RUNNER_TEMP/dist"
       - name: Add it to the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" "$RUNNER_TEMP"/dist/LumaLink-*Setup-* --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          have=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for file in "$RUNNER_TEMP"/dist/LumaLink-*Setup*; do
+            name=$(basename "$file")
+            case $name in *.sig) continue ;; esac
+            if echo "$have" | grep -qx "$name.sig"; then echo "$name is there, signed"; continue; fi
+            gh release upload "$TAG" "$file" --clobber --repo "$GITHUB_REPOSITORY"
+          done
