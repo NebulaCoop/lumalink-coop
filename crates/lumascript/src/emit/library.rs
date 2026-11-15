@@ -232,7 +232,7 @@ impl Gen<'_> {
                     let _ = write!(b, "    for (uint64_t i = 0; i < lumart_map_n(*s); i++) {{\n        {kc} k;\n        __builtin_memset(&k, 0, sizeof k);\n        int32_t r = {kf}(&k, lumart_map_key(*s, i), f, l, g);\n");
                     if set {
                         b.push_str("        uint8_t added = 0;\n        if (r == 0) r = lumart_map_put(d, ");
-                        let _ = write!(b, "{kd}, 0, &k, 0, &added, f, l);\n");
+                        let _ = writeln!(b, "{kd}, 0, &k, 0, &added, f, l);");
                     } else {
                         let _ = write!(b, "        {vc} v;\n        __builtin_memset(&v, 0, sizeof v);\n        if (r == 0) r = {vf}(&v, lumart_map_val(*s, i), f, l, g);\n        uint8_t added = 0;\n        if (r == 0) r = lumart_map_put(d, {kd}, {vd}, &k, &v, &added, f, l);\n");
                         if counted(&vc) {

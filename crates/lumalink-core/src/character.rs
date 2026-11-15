@@ -201,13 +201,17 @@ impl GameSkeleton {
     }
 }
 
+/// The deepest chain of nodes followed: far past any skeleton (a game's has some 30 levels).
+const MAX_DEPTH: usize = 1024;
+
 fn world_of(j: usize, parents: &[Option<usize>], local: &[Mat], out: &mut Vec<Option<Mat>>, depth: usize) -> Mat {
     if let Some(m) = out[j] {
         return m;
     }
     let m = match parents.get(j).copied().flatten() {
-        // A parent loop in a broken block ends at the depth of the skeleton.
-        Some(p) if depth < parents.len() => mul(&world_of(p, parents, local, out, depth + 1), &local[j]),
+        // A parent loop in a broken file ends at the depth of the skeleton, and no chain goes deeper than
+        // MAX_DEPTH (the stack's room).
+        Some(p) if depth < parents.len().min(MAX_DEPTH) => mul(&world_of(p, parents, local, out, depth + 1), &local[j]),
         _ => local[j],
     };
     out[j] = Some(m);
@@ -517,6 +521,9 @@ fn read_glb(bytes: &[u8]) -> Result<Glb> {
         bail!(say!("LumaLink.Character.NotGlb"));
     }
     let json: Value = serde_json::from_slice(&bytes[20..20 + json_len]).map_err(|_| anyhow::anyhow!(say!("LumaLink.Character.NotGlb")))?;
+    if !json.is_object() {
+        bail!(say!("LumaLink.Character.NotGlb"));
+    }
     let at = 20 + json_len;
     let bin = match (word(at), word(at + 4)) {
         (Some(len), Some(0x004E_4942)) if bytes.len() >= at + 8 + len => bytes[at + 8..at + 8 + len].to_vec(),
@@ -552,7 +559,8 @@ fn write_glb(json: &Value, bin: &[u8]) -> Vec<u8> {
 }
 
 /// Where an accessor's elements are in the BIN: (offset of element 0, stride, count, component type, components).
-fn accessor(json: &Value, index: usize) -> Result<(usize, usize, usize, u64, usize)> {
+fn accessor(glb: &Glb, index: usize) -> Result<(usize, usize, usize, u64, usize)> {
+    let json = &glb.json;
     let bad = || anyhow::anyhow!(say!("LumaLink.Character.BadAccessor", index = index));
     let a = &json["accessors"][index];
     if a.get("sparse").is_some() {
@@ -574,15 +582,25 @@ fn accessor(json: &Value, index: usize) -> Result<(usize, usize, usize, u64, usi
         5125 | 5126 => 4,
         _ => return Err(bad()),
     };
-    let start = view["byteOffset"].as_u64().unwrap_or(0) as usize + a["byteOffset"].as_u64().unwrap_or(0) as usize;
-    let stride = view["byteStride"].as_u64().map_or(size * components, |s| s as usize);
-    let count = a["count"].as_u64().ok_or_else(bad)? as usize;
+    let start = view["byteOffset"].as_u64().unwrap_or(0).checked_add(a["byteOffset"].as_u64().unwrap_or(0)).and_then(|s| usize::try_from(s).ok()).ok_or_else(bad)?;
+    let element = size * components;
+    let stride = usize::try_from(view["byteStride"].as_u64().unwrap_or(element as u64)).map_err(|_| bad())?;
+    let count = usize::try_from(a["count"].as_u64().ok_or_else(bad)?).map_err(|_| bad())?;
+    // Every element inside the BIN, at a stride that holds one: a count the BIN cannot hold is refused before
+    // anything is made for it.
+    let end = match count.checked_sub(1) {
+        None => Some(0),
+        Some(last) => last.checked_mul(stride).and_then(|o| o.checked_add(start)).and_then(|o| o.checked_add(element)),
+    };
+    if stride < element || end.is_none_or(|end| end > glb.bin.len()) {
+        return Err(bad());
+    }
     Ok((start, stride, count, ty, components))
 }
 
 /// An accessor's values as floats (normalised integers turned to 0..1).
 fn read_floats(glb: &Glb, index: usize) -> Result<Vec<f32>> {
-    let (start, stride, count, ty, n) = accessor(&glb.json, index)?;
+    let (start, stride, count, ty, n) = accessor(glb, index)?;
     let normalized = glb.json["accessors"][index]["normalized"].as_bool().unwrap_or(false);
     let mut out = Vec::with_capacity(count * n);
     for e in 0..count {
@@ -606,7 +624,7 @@ fn read_floats(glb: &Glb, index: usize) -> Result<Vec<f32>> {
 
 /// Writes floats into a float accessor in place.
 fn write_floats(glb: &mut Glb, index: usize, values: &[f32]) -> Result<()> {
-    let (start, stride, count, ty, n) = accessor(&glb.json, index)?;
+    let (start, stride, count, ty, n) = accessor(glb, index)?;
     if ty != 5126 || values.len() != count * n {
         bail!(say!("LumaLink.Character.BadAccessor", index = index));
     }
@@ -621,7 +639,7 @@ fn write_floats(glb: &mut Glb, index: usize, values: &[f32]) -> Result<()> {
 
 /// Writes joint numbers into a JOINTS_0 accessor in place (u8 or u16).
 fn write_joints(glb: &mut Glb, index: usize, values: &[u32]) -> Result<()> {
-    let (start, stride, count, ty, n) = accessor(&glb.json, index)?;
+    let (start, stride, count, ty, n) = accessor(glb, index)?;
     if values.len() != count * n {
         bail!(say!("LumaLink.Character.BadAccessor", index = index));
     }
@@ -689,6 +707,9 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
         bail!(say!("LumaLink.Character.NoSkin"));
     }
     let nodes = glb.json["nodes"].as_array().cloned().unwrap_or_default();
+    if joint_nodes.iter().any(|&n| n >= nodes.len()) {
+        bail!(say!("LumaLink.Character.BadSkeleton"));
+    }
     // Each node's parent, and its rest place in the model.
     let mut node_parent = vec![None; nodes.len()];
     for (i, n) in nodes.iter().enumerate() {
@@ -720,7 +741,9 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
         .iter()
         .map(|&n| {
             let mut up = node_parent[n];
-            while let Some(p) = up {
+            // A parent loop in a broken file ends after as many steps as there are nodes.
+            for _ in 0..nodes.len() {
+                let p = up?;
                 if let Some(j) = joint_nodes.iter().position(|&x| x == p) {
                     return Some(j);
                 }
@@ -912,7 +935,13 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
                 bail!(say!("LumaLink.Character.BadAccessor", index = jo));
             }
             let normals = match attrs["NORMAL"].as_u64() {
-                Some(nr) => Some((nr, read_floats(&glb, nr as usize)?)),
+                Some(nr) => {
+                    let v = read_floats(&glb, nr as usize)?;
+                    if v.len() != n * 3 {
+                        bail!(say!("LumaLink.Character.BadAccessor", index = nr));
+                    }
+                    Some((nr, v))
+                }
                 None => None,
             };
             let mut new_pos = vec![0.0f32; n * 3];
@@ -1017,7 +1046,7 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
     // Nodes that hung on a source joint (a hat, a held thing): onto the new joint.
     for (j, &jn) in joint_nodes.iter().enumerate() {
         for c in nodes[jn]["children"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|c| c as usize) {
-            if joint_nodes.contains(&c) {
+            if c >= nodes.len() || joint_nodes.contains(&c) {
                 continue;
             }
             let o = out_index[j] as usize;
@@ -1065,10 +1094,14 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
     let skeleton_root = roots.first().map(|r| first + r);
     glb.json["skins"] = json!([{ "joints": joints_list, "inverseBindMatrices": accessors, "skeleton": skeleton_root, "name": game.path }]);
     glb.json["nodes"] = Value::Array(new_nodes);
-    if glb.json["scenes"].as_array().is_none_or(Vec::is_empty) {
+    // A file without the scene it names (none, or a broken one) gets one scene, shown.
+    let scene_index = if glb.json["scenes"].get(scene_index).is_some_and(Value::is_object) {
+        scene_index
+    } else {
         glb.json["scenes"] = json!([{ "nodes": [] }]);
         glb.json["scene"] = json!(0);
-    }
+        0
+    };
     glb.json["scenes"][scene_index]["nodes"] = json!(scene_nodes);
     let dropped_animations = glb.json["animations"].as_array().map_or(0, Vec::len);
     if let Some(o) = glb.json.as_object_mut() {
@@ -1076,6 +1109,9 @@ pub fn rebind(source: &[u8], game: &GameSkeleton, choices: &[(String, String)]) 
     }
     if glb.json["buffers"].as_array().is_none_or(Vec::is_empty) {
         glb.json["buffers"] = json!([{}]);
+    }
+    if !glb.json["buffers"][0].is_object() {
+        glb.json["buffers"][0] = json!({});
     }
     glb.json["buffers"][0]["byteLength"] = json!(glb.bin.len().div_ceil(4) * 4);
     let joints_report = (0..g_count)
@@ -1286,10 +1322,8 @@ mod tests {
         assert_eq!(p, Path::new("mod").join("layers").join("base").join("files").join("ObjectData").join("Mario.arc").join("Mario.bdl.glb"));
     }
 
-    /// A one-triangle character with a three-joint chain, made into the game's skeleton: the joints are the game's,
-    /// the vertices follow their joints, and the glb reads back.
-    #[test]
-    fn a_small_character_is_rebound_onto_the_game_s_skeleton() {
+    /// A one-triangle character with a three-joint chain, and the game skeleton it is made into.
+    fn small_character() -> (GameSkeleton, Value, Vec<u8>) {
         let game = skeleton(&["Hip", "Spine1", "Head"], &[None, Some(0), Some(1)], &[[0.0, 50.0, 0.0], [0.0, 90.0, 0.0], [0.0, 150.0, 0.0]]);
         let positions: [f32; 9] = [0.0, 0.5, 0.0, 0.0, 0.9, 0.0, 0.0, 1.5, 0.0];
         let joints: [u8; 12] = [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0];
@@ -1322,6 +1356,14 @@ mod tests {
             "scenes": [{ "nodes": [0, 3] }],
             "scene": 0
         });
+        (game, json, bin)
+    }
+
+    /// The small character made into the game's skeleton: the joints are the game's, the vertices follow their
+    /// joints, and the glb reads back.
+    #[test]
+    fn a_small_character_is_rebound_onto_the_game_s_skeleton() {
+        let (game, json, bin) = small_character();
         let (out, report) = rebind(&write_glb(&json, &bin), &game, &[]).unwrap();
         assert_eq!(report.joints.iter().filter(|(_, s)| s.is_some()).count(), 3);
         assert!(report.extra.is_empty());
@@ -1332,5 +1374,52 @@ mod tests {
         let skin = &back.json["skins"][0];
         let names: Vec<&str> = skin["joints"].as_array().unwrap().iter().map(|j| back.json["nodes"][j.as_u64().unwrap() as usize]["name"].as_str().unwrap()).collect();
         assert_eq!(names, vec!["Hip", "Spine1", "Head"]);
+    }
+
+    /// Broken files: each one is refused with a message or made as well as it can be, and none stops LumaLink.
+    #[test]
+    fn a_broken_character_file_is_refused_or_made_never_a_crash() {
+        let (game, base, bin) = small_character();
+        let run = |change: &dyn Fn(&mut Value, &mut Vec<u8>)| {
+            let (mut json, mut bin) = (base.clone(), bin.clone());
+            change(&mut json, &mut bin);
+            rebind(&write_glb(&json, &bin), &game, &[]).map(|_| ())
+        };
+        // Refused.
+        assert!(run(&|j, _| j["skins"][0]["joints"] = json!([0, 1, 99])).is_err(), "a joint no node is");
+        assert!(run(&|j, _| j["accessors"][0]["count"] = json!(1u64 << 60)).is_err(), "a count past the BIN");
+        assert!(run(&|j, _| j["accessors"][0]["byteOffset"] = json!(u64::MAX)).is_err(), "an offset past everything");
+        assert!(run(&|j, _| j["bufferViews"][0]["byteStride"] = json!(0)).is_err(), "a stride of 0");
+        assert!(run(&|j, _| j["accessors"][2]["count"] = json!(2)).is_err(), "weights for fewer vertices");
+        assert!(
+            run(&|j, _| {
+                j["accessors"].as_array_mut().unwrap().push(json!({ "bufferView": 0, "componentType": 5126, "count": 1, "type": "VEC3" }));
+                j["meshes"][0]["primitives"][0]["attributes"]["NORMAL"] = json!(3);
+            })
+            .is_err(),
+            "one normal for three vertices"
+        );
+        assert!(rebind(&write_glb(&json!([1, 2]), &bin), &game, &[]).is_err(), "JSON that is no object");
+        // Made.
+        run(&|j, _| j["scene"] = json!(7)).expect("a scene the file lacks");
+        run(&|j, _| j["scenes"] = json!([5])).expect("a scene that is no object");
+        run(&|j, _| j["buffers"] = json!([5])).expect("a buffer that is no object");
+        run(&|j, _| j["nodes"][2]["children"] = json!([99])).expect("a child no node is");
+        // Joints in a loop (each the other's child), and a chain of nodes far deeper than any skeleton.
+        let _ = run(&|j, _| j["nodes"][2]["children"] = json!([0]));
+        run(&|j, _| {
+            let nodes = j["nodes"].as_array_mut().unwrap();
+            // Each node the child of the one after it, so the first is the deepest.
+            let first = nodes.len();
+            nodes[2]["children"] = json!([first + 4999]);
+            for i in 0..5000 {
+                let mut n = json!({ "translation": [0.0, 0.001, 0.0] });
+                if i > 0 {
+                    n["children"] = json!([first + i - 1]);
+                }
+                nodes.push(n);
+            }
+        })
+        .expect("a deep chain");
     }
 }

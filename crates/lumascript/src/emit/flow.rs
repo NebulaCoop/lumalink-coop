@@ -691,25 +691,24 @@ impl<'a> Gen<'a> {
                 Ok((all(tests), binds))
             }
             PatternKind::Literal(e) => {
-                let lt = self.ty(m, e);
                 match (&e.kind, t) {
                     (ExprKind::None, Ty::Opt(x)) if is_view(x) => Ok((format!("{subject} == 0"), Vec::new())),
                     (ExprKind::None, Ty::Opt(_)) => Ok((format!("!{subject}.some"), Vec::new())),
                     // Text by its bytes (a literal is a static block: no count taken).
                     (_, Ty::Text) => {
-                        let v = self.literal(fx, e, &lt)?;
+                        let v = self.literal(fx, e)?;
                         Ok((format!("lumart_text_eq({subject}, {v})"), Vec::new()))
                     }
                     (_, Ty::Opt(x)) if **x == Ty::Text => {
-                        let v = self.literal(fx, e, &lt)?;
+                        let v = self.literal(fx, e)?;
                         Ok((format!("({subject}.some && lumart_text_eq({subject}.value, {v}))"), Vec::new()))
                     }
                     (_, Ty::Opt(x)) if !is_view(x) => {
-                        let v = self.literal(fx, e, &lt)?;
+                        let v = self.literal(fx, e)?;
                         Ok((format!("({subject}.some && {subject}.value == {v})"), Vec::new()))
                     }
                     (_, Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Game(GameTy::Enum(_))) => {
-                        let v = self.literal(fx, e, &lt)?;
+                        let v = self.literal(fx, e)?;
                         Ok((format!("{subject} == {v}"), Vec::new()))
                     }
                     _ => {
@@ -807,10 +806,10 @@ impl<'a> Gen<'a> {
     }
 
     /// A literal of a pattern, as C.
-    fn literal(&mut self, fx: &mut Fx, e: &Expr, t: &Ty) -> Ex {
+    fn literal(&mut self, fx: &mut Fx, e: &Expr) -> Ex {
         match &e.kind {
             ExprKind::Neg(x) => {
-                let v = self.literal(fx, x, t)?;
+                let v = self.literal(fx, x)?;
                 Ok(format!("(-{v})"))
             }
             _ => self.expr(fx, e),

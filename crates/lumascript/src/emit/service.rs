@@ -136,7 +136,7 @@ impl Gen<'_> {
         if let Some((c, _, _)) = self.text_struct(service, name) {
             return Some(c);
         }
-        let Some((kind, data)) = self.event_kind(service, name) else { return None };
+        let (kind, data) = self.event_kind(service, name)?;
         let key = format!("event {service} {kind}");
         if let Some(n) = self.svc_events.get(&key) {
             return Some(n.clone());
@@ -515,7 +515,7 @@ impl Gen<'_> {
         let rc = self.stream_c_type(service)?;
         let face = self.game.services.faces.get(service)?.clone();
         let name = format!("lm_esf_{}", super::module_c(service));
-        let mut body = format!("    r->kind = (int32_t)ev->kind;\n    switch (ev->kind) {{\n");
+        let mut body = String::from("    r->kind = (int32_t)ev->kind;\n    switch (ev->kind) {\n");
         for k in face.stream.values() {
             body.push_str(&format!("    case {}u: {{\n", k.number));
             let has = |f: &str| k.fields.iter().any(|(n, _)| n == f);
@@ -1467,6 +1467,7 @@ impl Gen<'_> {
     ///   first call (size 0 below the length) says the length is known, as LUMA_OK does.
     /// - an array (`T* out, uint32_t capacity, uint32_t* count`, `int32_t` status): a capacity of 0 first, then a
     ///   list of that many elements, zeroed, `size` set in each when T has one.
+    ///
     /// A length that grew between the two calls (it cannot on the game thread) is cut to the room given.
     #[allow(clippy::too_many_arguments)]
     fn buffer_call(&mut self, fx: &mut Fx, e: &Expr, service: &str, slot: &str, name: &str, args: &str, ty: &STy, form: Form, result: &CT) -> Result<(String, String), super::NotWritten> {

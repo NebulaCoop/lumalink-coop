@@ -1125,11 +1125,13 @@ impl<'w, 'a> Walk<'w, 'a> {
         if let (Some(r), Some(t)) = (&f.ret, &fnty) {
             let written = self.declared(class, &format!("{key}->"));
             let want = ret.clone().unwrap_or(Ty::Unit);
-            if t.result != GameTy::Unit || written != Ty::Unit {
-                if !matches!(written, Ty::Error) && !matches!(want, Ty::Error) && !written_fits(&written, &want) {
-                    let (fw, e) = (self.ty_text(&written), self.ty_text(&want));
-                    self.say(Diagnostic::new(code::TYPE_MISMATCH, r.at).with("found", Arg::Text(fw)).with("expected", Arg::Text(e)));
-                }
+            if (t.result != GameTy::Unit || written != Ty::Unit)
+                && !matches!(written, Ty::Error)
+                && !matches!(want, Ty::Error)
+                && !written_fits(&written, &want)
+            {
+                let (fw, e) = (self.ty_text(&written), self.ty_text(&want));
+                self.say(Diagnostic::new(code::TYPE_MISMATCH, r.at).with("found", Arg::Text(fw)).with("expected", Arg::Text(e)));
             }
         }
         let params: Vec<&'a ast::Param> = f.params.iter().filter(|p| !p.is_self).collect();

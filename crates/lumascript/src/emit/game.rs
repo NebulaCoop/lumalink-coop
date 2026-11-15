@@ -98,7 +98,7 @@ impl<'a> Gen<'a> {
             }
             _ => None,
         };
-        if !literal.is_some_and(|v| v < u128::from(n)) {
+        if literal.is_none_or(|v| v >= u128::from(n)) {
             let file = c_string(&fx.file);
             let line = e.at.line;
             fx.emit(format!("if ({i} < 0 || {i} >= {n}LL) {{"));

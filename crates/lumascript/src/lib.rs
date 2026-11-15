@@ -1,6 +1,9 @@
 //! LumaScript's compiler: the LumaScript language, read here and compiled to
 //! C, which LumaLink builds to machine code for each platform. Nothing of it runs in the game.
 
+// The compiler passes its parts as tuples and its emitters take the place, the value and its type together.
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+
 pub mod ast;
 pub mod check;
 pub mod ctype;

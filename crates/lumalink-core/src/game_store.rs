@@ -58,6 +58,17 @@ fn parts_fit(pak: &File, count: usize, names_size: u64) -> Result<(usize, usize)
     Ok((nodes_size, names_size))
 }
 
+/// The longest path a store holds: far past any disc path. A damaged index whose folders nest without end would
+/// otherwise make paths that fill the memory.
+const MAX_PATH: usize = 1024;
+
+fn path_fits(path: &str) -> Result<()> {
+    if path.len() > MAX_PATH {
+        bail!(say!("LumaLink.Store.Damaged"));
+    }
+    Ok(())
+}
+
 impl GameStore {
     /// Every file of a store with where its bytes are: (path as the store names it, position, size), in index order.
     pub fn files(path: &Path) -> Result<Vec<(String, u64, u64)>> {
@@ -104,6 +115,7 @@ impl GameStore {
                 Some("") | None => name,
                 Some(parent) => format!("{parent}/{name}"),
             };
+            path_fits(&path)?;
             if i != 0 && !folder {
                 files.push((path.clone(), position, size));
             }
@@ -150,6 +162,7 @@ impl GameStore {
                 Some("") | None => name.clone(),
                 Some(parent) => format!("{parent}/{name}"),
             };
+            path_fits(&path)?;
             let inside = in_archive.get(parent).copied().unwrap_or(false);
             paths.insert(path.to_ascii_lowercase());
             if !inside {

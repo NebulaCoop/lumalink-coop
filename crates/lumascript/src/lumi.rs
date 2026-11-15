@@ -203,13 +203,10 @@ pub fn parts(text: &str) -> Vec<Part> {
             parts.push(Part { path: path.to_string(), first_line: i as u32 + 2, text: String::new() });
             continue;
         }
-        match parts.last_mut() {
-            Some(part) => {
-                part.text.push_str(l);
-                part.text.push('\n');
-            }
-            // The header's comments, before the first module, keep the lines of each module as they are.
-            None => {}
+        // The header's comments, before the first module, keep the lines of each module as they are.
+        if let Some(part) = parts.last_mut() {
+            part.text.push_str(l);
+            part.text.push('\n');
         }
     }
     parts
