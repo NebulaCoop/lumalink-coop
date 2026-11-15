@@ -240,6 +240,10 @@ enum Command {
         /// d3d12 or vulkan. Default: the runner's.
         #[arg(long, value_name = "RENDERER")]
         renderer: Option<String>,
+        /// Your imported game (Nebula's game.pak), the one each run plays. Default: the game.pak of the install the bin
+        /// folder belongs to, then the installed game's.
+        #[arg(long, value_name = "FILE")]
+        game: Option<PathBuf>,
     },
     /// Put LumaScript files in the one style: four spaces for each open bracket, one blank line at most.
     Format {
@@ -472,7 +476,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Verify { luma, source } => verify(&luma, &source),
         Command::Build { folder, names, sdk, clang, work, platforms } => build(&folder, &names_or_installed(names)?, sdk, clang, work, &platforms),
         Command::Run { path, inputs, args } => run_game(&path, &inputs, &args),
-        Command::Test { folder, bin, runner, python, work, lock, renderer } => test(&folder, bin, runner, python, work, lock, renderer),
+        Command::Test { folder, bin, runner, python, work, lock, renderer, game } => test(&folder, bin, runner, python, work, lock, renderer, game),
         Command::Format { paths, check } => format(&paths, check),
         Command::Add { .. } => add(cli.command),
         Command::Convert { from, folder, game, name, authors, accept_losses } => {
@@ -789,17 +793,24 @@ fn lsp(names: Option<PathBuf>, sdk: Option<PathBuf>, no_installed: bool) -> Resu
 
 /// The mod's tests through the harness (`jobs::test`), each verdict and each check said; exit 0 only when
 /// every test passed on every renderer.
-fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Option<PathBuf>, work: Option<PathBuf>, lock: Option<PathBuf>, renderer: Option<String>) -> Result<ExitCode> {
+#[allow(clippy::too_many_arguments)]
+fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Option<PathBuf>, work: Option<PathBuf>, lock: Option<PathBuf>, renderer: Option<String>, game: Option<PathBuf>) -> Result<ExitCode> {
     let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
     // Without a bin folder: the installed game's version folder (Setup installs the harness's parts with the game),
-    // with the installed game.pak for each run (the folder has no pak.path).
+    // with the installed game.pak for each run (the folder has no pak.path). A bin folder that is an install's version
+    // folder (<install>/versions/<version>) plays that install's content/game.pak; a build folder, its own pak.path.
     let (bin, pak) = match bin.or_else(|| env("LUMA_TEST_BIN")) {
-        Some(bin) => (bin, None),
+        Some(bin) => {
+            let install = bin.parent().filter(|v| v.file_name().is_some_and(|n| n == "versions")).and_then(Path::parent);
+            let beside = install.map(|i| i.join("content").join("game.pak")).filter(|p| p.is_file());
+            (bin, beside)
+        }
         None => match installed().and_then(|i| i.version.clone().map(|v| (v, i.pak.clone()))) {
             Some((version, pak)) if version.join(TEST_EXTENSION).is_file() => (version, Some(pak)),
             _ => bail!(say!("LumaLink.Test.NoBin")),
         },
     };
+    let pak = game.or(pak);
     let runner = match runner.or_else(|| env("LUMA_TEST_RUNNER")).or_else(|| jobs::find_runner(&bin)) {
         Some(r) => r,
         None => bail!(say!("LumaLink.Test.NoRunner", path = bin.join("tools/lumacore/luma_test.py").display())),
