@@ -64,7 +64,7 @@ impl Inputs {
     }
 }
 
-/// The test extension a version folder carries when the harness can run in it (the runner's HOST["extension"]).
+/// The test extension: a build folder's own, else the test kit's (the runner's HOST["extension"]).
 const TEST_EXTENSION: &str = if cfg!(windows) { "nebula_test_extension.dll" } else { "libnebula_test_extension.so" };
 
 /// The game installed on this computer, said once on stderr the first time it is used.
@@ -796,9 +796,9 @@ fn lsp(names: Option<PathBuf>, sdk: Option<PathBuf>, no_installed: bool) -> Resu
 #[allow(clippy::too_many_arguments)]
 fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Option<PathBuf>, work: Option<PathBuf>, lock: Option<PathBuf>, renderer: Option<String>, game: Option<PathBuf>) -> Result<ExitCode> {
     let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
-    // Without a bin folder: the installed game's version folder (Setup installs the harness's parts with the game),
-    // with the installed game.pak for each run (the folder has no pak.path). A bin folder that is an install's version
-    // folder (<install>/versions/<version>) plays that install's content/game.pak; a build folder, its own pak.path.
+    // Without a bin folder: the installed game's version folder, with the installed game.pak for each run (the folder
+    // has no pak.path). A bin folder that is an install's version folder (<install>/versions/<version>) plays that
+    // install's content/game.pak; a build folder, its own pak.path.
     let (bin, pak) = match bin.or_else(|| env("LUMA_TEST_BIN")) {
         Some(bin) => {
             let install = bin.parent().filter(|v| v.file_name().is_some_and(|n| n == "versions")).and_then(Path::parent);
@@ -806,14 +806,20 @@ fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Op
             (bin, beside)
         }
         None => match installed().and_then(|i| i.version.clone().map(|v| (v, i.pak.clone()))) {
-            Some((version, pak)) if version.join(TEST_EXTENSION).is_file() => (version, Some(pak)),
-            _ => bail!(say!("LumaLink.Test.NoBin")),
+            Some((version, pak)) => (version, Some(pak)),
+            None => bail!(say!("LumaLink.Test.NoBin")),
         },
     };
     let pak = game.or(pak);
-    let runner = match runner.or_else(|| env("LUMA_TEST_RUNNER")).or_else(|| jobs::find_runner(&bin)) {
-        Some(r) => r,
-        None => bail!(say!("LumaLink.Test.NoRunner", path = bin.join("tools/lumacore/luma_test.py").display())),
+    // The test parts: a build folder's own (a Nebula tree's build), else the test kit installed with LumaLink (the
+    // game ships none): its runner, its test extension, and the game half built from its source.
+    let kit = if bin.join(TEST_EXTENSION).is_file() { None } else { Some(jobs::test_kit().filter(|k| k.join(TEST_EXTENSION).is_file()).with_context(|| say!("LumaLink.Test.NoKit"))?) };
+    let runner = runner.or_else(|| env("LUMA_TEST_RUNNER")).or_else(|| match &kit {
+        Some(k) => Some(k.join("tools/lumacore/luma_test.py")).filter(|p| p.is_file()),
+        None => jobs::find_runner(&bin),
+    });
+    let Some(runner) = runner else {
+        bail!(say!("LumaLink.Test.NoRunner", path = kit.as_deref().unwrap_or(bin.as_path()).join("tools/lumacore/luma_test.py").display()));
     };
     let python = python.or_else(|| env("LUMALINK_PYTHON")).unwrap_or_else(|| PathBuf::from("python"));
     let work = work.unwrap_or_else(|| {
@@ -826,11 +832,15 @@ fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Op
         bail!(say!("LumaLink.Test.WorkInside", work = work.display(), folder = folder.display()));
     }
     let lock = lock.or_else(|| env("LUMA_TEST_LOCK")).unwrap_or_else(|| work.join("run.lock"));
-    let setup = jobs::TestSetup { bin, pak, runner, python, work, lock, renderer };
     // The mod's code is built by `lumalink build` (every platform) before its tests run.
     // The game's self-description folder is `luma` in its program folder, the mods it comes with in its `mods`.
-    let names = env("LUMA_NAMES").unwrap_or_else(|| Some(setup.bin.join("luma")).filter(|p| p.is_dir()).unwrap_or_else(|| setup.bin.clone()));
+    let names = env("LUMA_NAMES").unwrap_or_else(|| Some(bin.join("luma")).filter(|p| p.is_dir()).unwrap_or_else(|| bin.clone()));
     let build = |f: &Path| build_for_test(f, &names);
+    let (extension, half) = match &kit {
+        Some(k) => (Some(k.join(TEST_EXTENSION)), Some(jobs::build_game_half(k, &work, &build)?)),
+        None => (None, None),
+    };
+    let setup = jobs::TestSetup { bin, pak, runner, python, work, lock, renderer, extension, half };
     let mut each = |run: &jobs::TestRun| {
         let name = run.test.display();
         if run.results.is_empty() {

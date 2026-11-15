@@ -858,6 +858,10 @@ pub struct TestSetup {
     pub work: PathBuf,
     pub lock: PathBuf,
     pub renderer: Option<String>,
+    /// The test extension and the game half the runner takes in place of the bin folder's (`--extension`, `--half`):
+    /// the test kit's for an installed game, which ships no test parts.
+    pub extension: Option<PathBuf>,
+    pub half: Option<PathBuf>,
 }
 
 /// One test's run: the test folder, every result it left (one per renderer), and what the runner said when it left
@@ -893,8 +897,41 @@ impl TestRun {
 /// build folders are under the tree).
 pub fn find_runner(bin: &Path) -> Option<PathBuf> {
     let bin = std::path::absolute(bin).ok()?;
-    // An installed version keeps it in luma/test (Setup); a build tree has it above the build folder.
-    std::iter::once(bin.join("luma/test")).chain(bin.ancestors().map(Path::to_path_buf)).map(|a| a.join("tools/lumacore/luma_test.py")).find(|p| p.is_file())
+    bin.ancestors().map(|a| a.join("tools/lumacore/luma_test.py")).find(|p| p.is_file())
+}
+
+/// The test kit installed with LumaLink (`test/` beside the program; LUMA_TEST_KIT names another): Nebula's runner, its
+/// test extension for this system and the game half's source (Nebula's tools/test_driver/test_kit.py builds it). The
+/// game ships none of them. None when there is no kit.json there.
+pub fn test_kit() -> Option<PathBuf> {
+    let kit = std::env::var_os("LUMA_TEST_KIT")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.join("test"))))?;
+    kit.join("kit.json").is_file().then_some(kit)
+}
+
+/// The game half for a test run: the kit's `luma_test.c` built as the mod `luma-test` in `<work>/game-half`, against
+/// the game's SDK, by `build` (the same build as a mod's). The built library's path.
+pub fn build_game_half(kit: &Path, work: &Path, build: &dyn Fn(&Path) -> Result<()>) -> Result<PathBuf> {
+    let host = crate::build::HOST.ok_or_else(|| anyhow::anyhow!(say!("LumaLink.Test.NoKit")))?;
+    let folder = work.join("game-half");
+    let source = folder.join("source");
+    std::fs::create_dir_all(&source).with_context(|| say!("LumaLink.CannotMake", path = source.display()))?;
+    let from = kit.join("luma_test.c");
+    std::fs::copy(&from, source.join("luma_test.c")).with_context(|| say!("LumaLink.CannotRead", path = from.display()))?;
+    let manifest = serde_json::json!({
+        "format": "1.0", "id": "luma-test", "name": "luma-test", "summary": "The test runner's game half.",
+        "authors": ["keepvaibin"], "version": "1.0.0", "game": {"id": "RMG"}, "code": {"platforms": [host]}
+    });
+    let path = folder.join("luma.json");
+    std::fs::write(&path, serde_json::to_string_pretty(&manifest)? + "\n").with_context(|| say!("LumaLink.CannotWrite", path = path.display()))?;
+    build(&folder)?;
+    let ending = if host.starts_with("windows") { "dll" } else { "so" };
+    let library = folder.join("code").join(host).join(format!("mod.{ending}"));
+    if !library.is_file() {
+        bail!(say!("LumaLink.CannotRead", path = library.display()));
+    }
+    Ok(library)
 }
 
 /// Whether the mod has code to build: LumaScript, C or C++ under `source/`.
@@ -1053,6 +1090,12 @@ pub fn test(folder: &Path, setup: &TestSetup, build: &dyn Fn(&Path) -> Result<()
     }
     if let Some(r) = &setup.renderer {
         cmd.arg("--renderer").arg(r);
+    }
+    if let Some(e) = &setup.extension {
+        cmd.arg("--extension").arg(e);
+    }
+    if let Some(h) = &setup.half {
+        cmd.arg("--half").arg(h);
     }
     let out = cmd.output().with_context(|| say!("LumaLink.Test.NoPython", path = setup.python.display()))?;
     let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -1213,7 +1256,7 @@ mod tests {
         let none = dir.path().join("none");
         std::fs::create_dir_all(&none).unwrap();
         std::fs::write(none.join("luma.json"), "{}").unwrap();
-        let setup = TestSetup { bin: dir.path().into(), pak: None, runner: file.clone(), python: "python".into(), work: dir.path().into(), lock: dir.path().join("run.lock"), renderer: None };
+        let setup = TestSetup { bin: dir.path().into(), pak: None, runner: file.clone(), python: "python".into(), work: dir.path().into(), lock: dir.path().join("run.lock"), renderer: None, extension: None, half: None };
         let e = test(&none, &setup, &|_| Ok(()), &mut |_| {}).err().unwrap();
         assert!(e.to_string().contains("tests"), "{e}");
     }
@@ -1264,7 +1307,7 @@ lock.unlink()
         .unwrap();
         let work = dir.path().join("work");
         std::fs::create_dir_all(&work).unwrap();
-        let setup = TestSetup { bin: dir.path().into(), pak: None, runner, python: "python".into(), work: work.clone(), lock: dir.path().join("run.lock"), renderer: None };
+        let setup = TestSetup { bin: dir.path().into(), pak: None, runner, python: "python".into(), work: work.clone(), lock: dir.path().join("run.lock"), renderer: None, extension: None, half: None };
         let mut heard = Vec::new();
         let runs = test(&m, &setup, &|_| Ok(()), &mut |r| heard.push(r.test.clone())).unwrap();
         assert_eq!(heard.len(), 2);

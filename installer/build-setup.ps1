@@ -15,17 +15,22 @@ The installed files:
                                         other names (ld.lld.exe, lld-link.exe, ld64.lld.exe) as links
   toolchain\lib\clang\<major>\include   clang's own headers
   lumakit\                              LumaKit's source (Nebula ships it built, as lumakit.luma)
+  test\                                 the test kit `lumalink test` runs (the game ships no test parts): Nebula's
+                                        runner, its test extension and the game half's source, built from nebula\ by
+                                        its tools\test_driver\test_kit.py
   editors\lumascript.vsix               the LumaScript extension for Visual Studio Code (installer/vsix.py), which
                                         Settings > Add LumaScript to Visual Studio Code installs
   licenses\                             LLVM's licence, the window font's and the Rust crates' (rust-crates.txt,
                                         installer/rust_licenses.py)
   LICENSE, README.md
 
-Output: <OutputDirectory>\LumaLink-Setup.exe and LumaLink-Setup.exe.sig (LumaLink-Beta-Setup.exe for a beta), the
-Windows files a release carries. The release workflow builds the Linux and macOS Setups (installer/build-setup.sh);
+Output: <OutputDirectory>\LumaLink-Setup.exe and LumaLink-Setup.exe.sig (LumaLink-Beta-Setup.exe for a beta) on x64,
+LumaLink-Setup-windows-arm64.exe on Windows on ARM (update::package_name), the Windows files a release carries. The release workflow builds the Linux and macOS Setups (installer/build-setup.sh);
 installer/sign-release.ps1 signs them.
 
-Requires Rust (stable, MSVC target), Visual Studio 2022 with the C++ tools, Python 3 and LLVM -Llvm installed.
+Requires Rust (stable, MSVC target), Visual Studio 2022 with the C++ tools, Python 3, LLVM -Llvm installed, and nebula\
+(the Nebula tree at nebula.commit).
+The programs keep no build machine's folders (their panic texts name sources as cargo\..., rustup\..., lumalink\...).
 #>
 [CmdletBinding()]
 param(
@@ -51,6 +56,8 @@ function Copy-Into([string]$Source, [string]$Target) {
     Copy-Item -LiteralPath $Source -Destination $Target
 }
 
+# Windows on ARM builds the ARM64 LumaLink (its own Setup name); everything else is x64.
+$arm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
 try {
     # The LLVM LumaLink builds mods with, and no other: a mod's code is the same bytes on every PC.
     $pinned = (Select-String -LiteralPath (Join-Path $repo 'crates\lumalink-core\src\build.rs') -Pattern '^pub const LLVM: &str = "([0-9.]+)";').Matches[0].Groups[1].Value
@@ -66,10 +73,16 @@ try {
     $version = (Select-String -LiteralPath (Join-Path $repo 'Cargo.toml') -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
     Write-Host "LumaLink $version with LLVM $pinned"
 
+    # The source paths the programs keep (panic texts) name no build machine's folders.
+    $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }
+    $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+    $nebula = (Get-Item -LiteralPath (Join-Path $repo 'nebula')).FullName
+    $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $repo 'target' }
+    $remaps = @(@($cargoHome, 'cargo'), @($rustupHome, 'rustup'), @($nebula, 'nebula'), @($repo, 'lumalink'))
+    $env:CARGO_ENCODED_RUSTFLAGS = ($remaps | ForEach-Object { "--remap-path-prefix=$($_[0])=$($_[1])" }) -join [char]0x1f
     Push-Location $repo
     try { Invoke-Checked cargo @('build', '--release', '--locked', '-p', 'lumalink', '-p', 'lumalink-gui') }
     finally { Pop-Location }
-    $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $repo 'target' }
     $release = Join-Path $target 'release'
 
     New-Item -ItemType Directory -Force $stage | Out-Null
@@ -79,11 +92,17 @@ try {
     New-Item -ItemType Directory -Force (Join-Path $stage "toolchain\lib\clang\$major") | Out-Null
     Copy-Item -LiteralPath $headers -Destination (Join-Path $stage "toolchain\lib\clang\$major\include") -Recurse
     Copy-Item -LiteralPath (Join-Path $repo 'lumakit') -Destination (Join-Path $stage 'lumakit') -Recurse
+    # The test kit; on x64 its extension is built with the C++ library and Windows SDK of Visual Studio's x64
+    # environment (the runner drives Windows x64 and Linux x64 only: on ARM the kit is the runner alone).
+    $kitScript = Join-Path $nebula 'tools\test_driver\test_kit.py'
+    if (-not (Test-Path -LiteralPath $kitScript)) { throw "$kitScript is not there: nebula\ must be the Nebula tree at nebula.commit" }
+    if (-not $arm) { . (Join-Path $nebula 'tools\enter_msvc_environment.ps1') }
+    Invoke-Checked python @($kitScript, '--out', (Join-Path $stage 'test'), '--cxx', (Join-Path $Llvm 'bin\clang++.exe'))
     Invoke-Checked python @((Join-Path $installer 'vsix.py'), (Join-Path $stage 'editors\lumascript.vsix'))
     Copy-Into (Join-Path $installer 'licenses\LLVM.txt') (Join-Path $stage 'licenses\LLVM.txt')
     Copy-Into (Join-Path $repo 'crates\lumalink-gui\assets\MPLUSRounded1c-OFL.txt') (Join-Path $stage 'licenses\M PLUS Rounded 1c.txt')
     foreach ($name in 'LICENSE', 'README.md') { Copy-Into (Join-Path $repo $name) (Join-Path $stage $name) }
-    Invoke-Checked python @((Join-Path $installer 'rust_licenses.py'), 'x86_64-pc-windows-msvc', (Join-Path $stage 'licenses\rust-crates.txt'), 'lumalink', 'lumalink-gui', 'lumalink-setup')
+    Invoke-Checked python @((Join-Path $installer 'rust_licenses.py'), $(if ($arm) { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }), (Join-Path $stage 'licenses\rust-crates.txt'), 'lumalink', 'lumalink-gui', 'lumalink-setup')
 
     # The Setup, with the staged files packed in (Zstandard 19: a minute or two).
     $env:LUMALINK_SETUP_PAYLOAD = $stage
@@ -93,7 +112,8 @@ try {
 
     New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
     # A beta's Setup has its own name (update::package_name): a beta release never replaces the stable one's.
-    $name = if ($version.ToLowerInvariant().Contains('-beta.')) { 'LumaLink-Beta-Setup.exe' } else { 'LumaLink-Setup.exe' }
+    $name = if ($version.ToLowerInvariant().Contains('-beta.')) { 'LumaLink-Beta-Setup' } else { 'LumaLink-Setup' }
+    $name += if ($arm) { '-windows-arm64.exe' } else { '.exe' }
     $setup = Join-Path $OutputDirectory $name
     Copy-Item -LiteralPath (Join-Path $release 'LumaLink-Setup.exe') -Destination $setup -Force
     # Through a pipe: PowerShell runs a Windows (not console) program without one and would get nothing back.
@@ -110,5 +130,6 @@ try {
     Write-Host ('{0}  {1:N1} MB  SHA-256 {2}' -f $item.FullName, ($item.Length / 1MB), (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash)
 }
 finally {
+    Remove-Item Env:\CARGO_ENCODED_RUSTFLAGS -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }

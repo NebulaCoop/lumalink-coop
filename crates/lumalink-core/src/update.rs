@@ -99,10 +99,17 @@ pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 /// The Setup a release of `version` carries for this system: `LumaLink-Setup.exe` or `LumaLink-Beta-Setup.exe` on
-/// Windows, `LumaLink-Setup-<platform>` or `LumaLink-Beta-Setup-<platform>` elsewhere.
+/// Windows x64, `LumaLink-Setup-windows-arm64.exe` on Windows on ARM, `LumaLink-Setup-<platform>` or
+/// `LumaLink-Beta-Setup-<platform>` elsewhere.
 pub fn package_name(version: &str) -> String {
     let setup = if is_beta(version) { "LumaLink-Beta-Setup" } else { "LumaLink-Setup" };
-    if cfg!(windows) { format!("{setup}.exe") } else { format!("{setup}-{PLATFORM}") }
+    if cfg!(all(windows, target_arch = "aarch64")) {
+        format!("{setup}-windows-arm64.exe")
+    } else if cfg!(windows) {
+        format!("{setup}.exe")
+    } else {
+        format!("{setup}-{PLATFORM}")
+    }
 }
 
 /// The newest release in the list `json` (GitHub's release list) that is newer than `installed`, of its channel, and
@@ -1022,7 +1029,7 @@ mod tests {
         let found = select_newer(&json, "1.0.0").unwrap().unwrap();
         assert_eq!(found.version, "1.1.0", "drafts, betas and releases without a package are passed over");
         assert_eq!(found.package_size, 7);
-        let setup = if cfg!(windows) { "LumaLink-Setup.exe".to_string() } else { format!("LumaLink-Setup-{PLATFORM}") };
+        let setup = package_name("1.1.0");
         assert_eq!(found.package_url, format!("https://example.com/v1.1.0/{setup}"));
         assert_eq!(found.signature_url, Some(format!("https://example.com/v1.1.0/{setup}.sig")));
         assert!(select_newer(&json, "1.1.0").unwrap().is_none());

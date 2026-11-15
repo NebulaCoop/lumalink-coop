@@ -12,6 +12,9 @@
 #   toolchain/bin/clang, lld             Setup adds lld's other names (ld.lld, ld64.lld, lld-link) as links
 #   toolchain/lib/clang/<major>/include  clang's own headers
 #   lumakit/                             LumaKit's source (Nebula ships it built, as lumakit.luma)
+#   test/                                the test kit `lumalink test` runs (the game ships no test parts): Nebula's
+#                                        runner, and on Linux x64 its test extension and the game half's source, built
+#                                        from nebula/ by its tools/test_driver/test_kit.py
 #   editors/lumascript.vsix              the LumaScript extension for Visual Studio Code (installer/vsix.py)
 #   licenses/                            LLVM's licence, the window font's and the Rust crates'
 #   LICENSE, README.md
@@ -19,7 +22,9 @@
 # The Setup is not signed here: the release key stays on the release PC, where installer/sign-release.ps1 signs it.
 # Updates do not run an unsigned Setup.
 #
-# Requires Rust (stable), Python 3, and on Linux a C compiler.
+# Requires Rust (stable), Python 3, nebula/ (the Nebula tree at nebula.commit), and on Linux a C compiler and the C++
+# library's headers. The programs keep no build machine's folders (their panic texts name sources as cargo/...,
+# rustup/..., lumalink/...).
 set -eu
 
 llvm=
@@ -72,6 +77,16 @@ release=${CARGO_TARGET_DIR:-$repo/target}/release
 stage=$(mktemp -d "${TMPDIR:-/tmp}/lumalink-setup.XXXXXX")
 trap 'rm -rf "$stage"' EXIT INT TERM
 
+nebula=$(cd "$repo/nebula" && pwd -P)
+[ -f "$nebula/tools/test_driver/test_kit.py" ] || {
+    echo "build-setup.sh: $nebula/tools/test_driver/test_kit.py is not there: nebula/ must be the Nebula tree at nebula.commit" >&2; exit 1
+}
+# The source paths the programs keep (panic texts) name no build machine's folders. (0x1f: CARGO_ENCODED_RUSTFLAGS'
+# separator, so a folder may hold spaces.)
+sep=$(printf '\037')
+CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=cargo$sep--remap-path-prefix=${RUSTUP_HOME:-$HOME/.rustup}=rustup$sep--remap-path-prefix=$nebula=nebula$sep--remap-path-prefix=$repo=lumalink"
+export CARGO_ENCODED_RUSTFLAGS
+
 cd "$repo"
 cargo build --release --locked -p lumalink -p lumalink-gui
 
@@ -81,6 +96,7 @@ cp "$clang" "$stage/toolchain/bin/clang"
 cp "$llvm/bin/lld" "$stage/toolchain/bin/lld"
 cp -R "$llvm/lib/clang/$major/include" "$stage/toolchain/lib/clang/$major/include"
 cp -R "$repo/lumakit" "$stage/lumakit"
+python3 "$nebula/tools/test_driver/test_kit.py" --out "$stage/test" --cxx "$llvm/bin/clang++"
 python3 "$repo/installer/vsix.py" "$stage/editors/lumascript.vsix"
 cp "$repo/installer/licenses/LLVM.txt" "$stage/licenses/LLVM.txt"
 cp "$repo/crates/lumalink-gui/assets/MPLUSRounded1c-OFL.txt" "$stage/licenses/M PLUS Rounded 1c.txt"

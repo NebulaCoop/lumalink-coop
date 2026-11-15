@@ -9,10 +9,10 @@ LumaLink Setup installs the window, the command line, the compiler that builds m
 22.1.6) and LumaKit, for your account only (no administrator password). LumaLink finds the installed game, its SDK
 and LumaKit by itself, so nothing else needs setting up.
 
-**Windows.** Download `LumaLink-Setup.exe` from the [latest release](https://github.com/keepvaibin/lumalink/releases/latest)
-and run it.
+**Windows.** Download `LumaLink-Setup.exe` (`LumaLink-Setup-windows-arm64.exe` on Windows on ARM) from the
+[latest release](https://github.com/keepvaibin/lumalink/releases/latest) and run it.
 
-**Linux** (x86-64, glibc 2.35 or later) **and macOS** (Apple silicon). In a terminal:
+**Linux** (x86-64 or ARM64, glibc 2.35 or later) **and macOS** (Apple silicon or Intel). In a terminal:
 
 ```sh
 curl -fLO https://github.com/keepvaibin/lumalink/releases/latest/download/LumaLink-Setup-linux-x64
@@ -20,7 +20,8 @@ chmod +x LumaLink-Setup-linux-x64
 ./LumaLink-Setup-linux-x64
 ```
 
-On a Mac, use `LumaLink-Setup-macos-arm64`. LumaLink is not signed by Apple: download it with `curl` as shown, since
+On ARM64 Linux, use `LumaLink-Setup-linux-arm64`; on a Mac, `LumaLink-Setup-macos-arm64` (Apple silicon) or
+`LumaLink-Setup-macos-x64` (Intel). LumaLink is not signed by Apple: download it with `curl` as shown, since
 macOS stops a copy downloaded with a browser.
 
 Setup's choices:
