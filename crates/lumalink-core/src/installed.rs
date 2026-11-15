@@ -33,9 +33,9 @@ pub struct Installed {
 
 /// The program that runs the game in a version folder.
 #[cfg(windows)]
-pub const PROGRAM: &str = "NebulaNative.exe";
+pub const PROGRAM: &str = "Nebula.exe";
 #[cfg(not(windows))]
-pub const PROGRAM: &str = "NebulaNative";
+pub const PROGRAM: &str = "nebula";
 
 impl Installed {
     /// The installed game; none when no game.pak is found where the launcher looks.
