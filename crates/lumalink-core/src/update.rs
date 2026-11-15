@@ -996,7 +996,7 @@ mod tests {
     /// The Setups a release of `version` carries for every system, with their signatures.
     fn packages(version: &str) -> Vec<String> {
         let setup = if is_beta(version) { "LumaLink-Beta-Setup" } else { "LumaLink-Setup" };
-        ["exe", "linux-x64", "linux-arm64", "macos-arm64", "macos-x64"]
+        ["exe", "windows-arm64.exe", "linux-x64", "linux-arm64", "macos-arm64", "macos-x64"]
             .iter()
             .map(|p| if *p == "exe" { format!("{setup}.exe") } else { format!("{setup}-{p}") })
             .flat_map(|name| [format!("{name}.sig"), name])

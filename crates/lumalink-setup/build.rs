@@ -73,7 +73,9 @@ fn main() {
         println!("cargo:rustc-link-arg-bins=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg-bins=/MANIFESTUAC:level='asInvoker'");
         let res = out.with_file_name("icon.res");
-        std::fs::write(&res, icon::res(1)).unwrap();
+        let mut bytes = icon::res(1);
+        icon::add_details(&mut bytes, "LumaLink Setup", "LumaLink-Setup.exe", env!("CARGO_PKG_VERSION"));
+        std::fs::write(&res, bytes).unwrap();
         println!("cargo:rustc-link-arg-bins={}", res.display());
     }
 }

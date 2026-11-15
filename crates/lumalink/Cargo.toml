@@ -18,3 +18,7 @@ luma-validate.workspace = true
 nebula-import.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+
+[build-dependencies]
+crc32fast = "1.5"
+miniz_oxide = "0.8"

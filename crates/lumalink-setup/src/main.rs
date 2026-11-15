@@ -148,18 +148,31 @@ fn wait_for(pid: u32) {
     }
 }
 
-/// The copy of the Setup an uninstall ran from the temporary folder removes itself once it has ended (Windows keeps a
-/// running program's file).
+/// The copies of the Setup that earlier uninstalls ran from the temporary folder. Windows keeps a running program's
+/// file, so each stays after its uninstall; the next Setup removes them (as Windows' clean-up of the temporary folder
+/// does), and no other program is started to do it.
 #[cfg(windows)]
-fn remove_self_later() {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let Ok(me) = std::env::current_exe() else { return };
-    let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    let _ = std::process::Command::new(system.join("System32").join("cmd.exe"))
-        .raw_arg(format!("/c ping 127.0.0.1 -n 3 > nul & del /f /q \"{}\"", me.display()))
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn();
+fn remove_earlier_copies() {
+    let me = std::env::current_exe().unwrap_or_default();
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with(UNINSTALL_COPY) && name.ends_with(".exe") && !same_path(&entry.path(), &me) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// The start of the name of the Setup's copy an uninstall runs from (`<temp>\LumaLink-Uninstall-<process>.exe`).
+#[cfg(windows)]
+const UNINSTALL_COPY: &str = "LumaLink-Uninstall-";
+
+#[cfg(windows)]
+fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// Whether a window can open: on Linux only with a display (X11 or Wayland); a terminal over SSH has none.
@@ -196,15 +209,12 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    #[cfg(windows)]
+    remove_earlier_copies();
     if let Some(pid) = args.wait {
         wait_for(pid);
     }
-    let code = if args.uninstall { uninstall(&args) } else { install(&args) };
-    #[cfg(windows)]
-    if args.copy {
-        remove_self_later();
-    }
-    code
+    if args.uninstall { uninstall(&args) } else { install(&args) }
 }
 
 /// A silent run's end: its error on the terminal and exit code 1.
@@ -245,7 +255,7 @@ fn uninstall(args: &Args) -> ExitCode {
     if let (Some(found), false) = (&found, args.copy) {
         let me = std::env::current_exe().unwrap_or_default();
         if me.starts_with(&found.folder) {
-            let copy = std::env::temp_dir().join(format!("LumaLink-Uninstall-{}.exe", std::process::id()));
+            let copy = std::env::temp_dir().join(format!("{UNINSTALL_COPY}{}.exe", std::process::id()));
             if std::fs::copy(&me, &copy).is_ok() {
                 // The copy waits for this one to end: its file is the install's too.
                 let mut command = std::process::Command::new(&copy);

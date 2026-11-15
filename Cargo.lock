@@ -2225,9 +2225,11 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "crc32fast",
  "luma-validate",
  "lumalink-core",
  "lumascript",
+ "miniz_oxide 0.8.9",
  "nebula-import",
  "serde_json",
  "tempfile",

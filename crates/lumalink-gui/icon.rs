@@ -1,11 +1,12 @@
 // LumaLink's icon, drawn in code (no picture files): a sky-blue rounded square with two white four-point sparkles.
-// Build scripts include this file: lumalink-gui's (the window's icon and the program's) and lumalink-setup's.
+// Build scripts include this file: lumalink-gui's (the window's icon and the program's), lumalink-setup's and lumalink's.
 // tools/icon_files.py draws the same icon as files for the README and web pages (assets/icon): change both together.
 //
 // - `rgba(size)`: the icon as RGBA pixels, 4 x 4 samples a pixel.
 // - `png(size)`: one size as a PNG file.
 // - `res(id)`: a Windows resource file (.res) with the icon group `id` in sizes 16 to 256 for the linker: 256 as a PNG,
 //   the others as 32-bit bitmaps, the form every Windows version reads.
+// - `add_details(res, description, file, version)`: adds the program's details (version, name, publisher) to a .res.
 
 #[allow(dead_code)]
 mod icon {
@@ -165,6 +166,68 @@ mod icon {
             group.extend_from_slice(&image_id.to_le_bytes());
         }
         resource(&mut out, 14, id, MOVEABLE_DISCARDABLE, ENGLISH_US, &group); // RT_GROUP_ICON
+        out
+    }
+
+    /// Adds to the .res `out` the program's details (RT_VERSION 1: VS_VERSIONINFO), which Explorer's Properties show,
+    /// with the fields Nebula's programs carry (Nebula's cmake/nebula_file_details.rc.in). `version` is the package's
+    /// version (major.minor.patch, a pre-release part after it left out of the numbers).
+    #[allow(dead_code)]
+    pub fn add_details(out: &mut Vec<u8>, description: &str, file: &str, version: &str) {
+        let numbers: Vec<u16> = version.split('-').next().unwrap_or("").split('.').map(|p| p.parse().unwrap_or(0)).collect();
+        let number = |i: usize| numbers.get(i).copied().unwrap_or(0) as u32;
+        let (high, low) = (number(0) << 16 | number(1), number(2) << 16);
+        // VS_FIXEDFILEINFO: signature, structure version, file and product versions, flags mask and flags, VOS_NT_WINDOWS32,
+        // VFT_APP, no subtype, no date.
+        let mut fixed = Vec::new();
+        for v in [0xFEEF_04BDu32, 0x0001_0000, high, low, high, low, 0x3F, 0, 0x0004_0004, 1, 0, 0, 0] {
+            fixed.extend_from_slice(&v.to_le_bytes());
+        }
+        let shown = format!("{}.{}.{}", number(0), number(1), number(2));
+        let strings: Vec<Vec<u8>> = [
+            ("CompanyName", "keepvaibin"),
+            ("FileDescription", description),
+            ("FileVersion", shown.as_str()),
+            ("LegalCopyright", "Copyright 2026 keepvaibin"),
+            ("OriginalFilename", file),
+            ("ProductName", "LumaLink"),
+            ("ProductVersion", shown.as_str()),
+        ]
+        .iter()
+        .map(|(key, value)| {
+            let text = wide(value);
+            node(key, (text.len() / 2) as u16, 1, &text, &[])
+        })
+        .collect();
+        let table = node("040904B0", 0, 1, &[], &strings); // US English, Unicode
+        let string_info = node("StringFileInfo", 0, 1, &[], &[table]);
+        let translation = node("Translation", 4, 0, &[0x09, 0x04, 0xB0, 0x04], &[]);
+        let var_info = node("VarFileInfo", 0, 1, &[], &[translation]);
+        let root = node("VS_VERSION_INFO", fixed.len() as u16, 0, &fixed, &[string_info, var_info]);
+        resource(out, 16, 1, 0x0030, 0x0409, &root); // RT_VERSION
+    }
+
+    /// `text` as UTF-16 with its ending zero.
+    fn wide(text: &str) -> Vec<u8> {
+        text.encode_utf16().chain([0]).flat_map(u16::to_le_bytes).collect()
+    }
+
+    /// One block of a version resource: its length, its value's length (in characters for text, bytes otherwise), its
+    /// kind (1 text, 0 binary), its key, then its value and its children, each on a 4-byte boundary.
+    fn node(key: &str, value_length: u16, kind: u16, value: &[u8], children: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = vec![0, 0];
+        out.extend_from_slice(&value_length.to_le_bytes());
+        out.extend_from_slice(&kind.to_le_bytes());
+        out.extend_from_slice(&wide(key));
+        let align = |out: &mut Vec<u8>| out.resize(out.len().next_multiple_of(4), 0);
+        align(&mut out);
+        out.extend_from_slice(value);
+        for child in children {
+            align(&mut out);
+            out.extend_from_slice(child);
+        }
+        let length = out.len() as u16;
+        out[..2].copy_from_slice(&length.to_le_bytes());
         out
     }
 }

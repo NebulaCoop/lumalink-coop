@@ -97,6 +97,18 @@ pub fn install(choices: &Choices, progress: &dyn Progress) -> Result<()> {
         bail!(say!("LumaLink.Setup.Empty", setup = update::package_name(VERSION)));
     }
     std::fs::create_dir_all(folder).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.CannotWrite", folder = folder.display(), why = e)))?;
+    // A running LumaLink (a window, `lumalink lsp` in an editor, a build's clang) holds its files. It is waited for a
+    // moment (an update starts while the window it replaces closes), then named, as Uninstall names it.
+    let start = std::time::Instant::now();
+    loop {
+        match system::in_use(own_files(folder)).first() {
+            None => break,
+            Some(first) if start.elapsed() >= HELD_FOR => {
+                bail!(say!("LumaLink.Setup.InUse", file = first.display(), why = say!("LumaLink.Setup.Running")))
+            }
+            Some(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
+        }
+    }
     remove_set_aside(folder);
     let whole: u64 = (0..archive.len()).filter_map(|i| archive.by_index_raw(i).ok().map(|e| e.size())).sum();
     let mut done = 0u64;
@@ -114,7 +126,7 @@ pub fn install(choices: &Choices, progress: &dyn Progress) -> Result<()> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).with_context(|| parent.display().to_string())?;
         }
-        let mut out = std::fs::File::create(&new).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.CannotWrite", folder = new.display(), why = e)))?;
+        let mut out = patiently(|| std::fs::File::create(&new)).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.CannotWrite", folder = new.display(), why = e)))?;
         loop {
             let n = entry.read(&mut buffer)?;
             if n == 0 {
@@ -196,21 +208,54 @@ fn beside(path: &Path, suffix: &str) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// Moves `new` over `target`; a target in use (on Windows a running program can be renamed but not replaced) is moved
-/// aside first.
+/// How long a file operation waits for a file another program holds for a moment.
+const HELD_FOR: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Whether `error` is Windows refusing a file that another program has open: a file just written is opened by the
+/// antivirus scan (and the search indexer) for a moment, and moving or removing it meanwhile fails with "Access is
+/// denied" (5) or a sharing violation (32, 33). Elsewhere an open file can be moved and removed.
+fn held(error: &std::io::Error) -> bool {
+    cfg!(windows) && (error.kind() == std::io::ErrorKind::PermissionDenied || matches!(error.raw_os_error(), Some(5 | 32 | 33)))
+}
+
+/// Runs `op` until it succeeds, again while the file is held ([`held`]), for up to [`HELD_FOR`].
+fn patiently<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let start = std::time::Instant::now();
+    let mut wait = std::time::Duration::from_millis(20);
+    loop {
+        match op() {
+            Err(e) if held(&e) && start.elapsed() < HELD_FOR => {
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(std::time::Duration::from_millis(500));
+            }
+            result => return result,
+        }
+    }
+}
+
+/// Moves `new` over `target`. A target in use (on Windows a running program can be renamed but not replaced) is moved
+/// aside first; a file held for a moment is waited for ([`patiently`]). When `new` cannot take its place, the old
+/// file goes back, so a failed install leaves the last one working.
 fn put(new: &Path, target: &Path) -> Result<()> {
     if std::fs::rename(new, target).is_ok() {
         return Ok(());
     }
-    if target.exists() {
-        let aside = beside(target, &format!(".{}{ASIDE}", std::process::id()));
-        std::fs::rename(target, &aside).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.InUse", file = target.display(), why = e)))?;
+    let aside = beside(target, &format!(".{}{ASIDE}", std::process::id()));
+    let moved = target.exists();
+    if moved {
+        patiently(|| std::fs::rename(target, &aside)).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.InUse", file = target.display(), why = e)))?;
     }
-    std::fs::rename(new, target).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.CannotWrite", folder = target.display(), why = e)))
+    patiently(|| std::fs::rename(new, target)).map_err(|e| {
+        if moved {
+            let _ = patiently(|| std::fs::rename(&aside, target));
+        }
+        let _ = std::fs::remove_file(new);
+        anyhow::anyhow!(say!("LumaLink.Setup.CannotWrite", folder = target.display(), why = e))
+    })
 }
 
 fn remove_or_set_aside(path: &Path) {
-    if std::fs::remove_file(path).is_err() && path.exists() {
+    if patiently(|| std::fs::remove_file(path)).is_err() && path.exists() {
         let _ = std::fs::rename(path, beside(path, &format!(".{}{ASIDE}", std::process::id())));
     }
 }
@@ -309,7 +354,7 @@ pub fn uninstall(found: &Found) -> Result<()> {
         if cfg!(windows) && same_file(&file, &me) {
             continue;
         }
-        std::fs::remove_file(&file).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.InUse", file = file.display(), why = e)))?;
+        patiently(|| std::fs::remove_file(&file)).map_err(|e| anyhow::anyhow!(say!("LumaLink.Setup.InUse", file = file.display(), why = e)))?;
     }
     remove_empty_folders(&found.folder);
     let _ = std::fs::remove_dir(&found.folder);
@@ -1236,5 +1281,58 @@ pub mod system {
             let types = desktop::type_definition();
             assert!(types.contains("<glob pattern=\"*.luma\"/>") && types.contains("xml:lang=\"zh_TW\""), "{types}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_put_over_its_place_replaces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (new, target) = (dir.path().join("a.exe.new"), dir.path().join("a.exe"));
+        std::fs::write(&target, "old").unwrap();
+        std::fs::write(&new, "new").unwrap();
+        put(&new, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert!(!new.exists());
+    }
+
+    /// The antivirus scan of a file just written holds it with no sharing for a moment: the move waits for it.
+    #[cfg(windows)]
+    #[test]
+    fn a_new_file_held_for_a_moment_is_waited_for() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (new, target) = (dir.path().join("a.exe.new"), dir.path().join("a.exe"));
+        std::fs::write(&target, "old").unwrap();
+        std::fs::write(&new, "new").unwrap();
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(&new).unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            drop(held);
+        });
+        put(&new, &target).unwrap();
+        release.join().unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        // The old file was moved aside on the way; the next Setup removes it.
+        remove_set_aside(dir.path());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// A new file that never frees leaves the old one in its place.
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_put_leaves_the_old_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (new, target) = (dir.path().join("a.exe.new"), dir.path().join("a.exe"));
+        std::fs::write(&target, "old").unwrap();
+        std::fs::write(&new, "new").unwrap();
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(&new).unwrap();
+        assert!(put(&new, &target).is_err());
+        drop(held);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
     }
 }

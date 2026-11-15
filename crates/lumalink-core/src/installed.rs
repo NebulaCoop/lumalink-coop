@@ -127,27 +127,37 @@ fn current_version(root: &Path) -> Option<PathBuf> {
     folder.is_dir().then_some(folder)
 }
 
-/// The install root the last install recorded (`HKCU\Software\Nebula`, `InstallRoot`), read with the system's own
-/// `reg` (no registry library); none elsewhere, or when there is none.
+/// The install root the last install recorded (`HKCU\Software\Nebula`, `InstallRoot`; an expandable string comes with
+/// its `%NAME%` parts filled in); none when there is none.
+#[cfg(windows)]
 fn registered_root() -> Option<PathBuf> {
-    if !cfg!(windows) {
-        return None;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+    const ERROR_MORE_DATA: u32 = 234;
+    let wide = |text: &str| text.encode_utf16().chain([0]).collect::<Vec<u16>>();
+    let (key, name) = (wide(r"Software\Nebula"), wide("InstallRoot"));
+    let mut buffer = vec![0u16; 512];
+    loop {
+        let mut bytes = (buffer.len() * 2) as u32;
+        // SAFETY: the key and value names end in zero, and `bytes` is the buffer's size in bytes.
+        let status = unsafe {
+            RegGetValueW(HKEY_CURRENT_USER, key.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buffer.as_mut_ptr().cast(), &mut bytes)
+        };
+        match status {
+            0 => {
+                let text = &buffer[..(bytes as usize / 2).min(buffer.len())];
+                let text = &text[..text.iter().position(|&c| c == 0).unwrap_or(text.len())];
+                return (!text.is_empty()).then(|| PathBuf::from(std::ffi::OsString::from_wide(text)));
+            }
+            ERROR_MORE_DATA if (bytes as usize) / 2 >= buffer.len() => buffer.resize(bytes as usize / 2 + 1, 0),
+            _ => return None,
+        }
     }
-    let out = std::process::Command::new("reg").args(["query", r"HKCU\Software\Nebula", "/v", "InstallRoot"]).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    registry_value(&String::from_utf8_lossy(&out.stdout))
 }
 
-/// The value of `reg query`'s `InstallRoot    REG_SZ    <path>` line.
-pub fn registry_value(text: &str) -> Option<PathBuf> {
-    text.lines().find_map(|line| {
-        let line = line.trim();
-        let rest = line.strip_prefix("InstallRoot")?.trim_start();
-        let path = rest.strip_prefix("REG_EXPAND_SZ").or_else(|| rest.strip_prefix("REG_SZ"))?.trim();
-        (!path.is_empty()).then(|| PathBuf::from(path))
-    })
+#[cfg(not(windows))]
+fn registered_root() -> Option<PathBuf> {
+    None
 }
 
 #[cfg(test)]
@@ -195,10 +205,11 @@ mod tests {
         assert_eq!(Installed::find_in(&data, None, &root).unwrap().version, None);
     }
 
+    /// The registry read returns what the Nebula Setup records, or none.
+    #[cfg(windows)]
     #[test]
-    fn reg_query_s_line_is_read() {
-        let text = "\r\nHKEY_CURRENT_USER\\Software\\Nebula\r\n    InstallRoot    REG_SZ    C:\\Users\\a b\\Programs\\Nebula\r\n\r\n";
-        assert_eq!(registry_value(text), Some(PathBuf::from(r"C:\Users\a b\Programs\Nebula")));
-        assert_eq!(registry_value("ERROR: none"), None);
+    fn the_registered_root_reads_without_starting_a_program() {
+        let found = registered_root();
+        assert!(found.as_ref().map_or(true, |p| !p.as_os_str().is_empty()), "{found:?}");
     }
 }
