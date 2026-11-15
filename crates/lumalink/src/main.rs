@@ -838,7 +838,11 @@ fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Op
     let names = env("LUMA_NAMES").unwrap_or_else(|| Some(bin.join("luma")).filter(|p| p.is_dir()).unwrap_or_else(|| bin.clone()));
     let build = |f: &Path| build_for_test(f, &names);
     let (extension, half) = match &kit {
-        Some(k) => (Some(k.join(TEST_EXTENSION)), Some(jobs::build_game_half(k, &work, &build)?)),
+        Some(k) => {
+            let host: Vec<String> = lumalink_core::build::HOST.iter().map(|h| h.to_string()).collect();
+            let half = |f: &Path| jobs::build_c_mod(f, sdk_folder(None, Some(&names)), &host);
+            (Some(k.join(TEST_EXTENSION)), Some(jobs::build_game_half(k, &work, &half)?))
+        }
         None => (None, None),
     };
     let setup = jobs::TestSetup { bin, pak, runner, python, work, lock, renderer, extension, half };

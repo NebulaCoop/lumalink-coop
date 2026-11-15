@@ -724,6 +724,39 @@ pub fn build(folder: &Path, game: &Game, sdk: &Path, clang: &Path, work: &Path, 
     Ok(Built { libraries, c_bytes, imports: emitted.imports, kept: emitted.kept, recorded, exports: emitted.exports, notes })
 }
 
+/// A mod of C alone that declares its own entry with `LUMA_MOD`, such as the test kit's game half (`luma_test.c`): its C
+/// and C++ compiled and linked for each platform as `build` compiles a mod's own code, with no LumaScript and nothing
+/// generated. Each platform's library, its path and size.
+pub fn build_c(folder: &Path, sdk: &Path, clang: &Path, work: &Path, platforms: &[String]) -> Result<Vec<(&'static str, PathBuf, u64)>, BuildError> {
+    let wanted = targets(platforms)?;
+    if !sdk.join("luma.h").is_file() {
+        return Err(BuildError::NoSdk(sdk.to_path_buf()));
+    }
+    if wanted.iter().any(|t| t.link.iter().any(|f| f.contains("{sdk}"))) && !sdk.join("luma_ctors.ld").is_file() {
+        return Err(BuildError::NoLinkerScript(sdk.join("luma_ctors.ld")));
+    }
+    let absolute = |p: &Path| std::path::absolute(p).map_err(|e| BuildError::Read(p.to_path_buf(), e));
+    let (folder, sdk, work) = (absolute(folder)?, absolute(sdk)?, absolute(work)?);
+    std::fs::create_dir_all(&work).map_err(|e| BuildError::Write(work.clone(), e))?;
+    let found = clang_version(clang)?;
+    if found != LLVM {
+        return Err(BuildError::ClangVersion { path: clang.to_path_buf(), found });
+    }
+    let own = c_sources(&folder)?;
+    let mut libraries = Vec::new();
+    let mut failed = Vec::new();
+    for t in wanted {
+        match build_one(t, &folder, &sdk, clang, &work, &[], &own)? {
+            Ok((library, bytes)) => libraries.push((t.platform, library, bytes)),
+            Err((code, output)) => failed.push((t.platform, code, output)),
+        }
+    }
+    if !failed.is_empty() {
+        return Err(BuildError::Platforms { failed, built: libraries.iter().map(|(p, _, _)| *p).collect() });
+    }
+    Ok(libraries)
+}
+
 /// clang's exit code and what it said, when it stopped.
 type Stopped = (i32, String);
 

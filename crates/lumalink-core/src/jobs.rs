@@ -911,7 +911,7 @@ pub fn test_kit() -> Option<PathBuf> {
 }
 
 /// The game half for a test run: the kit's `luma_test.c` built as the mod `luma-test` in `<work>/game-half`, against
-/// the game's SDK, by `build` (the same build as a mod's). The built library's path.
+/// the game's SDK, by `build` (`build_c_mod`: luma_test.c is a whole mod of C with its own entry). The built library's path.
 pub fn build_game_half(kit: &Path, work: &Path, build: &dyn Fn(&Path) -> Result<()>) -> Result<PathBuf> {
     let host = crate::build::HOST.ok_or_else(|| anyhow::anyhow!(say!("LumaLink.Test.NoKit")))?;
     let folder = work.join("game-half");
@@ -1570,6 +1570,36 @@ pub fn build_mod(folder: &Path, names: &Path, sdk: Option<PathBuf>, clang: Optio
         Err(BuildError::ClangVersion { path, found }) => bail!(say!("LumaLink.Build.ClangVersion", expected = build::LLVM, path = path.display(), found = found)),
     }
     Ok(out)
+}
+
+/// Builds a mod of C alone with its own entry (`build::build_c`) for `platforms`, against `sdk` with LumaLink's clang;
+/// each platform that failed is said with what clang said.
+pub fn build_c_mod(folder: &Path, sdk: Option<PathBuf>, platforms: &[String]) -> Result<()> {
+    use crate::build::{self, BuildError};
+    let Some(sdk) = sdk else {
+        bail!(say!("LumaLink.Build.NoSdk", folder = folder.display()));
+    };
+    let work = folder.join("work");
+    match build::build_c(folder, &sdk, &build::default_clang(), &work, platforms) {
+        Ok(_) => Ok(()),
+        Err(BuildError::Platforms { failed, .. }) => {
+            let mut text = String::new();
+            for (platform, code, output) in &failed {
+                text.push_str(output);
+                text.push_str(&say!("LumaLink.Build.PlatformFailed", platform = platform, code = code));
+                text.push('\n');
+            }
+            bail!(text.trim_end().to_string())
+        }
+        Err(BuildError::UnknownPlatform(p)) => bail!(say!("LumaLink.UnknownPlatform", value = p, list = luma_validate::PLATFORMS.join(", "))),
+        Err(BuildError::NoLinkerScript(path)) => bail!(say!("LumaLink.Build.NoLinkerScript", path = path.display())),
+        Err(BuildError::Read(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.CannotRead", path = path.display()))),
+        Err(BuildError::Write(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.Build.CannotWrite", path = path.display()))),
+        Err(BuildError::NoSdk(folder)) => bail!(say!("LumaLink.Build.NoSdk", folder = folder.display())),
+        Err(BuildError::NoClang(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.Build.NoClang", path = path.display()))),
+        Err(BuildError::ClangVersion { path, found }) => bail!(say!("LumaLink.Build.ClangVersion", expected = build::LLVM, path = path.display(), found = found)),
+        Err(other) => bail!("{other:?}"),
+    }
 }
 
 /// Why the game's description does not read, in the chosen language.
