@@ -809,6 +809,11 @@ fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Op
         let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "mod".into());
         folder.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")).join(format!("{name}-tests"))
     });
+    // A work folder inside the mod folder would be copied into the game with the mod, each run inside the last.
+    let whole = |p: &Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    if whole(&work).starts_with(whole(folder)) {
+        bail!(say!("LumaLink.Test.WorkInside", work = work.display(), folder = folder.display()));
+    }
     let lock = lock.or_else(|| env("LUMA_TEST_LOCK")).unwrap_or_else(|| work.join("run.lock"));
     let setup = jobs::TestSetup { bin, pak, runner, python, work, lock, renderer };
     // The mod's code is built by `lumalink build` (every platform) before its tests run.
