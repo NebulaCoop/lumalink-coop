@@ -12,9 +12,10 @@ fn column_hash(name: &str) -> u32 {
     nebula_import::cook::table::column_hash(name)
 }
 
-/// The names of columns: tables keep only their hashes, and the names come from the game's self-description
-/// (self-description: `tables[].columns[].name`, made by the game's build from its source). A hash
-/// not among them comes out as `0x` and its hash, which reads back the same.
+/// The names of columns: tables keep only their hashes. The names come from the game's self-description
+/// (`names.columns`, made by the game's build from its source: every name the game's code reads a column by), then from
+/// the store's own folder and file names (a scenario table's columns are its zones). A hash not among them comes out
+/// as `0x` and its hash, which reads back the same.
 #[derive(Clone, Debug, Default)]
 pub struct ColumnNames(BTreeMap<u32, String>);
 
@@ -29,14 +30,24 @@ impl ColumnNames {
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|e| anyhow::anyhow!(say!("LumaLink.SelfNotJson", path = shown_as.display(), line = e.line(), column = e.column())))?;
         let mut names = BTreeMap::new();
-        for table in value.get("tables").and_then(Value::as_array).into_iter().flatten() {
-            for column in table.get("columns").and_then(Value::as_array).into_iter().flatten() {
-                if let Some(name) = column.get("name").and_then(Value::as_str) {
-                    names.insert(column_hash(name), name.to_string());
+        let columns = value.get("names").and_then(|n| n.get("columns")).and_then(Value::as_array);
+        for name in columns.into_iter().flatten().filter_map(Value::as_str) {
+            names.entry(column_hash(name)).or_insert_with(|| name.to_string());
+        }
+        Ok(Self(names))
+    }
+
+    /// Adds the store's folder and file names, each whole and without its extension, where no name has the hash yet.
+    pub fn add_store_names(&mut self, store: &Path) -> Result<()> {
+        for (path, _, _) in crate::game_store::GameStore::files(store)? {
+            for part in path.split('/').filter(|p| !p.is_empty()) {
+                let stem = part.split('.').next().unwrap_or(part);
+                for name in [part, stem] {
+                    self.0.entry(column_hash(name)).or_insert_with(|| name.to_string());
                 }
             }
         }
-        Ok(Self(names))
+        Ok(())
     }
 
     pub(crate) fn name(&self, hash: u32) -> String {
@@ -297,6 +308,17 @@ fn text_of(bytes: &[u8]) -> String {
     encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned()
 }
 
+/// The game's sound names (its sound table, AudioRes/SMR), sorted, those holding `filter` in any case: the names a
+/// mod's sound `replace` takes.
+pub fn list_sounds(store: &Path, filter: Option<&str>) -> Result<Vec<String>> {
+    use nebula_import::cook::{sound, store as game_store};
+    let wanted = filter.map(str::to_ascii_lowercase);
+    let mut names = sound::sound_names(&game_store::read_file(store, "AudioRes/SMR.szs")?)?;
+    names.retain(|n| wanted.as_ref().is_none_or(|w| n.to_ascii_lowercase().contains(w.as_str())));
+    names.sort();
+    Ok(names)
+}
+
 /// Every file of an imported game under a folder, by its place.
 pub fn list_files(store: &Path, folder: &str) -> Result<Vec<(String, u64)>> {
     use nebula_import::cook::store as game_store;
@@ -422,7 +444,7 @@ mod tests {
 
     #[test]
     fn column_names_come_from_the_self_description() {
-        let file = br#"{"self": 1, "tables": [{"file": "/ObjectData/x", "columns": [{"name": "PlanetAmbientA", "type": "int"}, {"name": "vpanaxis.Z", "type": "float"}]}]}"#;
+        let file = br#"{"self": 1, "names": {"columns": ["PlanetAmbientA", "vpanaxis.Z"]}}"#;
         let names = ColumnNames::from_self_description(file, Path::new("self.json")).unwrap();
         assert_eq!(names.len(), 2);
         assert_eq!(names.name(column_hash("PlanetAmbientA")), "PlanetAmbientA");
@@ -435,7 +457,7 @@ mod tests {
     fn a_cooked_table_reads_back_as_the_json_that_made_it() {
         let source = br#"{"columns":{"scale_x":"float"},"rows":[{"name":"Kuribo","scale_x":1.5,"Count":-3},{"name":"","scale_x":2,"Count":7}]}"#;
         let cooked = nebula_import::cook::table::TableIr::from_json(source).unwrap().to_ntbl();
-        let names = ColumnNames::from_self_description(br#"{"tables": [{"columns": [{"name": "name"}, {"name": "scale_x"}, {"name": "Count"}]}]}"#, Path::new("self.json")).unwrap();
+        let names = ColumnNames::from_self_description(br#"{"names": {"columns": ["name", "scale_x", "Count"]}}"#, Path::new("self.json")).unwrap();
         let json = table_to_json(&cooked, &names).unwrap();
         // Without the names, each column is its hash, which the cooker reads as that column again (the columns may
         // come out in another order: a JSON object's keys are sorted).

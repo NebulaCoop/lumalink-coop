@@ -47,7 +47,7 @@ struct Inputs {
     /// Check without the installed game: what --game and --names do not name is left out, and its rules are named.
     #[arg(long)]
     no_installed: bool,
-    /// Your mod folder: the mods (folders and .luma files) a mod's needs are found in. Without it needs are not checked.
+    /// Your mod folder: the mods (folders and .luma files) a mod's needs are found in. Without it, they are looked for beside the mod, in the installed game's mods and in the mods that come with the game.
     #[arg(long, value_name = "FOLDER")]
     mods: Option<PathBuf>,
 }
@@ -142,7 +142,7 @@ enum Command {
     },
     /// List what is in a .luma, or (with --game) a kind of thing in your imported game.
     List {
-        /// A .luma file; or, with --game: tables, models, messages or files.
+        /// A .luma file; or, with --game: tables, models, messages, sounds or files.
         #[arg(value_name = "ITEM")]
         what: String,
         /// Only those whose path or column holds this (tables, models); the folder (files); the language (messages).
@@ -978,14 +978,20 @@ fn print_pack(report: &Report, outcome: PackOutcome) -> Result<ExitCode> {
     }
 }
 
-/// Table columns' names: from `self_description` when given, else the installed game's self-description, else none
-/// (columns shown by their hash).
-fn column_names(self_description: Option<&Path>) -> Result<ColumnNames> {
+/// Table columns' names: from `self_description` when given, else the installed game's self-description, else none,
+/// then the names of the files in `store` (columns no name covers are shown by their hash, said on stderr when the
+/// game's names are missing).
+fn column_names(self_description: Option<&Path>, store: &Path) -> Result<ColumnNames> {
     let installed_self = || installed().and_then(|f| f.self_description()).map(|n| n.join("smg_game.luma-self.json")).filter(|p| p.is_file());
-    match self_description.map(Path::to_path_buf).or_else(installed_self) {
-        Some(path) => ColumnNames::from_self_description(&std::fs::read(&path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?, &path),
-        None => Ok(ColumnNames::none()),
+    let mut names = match self_description.map(Path::to_path_buf).or_else(installed_self) {
+        Some(path) => ColumnNames::from_self_description(&std::fs::read(&path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?, &path)?,
+        None => ColumnNames::none(),
+    };
+    if names.is_empty() {
+        eprintln!("{}", say!("LumaLink.ColumnsByHash"));
     }
+    names.add_store_names(store)?;
+    Ok(names)
 }
 
 fn list(what: &str, game: Option<&Path>, self_description: Option<&Path>, filter: Option<&str>) -> Result<ExitCode> {
@@ -1022,20 +1028,21 @@ fn list(what: &str, game: Option<&Path>, self_description: Option<&Path>, filter
         }
         return Ok(ExitCode::SUCCESS);
     };
-    let names = column_names(self_description)?;
     match what {
         "tables" => {
-            for t in inspect::list_tables(game, filter, &names)? {
+            for t in inspect::list_tables(game, filter, &column_names(self_description, game)?)? {
                 let columns: Vec<String> = t.columns.iter().map(|(n, k)| format!("{n}:{k}")).collect();
                 println!("{}", say!("LumaLink.List.Table", path = t.path, rows = t.rows, columns = columns.join(", ")));
-            }
-            if names.is_empty() {
-                eprintln!("{}", say!("LumaLink.ColumnsByHash"));
             }
         }
         "models" => {
             for m in inspect::list_models(game, filter)? {
                 println!("{}", say!("LumaLink.List.Model", path = m.path, count = m.animations.len()));
+            }
+        }
+        "sounds" => {
+            for name in inspect::list_sounds(game, filter)? {
+                println!("{name}");
             }
         }
         "messages" => {
@@ -1054,7 +1061,7 @@ fn list(what: &str, game: Option<&Path>, self_description: Option<&Path>, filter
 }
 
 /// What `list` lists in the game.
-const LIST_KINDS: [&str; 4] = ["tables", "models", "messages", "files"];
+const LIST_KINDS: [&str; 5] = ["tables", "models", "messages", "sounds", "files"];
 
 fn extract(from: &str, names: &[String], output: &Path, game: Option<&Path>, self_description: Option<&Path>) -> Result<ExitCode> {
     // A path in the game, with no game named (not a .luma, nor a file here): the installed one's.
@@ -1070,7 +1077,7 @@ fn extract(from: &str, names: &[String], output: &Path, game: Option<&Path>, sel
         if !names.is_empty() {
             bail!(say!("LumaLink.OneGamePath"));
         }
-        let count = inspect::extract(game, from, output, &column_names(self_description)?)?;
+        let count = inspect::extract(game, from, output, &column_names(self_description, game)?)?;
         println!("{}", say!("LumaLink.Extracted", folder = output.display(), count = count));
         return Ok(ExitCode::SUCCESS);
     }

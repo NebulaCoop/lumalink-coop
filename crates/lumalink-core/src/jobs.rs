@@ -27,7 +27,7 @@ pub struct Inputs {
     /// Leave the installed game out: what `game` and `names` do not name is not given.
     pub no_installed: bool,
     /// LumaLink's mod folder: the mods (folders and .luma files) a mod's `needs` are found in (docs/modding/format/validator.md,
-    /// "the other mods"). None: the needs are not checked, and the report says so.
+    /// "the other mods"). None: each need is looked for where its build finds it (`needed_mods`); one found nowhere is not checked, and the report says so.
     pub mods: Option<PathBuf>,
 }
 
