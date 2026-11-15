@@ -55,6 +55,20 @@ fn known_places() -> Vec<PathBuf> {
     out
 }
 
+/// The program and script VS Code's code.cmd runs (`"%~dp0..\Code.exe" "%~dp0..\<commit>\resources\app\out\cli.js" %*`),
+/// with `%~dp0` as `folder`, code.cmd's own folder. None when the file is not that.
+fn code_cmd_parts(text: &str, folder: &Path) -> Option<(PathBuf, PathBuf)> {
+    let line = text.lines().find(|l| l.contains("cli.js"))?;
+    let quoted: Vec<&str> = line.split('"').skip(1).step_by(2).collect();
+    let [program, cli, ..] = quoted.as_slice() else { return None };
+    let expand = |part: &str| -> Option<PathBuf> {
+        let rest = part.strip_prefix("%~dp0")?;
+        Some(folder.join(rest.replace('\\', std::path::MAIN_SEPARATOR_STR)))
+    };
+    let (program, cli) = (expand(program)?, expand(cli)?);
+    (program.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) && cli.ends_with("cli.js")).then_some((program, cli))
+}
+
 /// What [`install`] could not do.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Missing {
@@ -69,9 +83,11 @@ pub fn install() -> Result<std::result::Result<(), Missing>> {
     let Some(vsix) = extension() else { return Ok(Err(Missing::Extension)) };
     let Some(code) = find_code() else { return Ok(Err(Missing::Code)) };
     let mut command = if cfg!(windows) {
-        // A .cmd runs through cmd.exe; the paths are quoted by Command.
-        let mut c = Command::new("cmd.exe");
-        c.arg("/d").arg("/c").arg(&code);
+        // code.cmd only sets ELECTRON_RUN_AS_NODE and runs Code.exe with VS Code's cli.js: the same, without cmd.exe.
+        let text = std::fs::read_to_string(&code).with_context(|| code.display().to_string())?;
+        let Some((program, cli)) = code_cmd_parts(&text, code.parent().unwrap_or(Path::new("."))) else { return Ok(Err(Missing::Code)) };
+        let mut c = Command::new(program);
+        c.arg(cli).env("ELECTRON_RUN_AS_NODE", "1").env_remove("VSCODE_DEV");
         c
     } else {
         Command::new(&code)
@@ -106,6 +122,22 @@ mod tests {
         let result = super::install();
         let _ = std::fs::remove_dir_all(&beside);
         assert_eq!(result.unwrap(), Ok(()));
+    }
+
+    #[test]
+    fn code_cmd_is_read_without_running_it() {
+        let text = concat!(
+            "@echo off\r\nsetlocal\r\nset VSCODE_DEV=\r\nset ELECTRON_RUN_AS_NODE=1\r\n",
+            r#""%~dp0..\Code.exe" "%~dp0..\69047191fc\resources\app\out\cli.js" %*"#,
+            "\r\nendlocal\r\n"
+        );
+        let folder = std::path::Path::new("vscode").join("bin");
+        let (program, cli) = super::code_cmd_parts(text, &folder).unwrap();
+        assert!(program.ends_with("Code.exe") && program.starts_with(&folder));
+        assert!(cli.ends_with("cli.js") && cli.to_string_lossy().contains("69047191fc"));
+        assert!(super::code_cmd_parts("@echo off\r\nstart something.exe\r\n", &folder).is_none());
+        // Only paths beside code.cmd are run.
+        assert!(super::code_cmd_parts(r#""C:\evil.exe" "%~dp0cli.js""#, &folder).is_none());
     }
 
     #[test]
