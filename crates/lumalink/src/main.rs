@@ -140,9 +140,9 @@ enum Command {
         #[command(flatten)]
         inputs: Inputs,
     },
-    /// List what is in a .luma, or (with --game) a kind of thing in your imported game.
+    /// List what is in a .luma, or a kind of thing in your imported game.
     List {
-        /// A .luma file; or, with --game: tables, models, messages, sounds or files.
+        /// A .luma file, or what to list from your imported game: tables, models, messages, sounds or files.
         #[arg(value_name = "ITEM")]
         what: String,
         /// Only those whose path or column holds this (tables, models); the folder (files); the language (messages).
@@ -154,9 +154,9 @@ enum Command {
         #[arg(long = "self", value_name = "FILE")]
         self_description: Option<PathBuf>,
     },
-    /// Write files out of a .luma, or (with --game) out of your imported game.
+    /// Write files out of a .luma, or out of your imported game.
     Extract {
-        /// A .luma file; or, with --game, a path in the game.
+        /// A .luma file, or a path in your imported game.
         #[arg(value_name = "PATH")]
         from: String,
         /// Entries or folders of the .luma to write (all when none).
