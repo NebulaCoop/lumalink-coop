@@ -8,11 +8,10 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
-use luma_validate::names::Names;
 use luma_validate::{Finding, Level, Report};
 use lumalink_core::inspect::{self, ColumnNames};
 use lumalink_core::jobs::{self, Difference, Install, LumaList, NewMod, PackOutcome};
-use lumalink_core::{say, text};
+use lumalink_core::{say, text, update};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -65,6 +64,9 @@ impl Inputs {
     }
 }
 
+/// The test extension a version folder carries when the harness can run in it (the runner's HOST["extension"]).
+const TEST_EXTENSION: &str = if cfg!(windows) { "nebula_test_extension.dll" } else { "libnebula_test_extension.so" };
+
 /// The game installed on this computer, said once on stderr the first time it is used.
 fn installed() -> Option<lumalink_core::installed::Installed> {
     static FOUND: std::sync::OnceLock<Option<lumalink_core::installed::Installed>> = std::sync::OnceLock::new();
@@ -77,6 +79,21 @@ fn installed() -> Option<lumalink_core::installed::Installed> {
             found
         })
         .clone()
+}
+
+/// The game's self-description folder: `names` when given, else the installed game's, else the refusal that names
+/// the option to give.
+fn names_or_installed(names: Option<PathBuf>) -> Result<PathBuf> {
+    match names {
+        Some(n) => Ok(n),
+        None => installed().and_then(|f| f.self_description()).with_context(|| say!("LumaLink.NoNames")),
+    }
+}
+
+/// The SDK folder (the game's luma.h): `sdk` when given, else LUMA_INCLUDE, else the `sdk` folder of the game's
+/// self-description `names`, where Nebula installs the headers of the version that runs.
+fn sdk_folder(sdk: Option<PathBuf>, names: Option<&Path>) -> Option<PathBuf> {
+    jobs::sdk_folder(sdk, names)
 }
 
 /// The installed game's game.pak, or the refusal that names the option to give.
@@ -170,13 +187,15 @@ enum Command {
     Build {
         /// The mod folder.
         folder: PathBuf,
-        /// The game's function rows and types file (a kernel build's luma folder), for the rules on a mod's code.
+        /// The game's self-description folder (function rows and types), for the rules on a mod's code. Default: the
+        /// installed game's.
         #[arg(long, value_name = "FOLDER")]
-        names: PathBuf,
-        /// The folder with the game's luma.h. Default: LUMA_INCLUDE.
+        names: Option<PathBuf>,
+        /// The folder with the game's luma.h. Default: LUMA_INCLUDE, then the self-description folder's sdk.
         #[arg(long, value_name = "FOLDER")]
         sdk: Option<PathBuf>,
-        /// The clang to build with. Default: LUMALINK_CLANG, then LLVM's own folder, then the path.
+        /// The clang to build with. Default: LUMALINK_CLANG, then the clang that comes with LumaLink, then LLVM's own
+        /// folder, then the path.
         #[arg(long, value_name = "FILE")]
         clang: Option<PathBuf>,
         /// Keep the generated C in this folder. Default: a temporary folder, removed after.
@@ -187,7 +206,8 @@ enum Command {
         platforms: Vec<String>,
     },
     /// Start the installed game with a mod: a folder is packed first (as `pack` packs it), then imported into the
-    /// game's mods, then the game starts.
+    /// game's mods, then the game starts. A mod folder with code plays in dev mode (lumalink_core::dev): each change of
+    /// its source is built and reloaded in the running game until the game is closed.
     Run {
         /// A mod folder or a .luma file.
         path: PathBuf,
@@ -200,10 +220,12 @@ enum Command {
     /// Run a mod's tests through the proof harness: built first, each tests/**/test.json run, each check said.
     Test {
         folder: PathBuf,
-        /// A game build's folder with the harness's parts (the host extension and the game half). Default: LUMA_TEST_BIN.
+        /// A game build's folder with the harness's parts (the host extension and the game half). Default: LUMA_TEST_BIN,
+        /// then the installed game's version folder.
         #[arg(long, value_name = "FOLDER")]
         bin: Option<PathBuf>,
-        /// The harness's runner (luma_test.py). Default: LUMA_TEST_RUNNER, then tools/lumacore/luma_test.py above --bin.
+        /// The harness's runner (luma_test.py). Default: LUMA_TEST_RUNNER, then the one in the bin folder's luma/test,
+        /// then tools/lumacore/luma_test.py above it.
         #[arg(long, value_name = "FILE")]
         runner: Option<PathBuf>,
         /// The Python that runs it. Default: LUMALINK_PYTHON, then python.
@@ -352,12 +374,21 @@ enum Command {
     /// Every service function of an SDK and whether scripts can call it: one line each, `function`, its name, then
     /// `script`, `native` (C mods only, by design) or `c` (C mods only); fields scripts cannot read as `field` lines.
     Services {
-        /// The folder with the game's luma.h. Default: LUMA_INCLUDE.
+        /// The folder with the game's luma.h. Default: LUMA_INCLUDE, then the installed game's sdk.
         #[arg(long, value_name = "FOLDER")]
         sdk: Option<PathBuf>,
         /// Only what scripts cannot reach.
         #[arg(long)]
         unreachable: bool,
+    },
+    /// Look for a newer LumaLink and install it (Windows); elsewhere, name its page.
+    Update {
+        /// Only say whether a newer version is out.
+        #[arg(long)]
+        check: bool,
+        /// Whether LumaLink looks for updates by itself (the window when it opens, a command once a day): on or off.
+        #[arg(long, value_name = "SETTING", value_parser = ["on", "off"])]
+        check_at_start: Option<String>,
     },
     /// Print the help of LumaLink or of one command.
     Help { command: Option<String> },
@@ -373,13 +404,29 @@ fn main() -> ExitCode {
         Ok(cli) => cli,
         Err(code) => return code,
     };
-    match run(cli) {
+    // An installed LumaLink looks for a newer one once a day, behind the command, and tells of it after a later
+    // command; never for the editor server (its output is the protocol), the update command, the help, or output that
+    // is not a terminal (scripts, CI).
+    use std::io::IsTerminal;
+    let notices = !matches!(cli.command, Command::Lsp { .. } | Command::Update { .. } | Command::Help { .. })
+        && std::io::stderr().is_terminal()
+        && update::checks_by_itself();
+    if notices {
+        std::thread::spawn(|| update::refresh(update::NOTICE_INTERVAL));
+    }
+    let code = match run(cli) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("lumalink: {e:#}");
             ExitCode::from(2)
         }
+    };
+    if notices {
+        if let Some(release) = update::notice() {
+            eprintln!("\n{}", say!("LumaLink.Update.Notice", version = release.version, current = update::VERSION));
+        }
     }
+    code
 }
 
 /// The command line read with the help and clap's refusals in the chosen language; Err: help, a version or a refusal
@@ -423,7 +470,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Extract { from, names, output, game, self_description } => extract(&from, &names, &output, game.as_deref(), self_description.as_deref()),
         Command::Explain { code } => explain(&code),
         Command::Verify { luma, source } => verify(&luma, &source),
-        Command::Build { folder, names, sdk, clang, work, platforms } => build(&folder, &names, sdk, clang, work, &platforms),
+        Command::Build { folder, names, sdk, clang, work, platforms } => build(&folder, &names_or_installed(names)?, sdk, clang, work, &platforms),
         Command::Run { path, inputs, args } => run_game(&path, &inputs, &args),
         Command::Test { folder, bin, runner, python, work, lock, renderer } => test(&folder, bin, runner, python, work, lock, renderer),
         Command::Format { paths, check } => format(&paths, check),
@@ -435,9 +482,59 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
         Command::Lsp { names, sdk, no_installed } => lsp(names, sdk, no_installed),
         Command::Services { sdk, unreachable } => services(sdk, unreachable),
+        Command::Update { check, check_at_start } => update_lumalink(check, check_at_start.as_deref()),
         // parse prints the help and returns before run.
         Command::Help { .. } => Ok(ExitCode::SUCCESS),
     }
+}
+
+/// `update`: the setting when given; then the release list read now, and a newer version installed by its Setup (a
+/// LumaLink Setup installed) or its page named.
+fn update_lumalink(check: bool, setting: Option<&str>) -> Result<ExitCode> {
+    if let Some(setting) = setting {
+        let mut settings = update::Settings::load();
+        settings.check_for_updates = setting == "on";
+        settings.save()?;
+        println!("{}", if settings.check_for_updates { say!("LumaLink.Update.AtStartOn") } else { say!("LumaLink.Update.AtStartOff") });
+        if !check {
+            return Ok(ExitCode::SUCCESS);
+        }
+    }
+    println!("{}", say!("LumaLink.Update.Checking"));
+    // Asked for: a skipped version is named too.
+    let Some(release) = update::check_now()?.filter(|r| update::offered(r, None)) else {
+        println!("{}", say!("LumaLink.Update.Newest", version = update::VERSION));
+        return Ok(ExitCode::SUCCESS);
+    };
+    println!("{}", say!("LumaLink.Update.Available", version = release.version, current = update::VERSION));
+    // Only a LumaLink Setup installed installs its update; any other copy (a build, a package manager's) is pointed to
+    // the release's page.
+    let installs = update::installed_copy();
+    if check || !installs {
+        println!("{}", if installs { say!("LumaLink.Update.HowTo") } else { say!("LumaLink.Update.DownloadFrom", page = release.page) });
+        return Ok(ExitCode::SUCCESS);
+    }
+    {
+        use std::io::{IsTerminal, Write};
+        let terminal = std::io::stderr().is_terminal();
+        let mut shown = u64::MAX;
+        let mut progress = |got: u64, whole: u64| {
+            let percent = (got * 100).checked_div(whole).unwrap_or(0);
+            if terminal && whole > 0 && percent != shown {
+                shown = percent;
+                eprint!("\r{}", say!("LumaLink.Update.Downloading", version = release.version, percent = percent));
+                let _ = std::io::stderr().flush();
+            }
+        };
+        let setup = update::download(&release, &mut progress, &std::sync::atomic::AtomicBool::new(false));
+        if terminal {
+            eprintln!();
+        }
+        let setup = setup.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        update::start_setup(&setup, false)?;
+        println!("{}", say!("LumaLink.Update.Started", version = release.version));
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The installed game started with the mod at `path` (a folder, packed first as `pack` packs it, or a
@@ -445,8 +542,35 @@ fn run(cli: Cli) -> Result<ExitCode> {
 fn run_game(path: &Path, inputs: &Inputs, game_args: &[OsString]) -> Result<ExitCode> {
     let found = installed().with_context(|| say!("LumaLink.NoInstalled"))?;
     let inputs = inputs.resolved();
-    match jobs::install(path, &inputs, &found, game_args)? {
-        Install::Imported { luma } => println!("{}", say!("LumaLink.Run.Imported", file = luma.display())),
+    // A mod folder with code is built first, and played in dev mode (reload.md 5).
+    let coded = path.is_dir() && jobs::has_source(path);
+    let names = found.self_description();
+    let build = |folder: &Path| -> Result<(Vec<jobs::BuildLine>, bool)> {
+        let names = names.as_deref().with_context(|| say!("LumaLink.NoNames"))?;
+        let built = jobs::build_mod(folder, names, jobs::sdk_folder(None, Some(names)), None, None, &[])?;
+        let mut lines = built.lines;
+        if let Some(jobs::BuildFailed::Platforms(why)) = &built.failed {
+            lines.push(jobs::BuildLine { text: why.clone(), error: true, to_stderr: true });
+        }
+        Ok((lines, built.failed.is_none()))
+    };
+    let print_lines = |lines: &[jobs::BuildLine]| {
+        for line in lines {
+            if line.to_stderr { eprintln!("{}", line.text.trim_end()) } else { println!("{}", line.text.trim_end()) }
+        }
+    };
+    if coded {
+        let (lines, ok) = build(path)?;
+        print_lines(&lines);
+        if !ok {
+            return Ok(ExitCode::from(1));
+        }
+    }
+    let (id, mods) = match jobs::install(path, &inputs, &found, game_args)? {
+        Install::Imported { luma, id, mods } => {
+            println!("{}", say!("LumaLink.Run.Imported", file = luma.display()));
+            (id, mods)
+        }
         Install::NotImported { luma, why } => {
             println!("{}", say!("LumaLink.Run.NotImported", file = luma.display(), why = why));
             return Ok(ExitCode::from(1));
@@ -456,11 +580,54 @@ fn run_game(path: &Path, inputs: &Inputs, game_args: &[OsString]) -> Result<Exit
             print_report(&report);
             return Ok(ExitCode::from(1));
         }
-    }
+    };
     let pak = inputs.game.clone().unwrap_or_else(|| found.pak.clone());
-    let program = jobs::start(&found, &pak, game_args)?;
+    let dev = if coded { id.clone() } else { None };
+    if coded && dev.is_none() {
+        println!("{}", say!("LumaLink.Run.NoDevId"));
+    }
+    let mut args = game_args.to_vec();
+    if let Some(id) = &dev {
+        args.extend(["--mod-dev".into(), id.into()]);
+    }
+    let (program, game) = jobs::start_game(&found, &pak, &args)?;
     println!("{}", say!("LumaLink.Run.Started", program = program.display()));
+    let Some(id) = dev else { return Ok(ExitCode::SUCCESS) };
+    println!("{}", say!("LumaLink.Run.DevMode", id = id));
+    let mut watch = lumalink_core::dev::Watch::new(path, &id, &mods, game);
+    let mut install = |folder: &Path| -> Result<Option<String>> {
+        Ok(match jobs::install(folder, &inputs, &found, game_args)? {
+            Install::Imported { .. } => None,
+            Install::NotImported { why, .. } => Some(why),
+            Install::NotPacked(report, _) | Install::Refused(report) => {
+                print_report(&report);
+                Some(say!("LumaLink.Run.NotPacked"))
+            }
+        })
+    };
+    let mut build = build;
+    while !watch.ended() {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        for event in watch.poll(&mut build, &mut install)? {
+            dev_event(&event, &print_lines);
+        }
+    }
     Ok(ExitCode::SUCCESS)
+}
+
+/// One thing dev mode saw, said (`lumalink run`).
+fn dev_event(event: &lumalink_core::dev::Event, print_lines: &dyn Fn(&[jobs::BuildLine])) {
+    use lumalink_core::dev::Event;
+    match event {
+        Event::Building => println!("{}", say!("LumaLink.Run.Building")),
+        Event::Built { lines, .. } => print_lines(lines),
+        Event::NotInstalled(why) => eprintln!("{}", say!("LumaLink.Run.NotReloaded", why = why)),
+        Event::Asked(n) => println!("{}", say!("LumaLink.Run.Asked", n = n)),
+        Event::Reloaded(answer) if answer.ok => println!("{}", say!("LumaLink.Run.Reloaded")),
+        Event::Reloaded(answer) => eprintln!("{}", say!("LumaLink.Run.NotReloaded", why = answer.why)),
+        Event::ContentChanged => println!("{}", say!("LumaLink.Run.ContentLater")),
+        Event::GameEnded => println!("{}", say!("LumaLink.Run.GameEnded")),
+    }
 }
 
 /// `add character <model.glb> <folder> --replaces <name>` (`jobs::add_character`): the report printed and
@@ -598,7 +765,7 @@ fn add(command: Command) -> Result<ExitCode> {
 /// either it serves the language alone (the game's names are then not known, which its diagnostics say).
 fn lsp(names: Option<PathBuf>, sdk: Option<PathBuf>, no_installed: bool) -> Result<ExitCode> {
     let folder = names.or_else(|| if no_installed { None } else { installed().and_then(|f| f.self_description()) });
-    let sdk = sdk.or_else(|| std::env::var_os("LUMA_INCLUDE").map(PathBuf::from));
+    let sdk = sdk_folder(sdk, folder.as_deref());
     let game = match &folder {
         Some(folder) => {
             let game = lumalink_core::editor::GameView::read(folder, sdk.as_deref()).map_err(|why| anyhow::anyhow!(say!("LumaLink.Rows.BadTypes", path = folder.display(), why = why)))?;
@@ -624,8 +791,14 @@ fn lsp(names: Option<PathBuf>, sdk: Option<PathBuf>, no_installed: bool) -> Resu
 /// every test passed on every renderer.
 fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Option<PathBuf>, work: Option<PathBuf>, lock: Option<PathBuf>, renderer: Option<String>) -> Result<ExitCode> {
     let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
-    let Some(bin) = bin.or_else(|| env("LUMA_TEST_BIN")) else {
-        bail!(say!("LumaLink.Test.NoBin"));
+    // Without a bin folder: the installed game's version folder (Setup installs the harness's parts with the game),
+    // with the installed game.pak for each run (the folder has no pak.path).
+    let (bin, pak) = match bin.or_else(|| env("LUMA_TEST_BIN")) {
+        Some(bin) => (bin, None),
+        None => match installed().and_then(|i| i.version.clone().map(|v| (v, i.pak.clone()))) {
+            Some((version, pak)) if version.join(TEST_EXTENSION).is_file() => (version, Some(pak)),
+            _ => bail!(say!("LumaLink.Test.NoBin")),
+        },
     };
     let runner = match runner.or_else(|| env("LUMA_TEST_RUNNER")).or_else(|| jobs::find_runner(&bin)) {
         Some(r) => r,
@@ -637,9 +810,10 @@ fn test(folder: &Path, bin: Option<PathBuf>, runner: Option<PathBuf>, python: Op
         folder.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")).join(format!("{name}-tests"))
     });
     let lock = lock.or_else(|| env("LUMA_TEST_LOCK")).unwrap_or_else(|| work.join("run.lock"));
-    let setup = jobs::TestSetup { bin, runner, python, work, lock, renderer };
+    let setup = jobs::TestSetup { bin, pak, runner, python, work, lock, renderer };
     // The mod's code is built by `lumalink build` (every platform) before its tests run.
-    let names = env("LUMA_NAMES").unwrap_or_else(|| setup.bin.clone());
+    // The game's self-description folder is `luma` in its program folder, the mods it comes with in its `mods`.
+    let names = env("LUMA_NAMES").unwrap_or_else(|| Some(setup.bin.join("luma")).filter(|p| p.is_dir()).unwrap_or_else(|| setup.bin.clone()));
     let build = |f: &Path| build_for_test(f, &names);
     let mut each = |run: &jobs::TestRun| {
         let name = run.test.display();
@@ -671,90 +845,23 @@ fn build(folder: &Path, names: &Path, sdk: Option<PathBuf>, clang: Option<PathBu
 
 /// [`build`]'s work: None built, or the count of script errors (each said).
 fn build_mod(folder: &Path, names: &Path, sdk: Option<PathBuf>, clang: Option<PathBuf>, work: Option<PathBuf>, platforms: &[String]) -> Result<Option<usize>> {
-    use lumalink_core::build::{self, BuildError};
-    let mut rows = Names::from_rows_folder(names, 1).map_err(|e| jobs::rows_error(names, e))?;
-    rows.api = 1;
-    // Without the types file every game type is unknown and each call would be refused one by one: say why once.
-    if rows.types.is_none() {
-        bail!(say!("LumaLink.Build.NoTypes", folder = names.display(), file = luma_validate::names::TYPES_FILE));
+    let built = jobs::build_mod(folder, names, sdk_folder(sdk, Some(names)), clang, work, platforms)?;
+    for line in &built.lines {
+        if line.to_stderr {
+            eprint!("{}", line.text);
+        } else {
+            println!("{}", line.text);
+        }
     }
-    let Some(sdk) = sdk.or_else(|| std::env::var_os("LUMA_INCLUDE").map(PathBuf::from)) else {
-        bail!(say!("LumaLink.Build.NoSdk", folder = "LUMA_INCLUDE"));
-    };
-    // The services the SDK's headers declare (docs/modding/language/language.md): their calls are kind 5 imports the loader checks.
-    // A service header the compiler cannot read is said (its scripts then find no such module, S0027).
-    let (game, unread) = lumalink_core::build::game_of(&rows, names, Some(&sdk)).map_err(game_error)?;
-    for e in &unread {
-        eprintln!("{}", say!("LumaLink.Build.ServiceUnread", why = e));
-    }
-    let clang = clang.unwrap_or_else(build::default_clang);
-    let temp;
-    let work = match work {
-        Some(w) => w,
-        None => {
-            temp = tempfile::tempdir().context(say!("LumaLink.Build.NoWork"))?;
-            temp.path().to_path_buf()
-        }
-    };
-    match build::build(folder, &game, &sdk, &clang, &work, platforms) {
-        Ok(built) => {
-            for (file, d) in &built.notes {
-                println!("{}", lumalink_core::script::line(file, d));
-            }
-            for (file, line, function) in &built.kept {
-                println!("{}", say!("LumaLink.Build.Kept", file = format!("source/{file}"), line = line, function = function));
-            }
-            for platform in &built.recorded {
-                println!("{}", say!("LumaLink.Build.PlatformRecorded", platform = platform));
-            }
-            for (_, library, bytes) in &built.libraries {
-                println!("{}", say!("LumaLink.Build.Built", path = library.display(), bytes = bytes, c = built.c_bytes, imports = built.imports.len()));
-            }
-            Ok(None)
-        }
-        Err(BuildError::Script(errors)) => {
-            for (file, d) in &errors {
-                println!("{}", lumalink_core::script::line(file, d));
-            }
-            println!("{}", say!("LumaLink.Build.ScriptErrors", count = errors.len()));
-            Ok(Some(errors.len()))
-        }
-        Err(BuildError::Platforms { failed, built }) => {
-            // Each platform that failed by name with what clang said; the ones built were recorded.
-            for (platform, code, output) in &failed {
-                eprint!("{output}");
-                println!("{}", say!("LumaLink.Build.PlatformFailed", platform = platform, code = code));
-            }
-            let names: Vec<&str> = failed.iter().map(|(p, _, _)| *p).collect();
-            bail!(say!("LumaLink.Build.PlatformsFailed", count = failed.len(), list = names.join(", "), built = built.len()))
-        }
-        Err(BuildError::UnknownPlatform(p)) => bail!(say!("LumaLink.UnknownPlatform", value = p, list = luma_validate::PLATFORMS.join(", "))),
-        Err(BuildError::NoLinkerScript(path)) => bail!(say!("LumaLink.Build.NoLinkerScript", path = path.display())),
-        Err(BuildError::Read(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.CannotRead", path = path.display()))),
-        Err(BuildError::Write(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.Build.CannotWrite", path = path.display()))),
-        Err(BuildError::NoId(path)) => bail!(say!("LumaLink.Build.NoId", path = path.display())),
-        Err(BuildError::NoScripts(folder)) => bail!(say!("LumaLink.Build.NoScripts", folder = folder.display())),
-        Err(BuildError::NoSdk(folder)) => bail!(say!("LumaLink.Build.NoSdk", folder = folder.display())),
-        Err(BuildError::NoClang(path, e)) => Err(anyhow::Error::new(e).context(say!("LumaLink.Build.NoClang", path = path.display()))),
-        Err(BuildError::ClangVersion { path, found }) => bail!(say!("LumaLink.Build.ClangVersion", expected = build::LLVM, path = path.display(), found = found)),
-    }
-}
-
-/// Why the game's description does not read, in the chosen language.
-fn game_error(e: lumalink_core::build::GameError) -> anyhow::Error {
-    use lumalink_core::build::{FactoryError, GameError, TablesError};
-    match e {
-        GameError::Tables(TablesError::Read(path, e)) => anyhow::Error::new(e).context(say!("LumaLink.CannotRead", path = path.display())),
-        GameError::Tables(TablesError::NotJson { path, line, column }) | GameError::Factory(FactoryError::NotJson { path, line, column }) => {
-            anyhow::anyhow!(say!("LumaLink.SelfNotJson", path = path.display(), line = line, column = column))
-        }
-        GameError::Tables(TablesError::Shape(path)) => anyhow::anyhow!(say!("LumaLink.Build.TablesShape", path = path.display())),
-        GameError::Factory(FactoryError::Shape(path)) => anyhow::anyhow!(say!("LumaLink.Build.FactoryShape", path = path.display())),
+    match built.failed {
+        Some(jobs::BuildFailed::Script(count)) => Ok(Some(count)),
+        Some(jobs::BuildFailed::Platforms(why)) => bail!(why),
+        None => Ok(None),
     }
 }
 
 /// The build `test` runs first: `lumalink build`'s own, with the game's names (`names`: LUMA_NAMES, else the bin
-/// folder) and the SDK from LUMA_INCLUDE, for every platform the mod's luma.json lists in `code.platforms` (the game
+/// folder's `luma`, else the bin folder) and the SDK from LUMA_INCLUDE, for every platform the mod's luma.json lists in `code.platforms` (the game
 /// refuses a mod with a listed platform's library missing, L501), and for this machine's platform when it lists none.
 fn build_for_test(folder: &Path, names: &Path) -> Result<()> {
     let listed: Vec<String> = std::fs::read(folder.join("luma.json"))
@@ -857,9 +964,12 @@ fn print_pack(report: &Report, outcome: PackOutcome) -> Result<ExitCode> {
     }
 }
 
+/// Table columns' names: from `self_description` when given, else the installed game's self-description, else none
+/// (columns shown by their hash).
 fn column_names(self_description: Option<&Path>) -> Result<ColumnNames> {
-    match self_description {
-        Some(path) => ColumnNames::from_self_description(&std::fs::read(path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?, path),
+    let installed_self = || installed().and_then(|f| f.self_description()).map(|n| n.join("smg_game.luma-self.json")).filter(|p| p.is_file());
+    match self_description.map(Path::to_path_buf).or_else(installed_self) {
+        Some(path) => ColumnNames::from_self_description(&std::fs::read(&path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?, &path),
         None => Ok(ColumnNames::none()),
     }
 }
@@ -984,15 +1094,18 @@ fn format(paths: &[PathBuf], check: bool) -> Result<ExitCode> {
 /// (they generate from the headers and read whether each function is a script's from here). A header whose face
 /// cannot be read is said as `build` says it.
 fn services(sdk: Option<PathBuf>, unreachable: bool) -> Result<ExitCode> {
-    let Some(sdk) = sdk.or_else(|| std::env::var_os("LUMA_INCLUDE").map(PathBuf::from)) else {
-        bail!(say!("LumaLink.Build.NoSdk", folder = "LUMA_INCLUDE"));
+    let names = installed().and_then(|f| f.self_description());
+    let Some(sdk) = sdk_folder(sdk, names.as_deref()) else {
+        // No game is installed: the place it would have looked is LUMA_INCLUDE.
+        let looked = names.as_deref().map_or_else(|| "LUMA_INCLUDE".to_string(), |n| n.join("sdk").display().to_string());
+        bail!(say!("LumaLink.Build.NoSdk", folder = looked));
     };
     if !sdk.join("luma.h").is_file() {
         bail!(say!("LumaLink.Build.NoSdk", folder = sdk.display()));
     }
     let (services, unread) = lumalink_core::build::services_of_sdk(&sdk);
     for e in &unread {
-        eprintln!("note: a service of the SDK is not callable from scripts: {e}");
+        eprintln!("{}", say!("LumaLink.Build.ServiceUnread", why = e));
     }
     for (kind, name, reach) in services.reach() {
         if !(unreachable && reach == "script") {

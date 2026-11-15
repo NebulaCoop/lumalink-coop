@@ -1,18 +1,23 @@
-//! The LumaLink window: every job the command line does, on what is dropped on it or opened. Along the top,
-//! the game mods are checked against (the installed one, found as the command line finds it, or a game.pak chosen)
-//! and the language; on the left, the mods, published mods and models dropped; on the right, the chosen one's jobs as
-//! buttons and what came of the last, each finding with its file and line. The jobs are the library's
-//! (`lumalink_core::jobs`); the window only shows them, each on a thread of its own so the window never waits.
+//! The LumaLink window: every job the command line does, on what is dropped on it or opened. The mods, published
+//! mods and models dropped are tiles; a tile opens its own screen with its jobs and what came of the last, each finding
+//! with its file and line (`screen`). The game mods are checked against is the installed one, found as the command
+//! line finds it, or a game.pak chosen. The jobs are the library's (`lumalink_core::jobs`); the window only shows them,
+//! each on a thread of its own so the window never waits.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod sky;
-mod words;
-
-use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichText, Stroke, Vec2};
+use eframe::egui::{self, Color32, RichText, Stroke};
+use lumalink_gui::chrome::Mark;
+use lumalink_gui::{look, sky, words};
+use updates::Update;
 use luma_validate::{Finding, Level, Report};
 use lumalink_core::installed::Installed;
 use lumalink_core::jobs::{self, Convert, Difference, Inputs, Install, LumaList, NewMod, PackOutcome};
 use lumalink_core::{say, text};
+mod screen;
+#[cfg(debug_assertions)]
+mod shot;
+mod updates;
+
 use sky::{AMBER, BLUE_INK, GREEN, INK, RED, SOFT};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -113,10 +118,16 @@ fn pack_lines(r: &Report, outcome: PackOutcome, root: Option<&Path>) -> (Vec<Lin
 enum Job {
     Check,
     Build,
-    Pack,
+    /// The .luma at `to` (beside the folder when None), its code built first when it changed.
+    Pack { to: Option<PathBuf> },
     Install { play: bool },
+    /// A published mod as a mod folder, to work on.
     Convert { folder: PathBuf, accept_losses: bool },
+    /// A published mod as a .luma: converted in a folder of its own that goes away, then packed to `luma`.
+    MakeLuma { luma: PathBuf, accept_losses: bool },
     AddCharacter { folder: PathBuf, replaces: String },
+    /// A new mod beside the model, with the model as the character it stands in for.
+    CharacterMod { replaces: String },
     Verify { folder: PathBuf },
     List,
     Extract { into: PathBuf },
@@ -126,37 +137,70 @@ enum Job {
 /// What came back from a job's thread.
 struct Done {
     item: u64,
+    /// More lines of a job still going (dev mode's watch): added to the ones shown, the item still busy.
+    more: bool,
     lines: Vec<Line>,
     /// A path the job made (a .luma, a mod folder): shown beside the result, and added to the list when it is a mod.
     made: Option<PathBuf>,
 }
 
 /// Runs a job on `path` and says what came of it; every word is the library's or a row's.
-fn run(job: Job, path: &Path, inputs: &Inputs, installed: Option<&Installed>) -> anyhow::Result<(Vec<Line>, Option<PathBuf>)> {
+fn run(job: Job, path: &Path, inputs: &Inputs, installed: Option<&Installed>, more: &dyn Fn(Vec<Line>)) -> anyhow::Result<(Vec<Line>, Option<PathBuf>)> {
     let root = path.is_dir().then_some(path);
     Ok(match job {
         Job::Check => (report(&jobs::validate(path, inputs)?, root), None),
-        Job::Build => (vec![Line::words(jobs::not_built("build").unwrap_or_default(), RED)], None),
-        Job::Pack => {
-            let (r, outcome) = jobs::pack(path, None, inputs)?;
-            pack_lines(&r, outcome, root)
+        Job::Build => {
+            let (mut lines, ok) = build_lines(path, installed)?;
+            if ok {
+                lines.push(Line::words(say!("LumaLink.Window.Built"), GREEN));
+            }
+            (lines, None)
+        }
+        Job::Pack { to } => {
+            let (mut lines, ok) = build_if_changed(path, installed)?;
+            if !ok {
+                return Ok((lines, None));
+            }
+            let (r, outcome) = jobs::pack(path, to, inputs)?;
+            let (packed, made) = pack_lines(&r, outcome, root);
+            lines.extend(packed);
+            (lines, made)
         }
         Job::Install { play } => {
             let Some(found) = installed else { return Ok((vec![Line::words(say!("LumaLink.NoInstalled"), RED)], None)) };
-            let mut lines = Vec::new();
-            match jobs::install(path, inputs, found, &[])? {
-                Install::Imported { luma } => lines.push(Line::words(say!("LumaLink.Run.Imported", file = luma.display()), GREEN)),
+            let (mut lines, ok) = build_if_changed(path, Some(found))?;
+            if !ok {
+                return Ok((lines, None));
+            }
+            let (id, mods) = match jobs::install(path, inputs, found, &[])? {
+                Install::Imported { luma, id, mods } => {
+                    lines.push(Line::words(say!("LumaLink.Run.Imported", file = luma.display()), GREEN));
+                    (id, mods)
+                }
                 Install::NotImported { luma, why } => {
                     lines.push(Line::words(say!("LumaLink.Run.NotImported", file = luma.display(), why = why), RED));
                     return Ok((lines, None));
                 }
                 Install::NotPacked(r, outcome) => return Ok((pack_lines(&r, outcome, root).0, None)),
                 Install::Refused(r) => return Ok((report(&r, root), None)),
-            }
+            };
             if play {
+                // A mod folder with code plays in dev mode: each change of its source is built and reloaded in the game
+                // (lumalink_core::dev) until the game is closed.
+                let coded = path.is_dir() && jobs::has_source(path);
+                let dev = if coded { id } else { None };
+                if coded && dev.is_none() {
+                    lines.push(Line::words(say!("LumaLink.Run.NoDevId"), AMBER));
+                }
+                let args: Vec<std::ffi::OsString> = dev.iter().flat_map(|id| ["--mod-dev".into(), id.into()]).collect();
                 let pak = inputs.game.clone().unwrap_or_else(|| found.pak.clone());
-                let program = jobs::start(found, &pak, &[])?;
+                let (program, game) = jobs::start_game(found, &pak, &args)?;
                 lines.push(Line::words(say!("LumaLink.Run.Started", program = program.display()), GREEN));
+                if let Some(id) = dev {
+                    lines.push(Line::words(say!("LumaLink.Run.DevMode", id = id), SOFT));
+                    more(std::mem::take(&mut lines));
+                    watch(path, &id, &mods, game, inputs, found, more)?;
+                }
             }
             (lines, None)
         }
@@ -180,6 +224,54 @@ fn run(job: Job, path: &Path, inputs: &Inputs, installed: Option<&Installed>) ->
                     lines.extend(converted.left_out.iter().map(|(p, why)| Line::words(say!("LumaLink.Convert.LeftOut", path = p, why = why), AMBER)));
                     lines.push(Line::words(say!("LumaLink.Convert.Done", folder = folder.display(), files = converted.files, textures = converted.textures), GREEN));
                     lines.extend(report(&r, Some(&folder)));
+                    (lines, Some(folder))
+                }
+            }
+        }
+        Job::MakeLuma { luma, accept_losses } => {
+            let work = tempfile::tempdir()?;
+            let stem = luma.file_stem().map_or_else(|| "mod".into(), |s| s.to_string_lossy().into_owned());
+            let folder = work.path().join(&stem);
+            let given = lumalink_core::convert::Given { name: None, authors: vec![], accept_losses };
+            match jobs::convert(path, &folder, &given, inputs)? {
+                Convert::Losses(losses) => {
+                    let mut lines: Vec<Line> = losses.0.iter().map(|(p, why)| Line::words(say!("LumaLink.Convert.LeftOut", path = p, why = why), AMBER)).collect();
+                    lines.push(Line::words(say!("LumaLink.Window.Losses", switch = say!("LumaLink.Window.AcceptLosses")), RED));
+                    (lines, None)
+                }
+                Convert::Done { converted, .. } => {
+                    let mut lines: Vec<Line> = converted
+                        .notes
+                        .iter()
+                        .filter(|n| n.level != lumalink_core::plan::Level::Info)
+                        .map(|n| Line::words(format!("{}: {}", say!("LumaLink.Level.Error"), n.text), RED))
+                        .collect();
+                    lines.extend(converted.left_out.iter().map(|(p, why)| Line::words(say!("LumaLink.Convert.LeftOut", path = p, why = why), AMBER)));
+                    let (r, outcome) = jobs::pack(&folder, Some(luma.clone()), inputs)?;
+                    let (packed, made) = pack_lines(&r, outcome, None);
+                    lines.extend(packed);
+                    if made.is_some() {
+                        lines.push(Line::words(say!("LumaLink.Window.LumaReady", file = luma.display()), GREEN));
+                    }
+                    (lines, made)
+                }
+            }
+        }
+        Job::CharacterMod { replaces } => {
+            let Some(pak) = inputs.game.clone() else { return Ok((vec![Line::words(say!("LumaLink.NoInstalled"), RED)], None)) };
+            let stem = path.file_stem().map_or_else(|| "character".into(), |s| s.to_string_lossy().into_owned());
+            let parent = path.parent().unwrap_or(Path::new("."));
+            let folder = (1..100).map(|n| parent.join(if n == 1 { format!("{stem} mod") } else { format!("{stem} mod {n}") })).find(|f| !f.exists()).unwrap_or_default();
+            let author = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_else(|_| say!("LumaLink.Window.Me"));
+            let who = if replaces == "luigi" { say!("LumaLink.Window.Luigi") } else { say!("LumaLink.Window.Mario") };
+            let summary = say!("LumaLink.Window.CharacterSummary", name = stem, who = who);
+            match jobs::new_mod(&folder, &mod_id(&stem), &stem, &summary, &[author])? {
+                NewMod::Refused(r) => (report(&r, None), None),
+                NewMod::Made(folder) => {
+                    let made = jobs::add_character(path, &folder, &replaces, None, &[], &pak, inputs)?;
+                    let mut lines: Vec<Line> = made.lines.iter().map(|l| Line::words(l.clone(), INK)).collect();
+                    lines.extend(report(&made.report, Some(&folder)));
+                    lines.push(Line::words(say!("LumaLink.Window.ModMade", folder = folder.display()), GREEN));
                     (lines, Some(folder))
                 }
             }
@@ -235,6 +327,132 @@ fn run(job: Job, path: &Path, inputs: &Inputs, installed: Option<&Installed>) ->
     })
 }
 
+/// A mod id from a name: its letters and digits in lowercase, others as `-`, after `prefix`; at least 3 long and
+/// starting with a letter.
+fn id_from(prefix: &str, name: &str) -> String {
+    let mut body = String::new();
+    for c in name.chars().map(|c| c.to_ascii_lowercase()) {
+        if c.is_ascii_alphanumeric() {
+            body.push(c);
+        } else if !body.is_empty() && !body.ends_with('-') {
+            body.push('-');
+        }
+    }
+    let body = body.trim_start_matches(|c: char| !c.is_ascii_lowercase()).trim_end_matches('-');
+    let body = match body.len() {
+        0 => "mod".to_string(),
+        1 | 2 => format!("{body}-mod"),
+        _ => body.to_string(),
+    };
+    format!("{prefix}{body}").chars().take(64).collect::<String>().trim_end_matches('-').to_string()
+}
+
+/// A character mod's id: `character.` and the model's name.
+fn mod_id(name: &str) -> String {
+    id_from("character.", name)
+}
+
+/// A mod folder's code built (`lumalink build`, every platform) with the installed game's names; its lines and whether
+/// it built.
+fn build_lines(folder: &Path, installed: Option<&Installed>) -> anyhow::Result<(Vec<Line>, bool)> {
+    let Some(names) = installed.and_then(Installed::self_description) else { return Ok((vec![Line::words(say!("LumaLink.NoNames"), RED)], false)) };
+    let built = jobs::build_mod(folder, &names, jobs::sdk_folder(None, Some(&names)), None, None, &[])?;
+    let mut lines: Vec<Line> = built.lines.iter().map(|l| Line::words(l.text.trim_end().to_string(), if l.error { RED } else { SOFT })).collect();
+    if let Some(jobs::BuildFailed::Platforms(why)) = &built.failed {
+        lines.push(Line::words(why.clone(), RED));
+    }
+    Ok((lines, built.failed.is_none()))
+}
+
+/// Dev mode in the window: the folder watched until the game is closed, each thing seen sent as lines.
+fn watch(path: &Path, id: &str, mods: &Path, game: jobs::Game, inputs: &Inputs, found: &Installed, more: &dyn Fn(Vec<Line>)) -> anyhow::Result<()> {
+    use lumalink_core::dev::{Event, Watch};
+    let root = Some(path);
+    let mut watch = Watch::new(path, id, mods, game);
+    let mut build = |folder: &Path| -> anyhow::Result<(Vec<jobs::BuildLine>, bool)> {
+        let Some(names) = found.self_description() else {
+            return Ok((vec![jobs::BuildLine { text: say!("LumaLink.NoNames"), error: true, to_stderr: true }], false));
+        };
+        let built = jobs::build_mod(folder, &names, jobs::sdk_folder(None, Some(&names)), None, None, &[])?;
+        let mut lines = built.lines;
+        if let Some(jobs::BuildFailed::Platforms(why)) = &built.failed {
+            lines.push(jobs::BuildLine { text: why.clone(), error: true, to_stderr: true });
+        }
+        Ok((lines, built.failed.is_none()))
+    };
+    let refused: std::cell::RefCell<Vec<Line>> = Default::default();
+    let mut install = |folder: &Path| -> anyhow::Result<Option<String>> {
+        Ok(match jobs::install(folder, inputs, found, &[])? {
+            Install::Imported { .. } => None,
+            Install::NotImported { why, .. } => Some(why),
+            Install::NotPacked(r, outcome) => {
+                *refused.borrow_mut() = pack_lines(&r, outcome, root).0;
+                Some(say!("LumaLink.Run.NotPacked"))
+            }
+            Install::Refused(r) => {
+                *refused.borrow_mut() = report(&r, root);
+                Some(say!("LumaLink.Run.NotPacked"))
+            }
+        })
+    };
+    while !watch.ended() {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let mut lines = vec![];
+        for event in watch.poll(&mut build, &mut install)? {
+            match event {
+                Event::Building => lines.push(Line::words(say!("LumaLink.Run.Building"), SOFT)),
+                Event::Built { lines: built, ok } => {
+                    lines.extend(built.iter().filter(|l| l.error || !ok).map(|l| Line::words(l.text.trim_end().to_string(), if l.error { RED } else { SOFT })));
+                }
+                Event::NotInstalled(why) => {
+                    lines.append(&mut refused.borrow_mut());
+                    lines.push(Line::words(say!("LumaLink.Run.NotReloaded", why = why), RED));
+                }
+                Event::Asked(n) => lines.push(Line::words(say!("LumaLink.Run.Asked", n = n), SOFT)),
+                Event::Reloaded(answer) if answer.ok => lines.push(Line::words(say!("LumaLink.Run.Reloaded"), GREEN)),
+                Event::Reloaded(answer) => lines.push(Line::words(say!("LumaLink.Run.NotReloaded", why = answer.why), RED)),
+                Event::ContentChanged => lines.push(Line::words(say!("LumaLink.Run.ContentLater"), AMBER)),
+                Event::GameEnded => lines.push(Line::words(say!("LumaLink.Run.GameEnded"), SOFT)),
+            }
+        }
+        if !lines.is_empty() {
+            more(lines);
+        }
+    }
+    Ok(())
+}
+
+/// Every file's time of change under `dir`.
+fn times(dir: &Path) -> Vec<std::time::SystemTime> {
+    let mut out = vec![];
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(t) = e.metadata().and_then(|m| m.modified()) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+/// Builds a mod folder's code when a source file is newer than its libraries (or it has none); nothing for a .luma or
+/// a mod without code. Its lines and whether the mod can go on.
+fn build_if_changed(path: &Path, installed: Option<&Installed>) -> anyhow::Result<(Vec<Line>, bool)> {
+    if !path.is_dir() || !jobs::has_source(path) {
+        return Ok((vec![], true));
+    }
+    let newest_source = times(&path.join("source")).into_iter().chain(std::fs::metadata(path.join("luma.json")).and_then(|m| m.modified()).ok()).max();
+    let oldest_code = times(&path.join("code")).into_iter().min();
+    match (newest_source, oldest_code) {
+        (Some(source), Some(code)) if code >= source => Ok((vec![], true)),
+        _ => build_lines(path, installed),
+    }
+}
+
 struct Item {
     /// Never reused, so a job's answer finds its item after others have gone.
     id: u64,
@@ -243,12 +461,15 @@ struct Item {
     busy: bool,
     lines: Vec<Line>,
     made: Option<PathBuf>,
+    /// How its last job went, shown on its tile.
+    mark: Option<Mark>,
 }
 
 /// The New mod form.
 #[derive(Default)]
 struct NewForm {
-    folder: Option<PathBuf>,
+    /// The folder the mod's folder is made in.
+    place: Option<PathBuf>,
     id: String,
     name: String,
     summary: String,
@@ -266,8 +487,23 @@ struct App {
     replaces: String,
     accept_losses: bool,
     new_form: Option<NewForm>,
+    /// The Add mods choices (files, a folder, a new mod) are open.
+    add_menu: bool,
     sender: Sender<Done>,
     receiver: Receiver<Done>,
+    /// A newer LumaLink and the person's answer (the banner along the top).
+    update: Update,
+    /// The settings' "check for updates when LumaLink opens".
+    check_for_updates: bool,
+    /// Home, Settings or the languages (a mod's own screen is `chosen`).
+    view: screen::View,
+    /// The page of tiles shown, and the wheel turned toward the next.
+    sheet: usize,
+    /// Tiles on a page in the shape the window had at the last frame.
+    per_page: usize,
+    wheel: f32,
+    /// The height of the chosen mod's card at the last frame (it stands in the middle while it is alone).
+    card_height: f32,
 }
 
 impl App {
@@ -283,11 +519,21 @@ impl App {
             replaces: "mario".into(),
             accept_losses: false,
             new_form: None,
+            add_menu: false,
             sender,
             receiver,
+            update: Update::Quiet,
+            check_for_updates: lumalink_core::update::Settings::load().check_for_updates,
+            view: screen::View::Home,
+            sheet: 0,
+            per_page: 12,
+            wheel: 0.0,
+            card_height: 0.0,
         };
-        for path in paths {
-            app.add(path);
+        let added: Vec<u64> = paths.map(|p| app.add(p)).collect();
+        // One path given opens its screen.
+        if let [one] = added[..] {
+            app.chosen = Some(one);
         }
         app
     }
@@ -297,16 +543,14 @@ impl App {
         Inputs { names: None, platforms: vec![], game: self.game.clone(), no_installed: false, mods: None }.resolved(self.installed.as_ref())
     }
 
-    /// Adds a path (once) and chooses it; its id.
+    /// Adds a path (once); its id.
     fn add(&mut self, path: PathBuf) -> u64 {
         if let Some(item) = self.items.iter().find(|i| i.path == path) {
-            self.chosen = Some(item.id);
             return item.id;
         }
         let id = self.next_id;
         self.next_id += 1;
-        self.items.push(Item { id, kind: Kind::of(&path), path, busy: false, lines: vec![], made: None });
-        self.chosen = Some(id);
+        self.items.push(Item { id, kind: Kind::of(&path), path, busy: false, lines: vec![], made: None, mark: None });
         id
     }
 
@@ -321,278 +565,55 @@ impl App {
         let (path, installed, sender) = (item.path.clone(), self.installed.clone(), self.sender.clone());
         std::thread::spawn(move || {
             // A job that panics is said as one, never silently lost.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(job, &path, &inputs, installed.as_ref())));
+            let more = |lines: Vec<Line>| {
+                let _ = sender.send(Done { item: id, more: true, lines, made: None });
+            };
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(job, &path, &inputs, installed.as_ref(), &more)));
             let (lines, made) = match result {
                 Ok(Ok(done)) => done,
                 Ok(Err(error)) => (vec![Line::words(format!("{error:#}"), RED)], None),
                 Err(_) => (vec![Line::words(say!("LumaLink.Window.Crashed"), RED)], None),
             };
-            let _ = sender.send(Done { item: id, lines, made });
+            let _ = sender.send(Done { item: id, more: false, lines, made });
         });
     }
 
     fn take_done(&mut self) {
-        while let Ok(done) = self.receiver.try_recv() {
+        while let Ok(mut done) = self.receiver.try_recv() {
+            if done.more {
+                if let Some(item) = self.items.iter_mut().find(|i| i.id == done.item) {
+                    // The first lines replace "Working"; later ones follow them, the last 200 kept.
+                    if item.lines.len() == 1 && item.lines[0].text == say!("LumaLink.Window.Working") {
+                        item.lines.clear();
+                    }
+                    item.lines.append(&mut done.lines);
+                    let over = item.lines.len().saturating_sub(200);
+                    item.lines.drain(..over);
+                    item.mark = screen::mark_of(&item.lines);
+                }
+                continue;
+            }
+            // A job that ended after sending more keeps what it sent before its last lines.
+            if let Some(item) = self.items.iter_mut().find(|i| i.id == done.item && i.busy) {
+                if !(item.lines.len() == 1 && item.lines[0].text == say!("LumaLink.Window.Working")) && !done.lines.is_empty() {
+                    let mut kept = std::mem::take(&mut item.lines);
+                    kept.append(&mut done.lines);
+                    done.lines = kept;
+                } else if !(item.lines.len() == 1 && item.lines[0].text == say!("LumaLink.Window.Working")) {
+                    done.lines = std::mem::take(&mut item.lines);
+                }
+            }
             let made = done.made.clone();
             if let Some(item) = self.items.iter_mut().find(|i| i.id == done.item) {
                 item.busy = false;
+                item.mark = screen::mark_of(&done.lines);
                 item.lines = done.lines;
                 item.made = done.made;
             }
-            // A mod folder a job made is a mod to work on next: listed, the chosen one kept.
-            if let Some(folder) = made.filter(|m| Kind::of(m) == Kind::Folder) {
-                let keep = self.chosen;
-                self.add(folder);
-                self.chosen = keep;
+            // A mod folder a job made is a mod to work on next: a tile of its own.
+            if let Some(made) = made.filter(|m| matches!(Kind::of(m), Kind::Folder | Kind::Luma)) {
+                self.add(made);
             }
-        }
-    }
-
-    fn top(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            match self.game.clone().or_else(|| self.installed.as_ref().map(|f| f.pak.clone())) {
-                Some(pak) => ui.label(RichText::new(say!("LumaLink.Window.Game", path = pak.display())).color(INK)),
-                None => ui.label(RichText::new(say!("LumaLink.Window.NoGame")).color(AMBER)),
-            };
-            if ui.button(say!("LumaLink.Window.ChooseGame")).clicked() {
-                if let Some(pak) = rfd::FileDialog::new().add_filter("game.pak", &["pak"]).pick_file() {
-                    self.game = Some(pak);
-                }
-            }
-            ui.separator();
-            let mut chosen = text::language();
-            egui::ComboBox::from_id_salt("language").selected_text(words::name(chosen)).show_ui(ui, |ui| {
-                for l in luma_validate::LANGUAGES {
-                    ui.selectable_value(&mut chosen, l, words::name(l));
-                }
-            });
-            if chosen != text::language() {
-                text::set_language(chosen);
-            }
-        });
-    }
-
-    fn list(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(say!("LumaLink.Window.OpenFolder")).clicked() {
-                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                    self.add(folder);
-                }
-            }
-            if ui.button(say!("LumaLink.Window.OpenFile")).clicked() {
-                for file in rfd::FileDialog::new().pick_files().unwrap_or_default() {
-                    self.add(file);
-                }
-            }
-            if ui.button(say!("LumaLink.Window.New")).clicked() {
-                self.new_form = Some(NewForm::default());
-            }
-        });
-        ui.add_space(6.0);
-        let mut remove = None;
-        egui::ScrollArea::vertical().id_salt("items").show(ui, |ui| {
-            for item in &self.items {
-                ui.horizontal(|ui| {
-                    let name = item.path.file_name().map_or_else(|| item.path.display().to_string(), |n| n.to_string_lossy().into_owned());
-                    let label = if item.busy { format!("{name} …") } else { name };
-                    if ui.selectable_label(self.chosen == Some(item.id), label).on_hover_text(item.path.display().to_string()).clicked() {
-                        self.chosen = Some(item.id);
-                    }
-                    if !item.busy && ui.small_button("×").on_hover_text(say!("LumaLink.Window.Remove")).clicked() {
-                        remove = Some(item.id);
-                    }
-                });
-            }
-        });
-        if let Some(id) = remove {
-            self.items.retain(|i| i.id != id);
-            if self.chosen == Some(id) {
-                self.chosen = self.items.last().map(|i| i.id);
-            }
-        }
-    }
-
-    /// The chosen item's jobs as buttons, then what came of the last.
-    fn page(&mut self, ui: &mut egui::Ui) {
-        let Some(index) = self.chosen.and_then(|id| self.items.iter().position(|i| i.id == id)) else {
-            ui.centered_and_justified(|ui| ui.label(RichText::new(say!("LumaLink.Window.Drop")).color(SOFT).size(18.0)));
-            return;
-        };
-        let (id, path, kind, busy) = {
-            let item = &self.items[index];
-            (item.id, item.path.clone(), item.kind, item.busy)
-        };
-        ui.label(RichText::new(path.display().to_string()).strong().color(INK));
-        ui.label(RichText::new(kind.label()).color(SOFT));
-        ui.add_space(6.0);
-        // (item, job): verifying a folder runs on the .luma chosen, which joins the list.
-        let mut job: Option<(u64, Job)> = None;
-        let mut add = None;
-        ui.add_enabled_ui(!busy, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                let button = |ui: &mut egui::Ui, row: &str| ui.button(text::say(row, &[])).clicked();
-                match kind {
-                    Kind::Folder => {
-                        if button(ui, "LumaLink.Window.Check") {
-                            job = Some((id, Job::Check));
-                        }
-                        if button(ui, "LumaLink.Window.Build") {
-                            job = Some((id, Job::Build));
-                        }
-                        if button(ui, "LumaLink.Window.Pack") {
-                            job = Some((id, Job::Pack));
-                        }
-                        if button(ui, "LumaLink.Window.Install") {
-                            job = Some((id, Job::Install { play: false }));
-                        }
-                        if button(ui, "LumaLink.Window.Play") {
-                            job = Some((id, Job::Install { play: true }));
-                        }
-                        if button(ui, "LumaLink.Window.Verify") {
-                            if let Some(luma) = rfd::FileDialog::new().add_filter("luma", &["luma"]).pick_file() {
-                                add = Some((luma, Job::Verify { folder: path.clone() }));
-                            }
-                        }
-                    }
-                    Kind::Luma => {
-                        if button(ui, "LumaLink.Window.Check") {
-                            job = Some((id, Job::Check));
-                        }
-                        if button(ui, "LumaLink.Window.Install") {
-                            job = Some((id, Job::Install { play: false }));
-                        }
-                        if button(ui, "LumaLink.Window.Play") {
-                            job = Some((id, Job::Install { play: true }));
-                        }
-                        if button(ui, "LumaLink.Window.List") {
-                            job = Some((id, Job::List));
-                        }
-                        if button(ui, "LumaLink.Window.Extract") {
-                            if let Some(into) = rfd::FileDialog::new().pick_folder() {
-                                job = Some((id, Job::Extract { into }));
-                            }
-                        }
-                        if button(ui, "LumaLink.Window.Verify") {
-                            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                                job = Some((id, Job::Verify { folder }));
-                            }
-                        }
-                    }
-                    Kind::Model => {
-                        ui.label(say!("LumaLink.Window.Replaces"));
-                        egui::ComboBox::from_id_salt("replaces").selected_text(self.replaces.clone()).show_ui(ui, |ui| {
-                            for who in ["mario", "luigi"] {
-                                ui.selectable_value(&mut self.replaces, who.to_string(), who);
-                            }
-                        });
-                        if button(ui, "LumaLink.Window.AddCharacter") {
-                            if let Some(folder) = rfd::FileDialog::new().set_title(say!("LumaLink.Window.ChooseMod")).pick_folder() {
-                                job = Some((id, Job::AddCharacter { folder, replaces: self.replaces.clone() }));
-                            }
-                        }
-                    }
-                    Kind::Other => {
-                        ui.checkbox(&mut self.accept_losses, say!("LumaLink.Window.AcceptLosses"));
-                        if button(ui, "LumaLink.Window.Convert") {
-                            if let Some(folder) = rfd::FileDialog::new().set_title(say!("LumaLink.Window.ChooseNewFolder")).save_file() {
-                                job = Some((id, Job::Convert { folder, accept_losses: self.accept_losses }));
-                            }
-                        }
-                    }
-                }
-            });
-        });
-        if let Some((luma, verify)) = add {
-            let luma_id = self.add(luma);
-            job = Some((luma_id, verify));
-        }
-        if let Some((on, job)) = job {
-            self.start(on, job);
-        }
-        ui.separator();
-        let Some(item) = self.items.iter().find(|i| i.id == id) else { return };
-        let mut explain = None;
-        let mut open = None;
-        egui::ScrollArea::vertical().id_salt("lines").auto_shrink([false, false]).show(ui, |ui| {
-            for line in &item.lines {
-                ui.horizontal_wrapped(|ui| {
-                    if let Some(code) = line.code {
-                        if ui.link(RichText::new(format!("L{code}")).color(line.color)).on_hover_text(say!("LumaLink.Window.Explain")).clicked() {
-                            explain = Some(code);
-                        }
-                    }
-                    ui.label(RichText::new(&line.text).color(line.color));
-                    if let Some((place, on_disk)) = &line.place {
-                        match on_disk {
-                            Some(file) => {
-                                if ui.link(place).on_hover_text(say!("LumaLink.Window.Show")).clicked() {
-                                    open = Some(file.clone());
-                                }
-                            }
-                            None => {
-                                ui.label(RichText::new(place).color(SOFT));
-                            }
-                        }
-                    }
-                });
-            }
-            if let Some(made) = &item.made {
-                if ui.button(say!("LumaLink.Window.Show")).clicked() {
-                    open = Some(made.clone());
-                }
-            }
-        });
-        if let Some(code) = explain {
-            // What the code means, in place of the report; Check brings the report back.
-            self.start(id, Job::Explain(code));
-        }
-        if let Some(file) = open {
-            show_file(&file);
-        }
-    }
-
-    fn new_window(&mut self, ctx: &egui::Context) {
-        let Some(form) = self.new_form.as_mut() else { return };
-        let mut open = true;
-        let mut made = None;
-        egui::Window::new(say!("LumaLink.Window.New")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button(say!("LumaLink.Window.ChooseNewFolder")).clicked() {
-                    form.folder = rfd::FileDialog::new().save_file();
-                }
-                if let Some(folder) = &form.folder {
-                    ui.label(folder.display().to_string());
-                }
-            });
-            egui::Grid::new("new").num_columns(2).show(ui, |ui| {
-                for (row, value) in [("LumaLink.Window.Id", &mut form.id), ("LumaLink.Window.Name", &mut form.name), ("LumaLink.Window.Summary", &mut form.summary), ("LumaLink.Window.Authors", &mut form.authors)] {
-                    ui.label(text::say(row, &[]));
-                    ui.text_edit_singleline(value);
-                    ui.end_row();
-                }
-            });
-            for line in &form.refused {
-                ui.label(RichText::new(&line.text).color(line.color));
-            }
-            if ui.add_enabled(form.folder.is_some(), egui::Button::new(say!("LumaLink.Window.Make"))).clicked() {
-                if let Some(folder) = form.folder.clone() {
-                    let authors: Vec<String> = form.authors.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
-                    form.refused = match jobs::new_mod(&folder, form.id.trim(), form.name.trim(), form.summary.trim(), &authors) {
-                        Ok(NewMod::Made(folder)) => {
-                            made = Some(folder);
-                            vec![]
-                        }
-                        Ok(NewMod::Refused(r)) => report(&r, None),
-                        Err(error) => vec![Line::words(format!("{error:#}"), RED)],
-                    };
-                }
-            }
-        });
-        if let Some(folder) = made {
-            self.new_form = None;
-            self.add(folder);
-        } else if !open {
-            self.new_form = None;
         }
     }
 }
@@ -611,33 +632,20 @@ fn show_file(file: &Path) {
     }
 }
 
-impl App {
-    /// One frame of the window (eframe's update, and the tests' frames).
-    fn ui(&mut self, ctx: &egui::Context) {
-        self.take_done();
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
-        for path in dropped {
-            self.add(path);
-        }
-        if self.items.iter().any(|i| i.busy) {
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        }
-        sky::backdrop(&ctx.layer_painter(egui::LayerId::background()), ctx.screen_rect());
-        egui::TopBottomPanel::top("top").frame(egui::Frame::new().inner_margin(12.0)).show(ctx, |ui| self.top(ui));
-        egui::SidePanel::left("items").resizable(true).default_width(260.0).frame(egui::Frame::new().inner_margin(12.0)).show(ctx, |ui| self.list(ui));
-        egui::CentralPanel::default().frame(egui::Frame::new().inner_margin(12.0)).show(ctx, |ui| {
-            if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
-                ui.painter().rect_stroke(ui.max_rect(), 14.0, Stroke::new(3.0, sky::BLUE), egui::StrokeKind::Inside);
-            }
-            self.page(ui);
-        });
-        self.new_window(ctx);
-    }
+/// The window as eframe runs it.
+struct Window {
+    app: App,
+    #[cfg(debug_assertions)]
+    shot: Option<shot::Shot>,
 }
 
-impl eframe::App for App {
+impl eframe::App for Window {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.ui(ctx);
+        self.app.ui(ctx);
+        #[cfg(debug_assertions)]
+        if let Some(shot) = self.shot.as_mut() {
+            shot.frame(&mut self.app, ctx);
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -645,70 +653,27 @@ impl eframe::App for App {
     }
 }
 
-fn fonts() -> FontDefinitions {
-    let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert("rounded".to_string(), std::sync::Arc::new(FontData::from_static(include_bytes!("../assets/MPLUSRounded1c-Medium.ttf"))));
-    fonts.font_data.insert("rounded-bold".to_string(), std::sync::Arc::new(FontData::from_static(include_bytes!("../assets/MPLUSRounded1c-ExtraBold.ttf"))));
-    fonts.families.insert(FontFamily::Name("bold".into()), vec!["rounded-bold".to_string(), "rounded".to_string()]);
-    if let Some(body) = fonts.families.get_mut(&FontFamily::Proportional) {
-        body.insert(0, "rounded".to_string());
-    }
-    // Korean and Chinese are not in the rounded font: the system's stand behind it, each weight behind its own family.
-    for (family, weight, bold) in [(FontFamily::Name("bold".into()), "system-bold", true), (FontFamily::Proportional, "system", false)] {
-        for (i, (path, face)) in words::system_fonts(bold).into_iter().enumerate() {
-            let Ok(bytes) = std::fs::read(&path) else { continue };
-            let name = format!("{weight}{i}");
-            let mut data = FontData::from_owned(bytes);
-            data.index = face;
-            fonts.font_data.insert(name.clone(), std::sync::Arc::new(data));
-            if let Some(list) = fonts.families.get_mut(&family) {
-                list.push(name);
-            }
-        }
-    }
-    if words::system_font_first() {
-        // Every character of a line from one font, Latin letters too: the rounded font holds some Chinese characters.
-        for family in [FontFamily::Proportional, FontFamily::Name("bold".into())] {
-            if let Some(list) = fonts.families.get_mut(&family) {
-                list.sort_by_key(|name| !name.starts_with("system"));
-            }
-        }
-    }
-    fonts
-}
-
-/// The window's fonts and look (the window's and the tests' context).
-fn setup(ctx: &egui::Context) {
-    ctx.set_fonts(fonts());
-    ctx.set_visuals(egui::Visuals::light());
-    let mut style = (*ctx.style()).clone();
-    style.visuals.panel_fill = Color32::TRANSPARENT;
-    style.visuals.override_text_color = Some(INK);
-    style.visuals.window_fill = Color32::WHITE;
-    style.visuals.window_corner_radius = egui::CornerRadius::same(14);
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
-    style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, sky::BLUE_EDGE);
-    style.visuals.widgets.hovered.weak_bg_fill = Color32::WHITE;
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.5, sky::BLUE);
-    style.visuals.widgets.open.bg_stroke = Stroke::new(2.5, sky::BLUE);
-    for widget in [&mut style.visuals.widgets.inactive, &mut style.visuals.widgets.hovered, &mut style.visuals.widgets.active, &mut style.visuals.widgets.open] {
-        widget.corner_radius = egui::CornerRadius::same(15);
-    }
-    style.spacing.button_padding = Vec2::new(14.0, 7.0);
-    ctx.set_style(style);
-}
-
 fn main() -> eframe::Result<()> {
     text::set_language(words::language());
-    let viewport = egui::ViewportBuilder::default().with_title("LumaLink").with_inner_size([960.0, 640.0]).with_min_inner_size([720.0, 480.0]).with_drag_and_drop(true);
+    #[cfg(debug_assertions)]
+    let size = shot::size().unwrap_or([1024.0, 700.0]);
+    #[cfg(not(debug_assertions))]
+    let size = [1024.0, 700.0];
+    let viewport = egui::ViewportBuilder::default().with_title("LumaLink").with_app_id(look::APP_ID).with_inner_size(size).with_min_inner_size([480.0, 420.0]).with_drag_and_drop(true).with_icon(look::icon());
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         "LumaLink",
         options,
         Box::new(|creation| {
-            setup(&creation.egui_ctx);
+            look::setup(&creation.egui_ctx);
             // Paths given to the program (a file dropped on its icon, "Open with") are added as dropped ones are.
-            Ok(Box::new(App::with(Installed::find(), std::env::args_os().skip(1).map(PathBuf::from))))
+            let mut app = App::with(Installed::find(), std::env::args_os().skip(1).map(PathBuf::from));
+            app.update = Update::at_start();
+            Ok(Box::new(Window {
+                app,
+                #[cfg(debug_assertions)]
+                shot: shot::asked(),
+            }))
         }),
     )
 }
@@ -733,7 +698,7 @@ mod tests {
         fn new(app: App) -> Screen {
             let ctx = egui::Context::default();
             ctx.enable_accesskit();
-            setup(&ctx);
+            look::setup(&ctx);
             let mut screen = Screen { ctx, app, nodes: vec![], events: vec![], dropped: vec![] };
             screen.frame();
             screen
@@ -742,7 +707,7 @@ mod tests {
         /// One frame of the window at its first size, with what was dropped and pressed since the last.
         fn frame(&mut self) {
             let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(960.0, 640.0))),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1024.0, 700.0))),
                 events: std::mem::take(&mut self.events),
                 dropped_files: std::mem::take(&mut self.dropped),
                 ..Default::default()
@@ -775,6 +740,8 @@ mod tests {
                 panic!("no {role:?} {name:?} to press in {:?}", self.words())
             };
             self.events.push(egui::Event::AccessKitActionRequest(ActionRequest { action: Action::Click, target: *id, data: None }));
+            // The press is taken in this frame; what it changed is drawn in the next.
+            self.frame();
             self.frame();
         }
 
@@ -802,13 +769,14 @@ mod tests {
         let folder = dir.path().join("round");
         assert!(matches!(jobs::new_mod(&folder, "test.round", "Round", "One line.", &["Me".into()]).unwrap(), NewMod::Made(_)));
         let mut s = Screen::new(App::with(None, std::iter::empty()));
-        // Nothing yet: the window asks for a mod and says it found no game.
-        assert!(s.shows(&say!("LumaLink.Window.Drop")) && s.shows(&say!("LumaLink.Window.NoGame")), "{:?}", s.words());
+        // Nothing yet: the home screen says what to do, with Settings and Add mods on its bar.
+        assert!(s.shows(&say!("LumaLink.Window.Drop")), "{:?}", s.words());
+        assert!(s.shows(&say!("LumaLink.Window.Settings")) && s.shows(&say!("LumaLink.Window.Add")), "{:?}", s.words());
 
-        // The folder dropped: listed and chosen, its kind and its jobs shown.
+        // The folder dropped: its own screen, its kind and its jobs.
         s.drop_on(&folder);
         assert!(s.shows(&folder.display().to_string()) && s.shows(&say!("LumaLink.Window.Kind.Folder")), "{:?}", s.words());
-        for row in ["LumaLink.Window.Check", "LumaLink.Window.Build", "LumaLink.Window.Pack", "LumaLink.Window.Install", "LumaLink.Window.Play"] {
+        for row in ["LumaLink.Window.Check", "LumaLink.Window.Pack", "LumaLink.Window.Install", "LumaLink.Window.Play", "LumaLink.Window.Menu"] {
             assert!(s.shows(&text::say(row, &[])), "{row}: {:?}", s.words());
         }
         // Check: the library's report on the window's own inputs, its count line shown.
@@ -818,7 +786,8 @@ mod tests {
 
         // Pack: the .luma written beside the folder, named in the window.
         s.button("LumaLink.Window.Pack");
-        s.wait_for(".luma");
+        // Done: the .luma can be opened on its own screen (the button's own words name a .luma too).
+        s.wait_for(&say!("LumaLink.Window.OpenMade"));
         let luma = std::fs::read_dir(dir.path()).unwrap().filter_map(|e| e.ok().map(|e| e.path())).find(|p| p.extension().is_some_and(|x| x == "luma")).expect("a .luma beside the folder");
         assert!(s.shows(&luma.display().to_string()), "{:?}", s.words());
 
@@ -826,40 +795,47 @@ mod tests {
         s.button("LumaLink.Window.Install");
         s.wait_for(&say!("LumaLink.NoInstalled"));
 
-        // The .luma dropped: its own jobs; List gives its entries.
+        // Menu: home, the folder's tile there by its name.
+        s.button("LumaLink.Window.Menu");
+        assert!(s.shows("round") && !s.shows(&say!("LumaLink.Window.Kind.Folder")), "{:?}", s.words());
+
+        // The .luma dropped: its own screen; List gives its entries.
         s.drop_on(&luma);
         assert!(s.shows(&say!("LumaLink.Window.Kind.Luma")), "{:?}", s.words());
         s.button("LumaLink.Window.List");
         s.wait_for("luma.json");
+        let luma_name = luma.file_name().unwrap().to_string_lossy().into_owned();
 
-        // Another language from the menu at the top: the window's words are that language's at the next frame.
+        // Another language from Settings: Settings, Language, German; the words are German at the next frame, the
+        // list goes back to Settings, and Back to home.
         let english = say!("LumaLink.Window.List");
-        s.press(Role::ComboBox, None);
-        s.frame();
+        s.button("LumaLink.Window.Menu");
+        s.button("LumaLink.Window.Settings");
+        s.button("LumaLink.Window.Language");
+        assert!(s.shows(words::name("EuGerman")), "{:?}", s.words());
         s.press(Role::Button, Some(words::name("EuGerman")));
-        s.frame();
         assert_eq!(text::language(), "EuGerman");
+        assert!(s.shows(&say!("LumaLink.Window.Language")) && !s.shows(words::name("EuDutch")), "{:?}", s.words());
+        s.button("LumaLink.Window.Back");
+        // The .luma's tile, by its name: its jobs in German.
+        s.press(Role::Button, Some(&luma_name));
         let german = say!("LumaLink.Window.List");
         assert_ne!(english, german);
         assert!(s.shows(&german) && !s.shows(&english), "{:?}", s.words());
-        // The menu closed as a screen reader closes it (its button again); back to English the same way.
-        s.press(Role::ComboBox, None);
-        s.frame();
-        s.press(Role::ComboBox, None);
-        s.frame();
+        // Back to English the same way.
+        s.button("LumaLink.Window.Menu");
+        s.button("LumaLink.Window.Settings");
+        s.button("LumaLink.Window.Language");
         s.press(Role::Button, Some(words::name("UsEnglish")));
-        s.frame();
-        s.press(Role::ComboBox, None);
-        s.frame();
         assert_eq!(text::language(), "UsEnglish");
-        assert!(!s.shows(words::name("EuGerman")), "the menu is still open: {:?}", s.words());
+        s.button("LumaLink.Window.Back");
 
-        // Both taken off the list, one at a time: the window asks for a mod again.
-        s.press(Role::Button, Some("×"));
-        s.frame();
-        assert_eq!(s.words().iter().filter(|w| *w == "×").count(), 1, "{:?}", s.words());
-        s.press(Role::Button, Some("×"));
-        s.frame();
-        assert!(s.shows(&say!("LumaLink.Window.Drop")) && !s.shows("×"), "{:?}", s.words());
+        // Both taken off the list from their own screens: home says what to do again.
+        for name in [luma_name.as_str(), "round"] {
+            s.press(Role::Button, Some(name));
+            s.button("LumaLink.Window.Remove");
+            assert!(!s.shows(name), "{name}: {:?}", s.words());
+        }
+        assert!(s.shows(&say!("LumaLink.Window.Drop")), "{:?}", s.words());
     }
 }

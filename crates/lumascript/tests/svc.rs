@@ -115,6 +115,8 @@ fn system_and_its_dotted_services() {
     assert_eq!(c.function("set_image").unwrap().ranges, vec![("width".to_string(), 1, 8192), ("height".to_string(), 1, 8192)]);
 
     let l = face("system.links", "luma_system.h");
+    assert_eq!(l.permission.as_deref(), Some("system.links"));
+    assert_eq!(face("system", "luma_system.h").permission, None);
     assert_eq!(l.function("open").unwrap().answers, vec!["Busy"]);
     assert!(matches!(&l.function("open").unwrap().shape, Shape::Callable { params, gives: Gives::Request { kind, .. } } if params[0] == v("url", STy::Text) && kind == "link"));
     assert_eq!(l.function("cancel").unwrap().shape, Shape::Callable { params: vec![v("request", STy::Handle("Request".into()))], gives: Gives::Outs(vec![]) });
@@ -351,7 +353,7 @@ fn the_headers_are_in_the_one_form() {
     }
 }
 
-/// An enum value is a constant expression (J 2026-11-12: roll 4's `LUMA_INPUT_BUTTONS_ALL = (1u << 13) - 1u`), and a
+/// An enum value is a constant expression (`LUMA_INPUT_BUTTONS_ALL = (1u << 13) - 1u`), and a
 /// section comment (`/* ---- ... ---- */`) is every function's below it (draw.rect_outline's statuses are its
 /// section's).
 #[test]
@@ -367,7 +369,7 @@ fn enum_values_fold_and_sections_carry_statuses() {
     assert!(Header::read("enum {\n    LUMA_DEMO_X = (1 << 70)\n};\n").is_err());
 }
 
-/// Order 1 (C1h): every header of the SDK the game ships (`LUMA_SDK`, the folder of luma.h) reads, and its services
+/// Every header of the SDK the game ships (`LUMA_SDK`, the folder of luma.h) reads, and its services
 /// are 32 faces with no error: a header the reader refuses takes its services away from every script.
 #[test]
 fn every_sdk_header_reads() {
@@ -393,7 +395,7 @@ fn every_sdk_header_reads() {
             }
         }
     }
-    // Order 4 (C1g): every `typedef LumaHandle X;` of the SDK is a handle kind of the service it is named for, the
+    // Every `typedef LumaHandle X;` of the SDK is a handle kind of the service it is named for, the
     // service's last word when X is the prefix itself (LumaMovie, LumaContentModel, LumaDrawInst, LumaDrawLight).
     let mut handles = 0;
     for text in headers.values() {

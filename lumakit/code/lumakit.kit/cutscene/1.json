@@ -1,0 +1,271 @@
+{
+  "$comment": "kit/cutscene/<id>.json (lumakit data version 1). A scene of the mod, found by code with kit.cutscene.find(id) in the stage it plays in and run with kit.cutscene.play. Actors are named by their placement name (the first live object of that name); a Call shot is code only. `line` is the text shown (a mod's translated lines are chosen by its layers' language rule). `music` is a sound of the mod by name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "shots"
+  ],
+  "properties": {
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "Look"
+            ],
+            "properties": {
+              "Look": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "at",
+                  "from_offset",
+                  "frames"
+                ],
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "from_offset": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "frames": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 36000
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "Move"
+            ],
+            "properties": {
+              "Move": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from",
+                  "to",
+                  "frames"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "eye",
+                      "at"
+                    ],
+                    "properties": {
+                      "eye": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "at": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "up": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        },
+                        "default": [
+                          0,
+                          1,
+                          0
+                        ]
+                      },
+                      "fov": {
+                        "type": "number",
+                        "exclusiveMinimum": 1,
+                        "exclusiveMaximum": 179,
+                        "default": 45
+                      }
+                    }
+                  },
+                  "to": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "eye",
+                      "at"
+                    ],
+                    "properties": {
+                      "eye": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "at": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "up": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": {
+                          "type": "number"
+                        },
+                        "default": [
+                          0,
+                          1,
+                          0
+                        ]
+                      },
+                      "fov": {
+                        "type": "number",
+                        "exclusiveMinimum": 1,
+                        "exclusiveMaximum": 179,
+                        "default": 45
+                      }
+                    }
+                  },
+                  "frames": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 36000
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "Line"
+            ],
+            "properties": {
+              "Line": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "line"
+                ],
+                "properties": {
+                  "speaker": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 64
+                  },
+                  "line": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "Action"
+            ],
+            "properties": {
+              "Action": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "who",
+                  "action"
+                ],
+                "properties": {
+                  "who": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "action": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "Wait"
+            ],
+            "properties": {
+              "Wait": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "frames"
+                ],
+                "properties": {
+                  "frames": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 36000
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "letterbox": {
+      "type": "boolean",
+      "default": true
+    },
+    "skippable": {
+      "type": "boolean",
+      "default": true
+    },
+    "holds_world": {
+      "type": "boolean",
+      "default": true
+    },
+    "music": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    }
+  }
+}

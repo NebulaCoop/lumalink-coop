@@ -1,0 +1,223 @@
+// kit.gravity: the player's gravity overridden, new gravity shapes placeable like the game's, the
+// gravity at a point.
+// The player's override: the player asks its gravity through MR::calcGravityVectorOrZero (MarioActor::updateGravityVec,
+// at its place, its centre and ahead of it); for the player the kit's field answers instead while an override holds, so
+// the game's own turning, jumping and camera follow it as they follow a planet's. The newest override holds;
+// ending it gives the one before, then the game's.
+// Shapes: define_shape aliases the shape's name (std alias_class) to KitGravityPlace; where a stage places that name,
+// its init makes a gravity of the kit's class KitGravity (base PlanetGravity, std make_gravity: registered with the
+// scene's gravities at the shape's range and priority, so the game's own gravities and a mod's sort and add as the
+// game's do), whose calcOwnGravityVector is the shape's function within its range from the placement.
+// Every override and shape is recorded under caller(); `on mods.stopped` ends a stopped mod's.
+// Override.end/alive and ShapeId.name are also module functions (`end_override`, `override_alive`, `shape_name`).
+
+pub enum Field { Parallel { direction: vec3 }, Point { at: vec3 }, Away { at: vec3 } }
+
+pub struct Override {
+    n: u64
+    fn end(self) { end_override(self) }
+    fn alive(self) -> bool { return override_alive(self) }
+}
+
+pub struct Shape { name: text, vector: fn(vec3) -> vec3?, range: f32 = 1000.0, priority: int = 0 }
+
+pub struct ShapeId {
+    n: int
+    fn name(self) -> text { return shape_name(self) }
+}
+
+// The overrides in force, oldest first: numbers, owners, fields, frames left (0: until ended).
+var overrides: list<u64> = []
+var override_owners: list<u64> = []
+var override_fields: list<Field> = []
+var override_left: list<u32> = []
+var next_override: u64 = 1
+// The defined shapes (a slot is never reused in a session): their definitions, owners, whether they live.
+var shapes: list<Shape> = []
+var shape_owners: list<u64> = []
+var shape_live: list<bool> = []
+
+fn override_index(n: u64) -> int? {
+    for i in 0..overrides.len() {
+        if overrides[i] == n {
+            return i
+        }
+    }
+    return none
+}
+
+fn remove_override(i: int) {
+    overrides.remove(i)
+    override_owners.remove(i)
+    override_fields.remove(i)
+    override_left.remove(i)
+}
+
+// The field's pull at `p`, unit length (zero at the field's own point).
+fn pull(f: Field, p: vec3) -> vec3 {
+    match f {
+        Field.Parallel(direction) => {
+            if length(direction) < 0.0001 {
+                return vec3(0.0, -1.0, 0.0)
+            }
+            return normal(direction)
+        }
+        Field.Point(at) => {
+            let d = at - p
+            if length(d) < 0.0001 {
+                return vec3(0.0, 0.0, 0.0)
+            }
+            return normal(d)
+        }
+        Field.Away(at) => {
+            let d = p - at
+            if length(d) < 0.0001 {
+                return vec3(0.0, 0.0, 0.0)
+            }
+            return normal(d)
+        }
+    }
+}
+
+// The player's gravity is `f` from now on (for `frames` frames, or until ended); the newest override holds.
+pub fn override_player(f: Field, frames: u32? = none) -> Override {
+    let n = next_override
+    next_override += 1
+    overrides.push(n)
+    override_owners.push(caller())
+    override_fields.push(f)
+    override_left.push(frames ?? 0)
+    return Override { n: n }
+}
+
+pub fn end_override(o: Override) {
+    if let i = override_index(o.n) {
+        remove_override(i)
+    }
+}
+
+pub fn override_alive(o: Override) -> bool {
+    return override_index(o.n) != none
+}
+
+// A new kind of gravity, placed in stages by its name: inside its range (from the placement) its function gives the
+// pull at a point, or none where it gives none; `priority` sorts it among the game's.
+pub fn define_shape(s: Shape) -> ShapeId {
+    shapes.push(s)
+    shape_owners.push(caller())
+    shape_live.push(true)
+    alias_class(s.name, "KitGravityPlace", [shapes.len() as i32])
+    return ShapeId { n: shapes.len() }
+}
+
+pub fn shape_name(id: ShapeId) -> text {
+    if id.n <= 0 or id.n > shapes.len() {
+        return ""
+    }
+    return shapes[id.n - 1].name
+}
+
+// The gravity at `p` (unit length; zero where none pulls), as the game's objects get it there: the game's gravities and
+// the mods' shapes, not a player override.
+pub fn at(p: vec3) -> vec3 {
+    var g = vec3(0.0, 0.0, 0.0)
+    guard let mario = MarioAccess::getPlayerActor() else { return g }
+    if MR::calcGravityVector(mario, p, var g, none, none) {
+        return g
+    }
+    return vec3(0.0, 0.0, 0.0)
+}
+
+// A shape's gravity object: the shape's function where it answers, within the range from its placement (below 0:
+// everywhere).
+class KitGravity : PlanetGravity {
+    var shape: int = -1
+    var center: vec3 = vec3(0.0, 0.0, 0.0)
+    var reach: f32 = -1.0
+    override fn calcOwnGravityVector(dest, scalar, at) -> bool {
+        if shape < 0 or shape >= shapes.len() or not shape_live[shape] {
+            return false
+        }
+        if reach >= 0.0 and length(at - center) > reach {
+            return false
+        }
+        let s = shapes[shape]
+        let f = s.vector
+        guard let v = f(at) else { return false }
+        if length(v) < 0.0001 {
+            return false
+        }
+        dest = normal(v)
+        scalar = 1.0
+        return true
+    }
+}
+
+// A shape placed in a stage by its name (define_shape's alias; its first placement argument the shape's number): it
+// makes the shape's gravity at its placement and only carries it, dead from the start.
+class KitGravityPlace : LiveActor made by LumaObj {
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        var n: i32 = 0
+        MR::getPlacementArg0NoInit(rIter, var n)
+        self.makeActorDead()
+        if n <= 0 or n > shapes.len() as i32 or not shape_live[(n - 1) as int] {
+            log "kit.gravity: a shape {n} is placed and no live mod defines it; no gravity"
+            return
+        }
+        let s = shapes[(n - 1) as int]
+        guard let g = make_gravity<KitGravity>(GravityPlace { range: s.range, priority: s.priority as i32 }) else {
+            return
+        }
+        g.shape = (n - 1) as int
+        g.center = self.mPosition
+        g.reach = s.range
+    }
+}
+
+// The player's gravity (its place, its centre, ahead of it): the newest override's field instead of the game's.
+hook after MR::calcGravityVectorOrZero(actor, at, gravity, info, _) -> found {
+    if overrides.len() == 0 {
+        return
+    }
+    guard let mario = MarioAccess::getPlayerActor() else { return }
+    guard let a = actor else { return }
+    if not same(a, mario) {
+        return
+    }
+    let g = pull(override_fields[overrides.len() - 1], at)
+    gravity = g
+    result = length(g) > 0.0
+}
+
+// Once a frame (the player's gravity step): overrides with frames count down and end.
+hook after MarioActor::updateGravityVec(reset, use_position) {
+    var i = overrides.len()
+    while i > 0 {
+        i -= 1
+        if override_left[i] > 0 {
+            override_left[i] -= 1
+            if override_left[i] == 0 {
+                remove_override(i)
+            }
+        }
+    }
+}
+
+// A mod that changed gravity was taken out: its overrides end (newest first) and its shapes stop pulling.
+on mods.stopped(gone) {
+    var i = overrides.len()
+    while i > 0 {
+        i -= 1
+        if override_owners[i] == gone {
+            remove_override(i)
+        }
+    }
+    var k = shapes.len()
+    while k > 0 {
+        k -= 1
+        if shape_owners[k] == gone {
+            shape_live[k] = false
+        }
+    }
+}

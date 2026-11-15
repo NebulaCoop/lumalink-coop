@@ -1,0 +1,74 @@
+{
+  "$comment": "kit/talk/<file>.json (lumakit data version 1; talk.lum's TreeData). A talk tree without code: nodes by name, each a line, the node after it (next; \"\" ends) or choices, each a line, its next node and the progress flag it sets (\"\": none). The tree starts at the node \"start\".",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "nodes"
+  ],
+  "properties": {
+    "version": {
+      "enum": [
+        1
+      ],
+      "default": 1
+    },
+    "nodes": {
+      "type": "object",
+      "required": [
+        "start"
+      ],
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "line"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "next": {
+            "type": "string",
+            "maxLength": 64,
+            "default": ""
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "line"
+              ],
+              "properties": {
+                "line": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "next": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "default": ""
+                },
+                "flag": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "default": ""
+                }
+              }
+            },
+            "default": []
+          }
+        }
+      }
+    }
+  }
+}

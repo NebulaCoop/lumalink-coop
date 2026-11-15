@@ -1,0 +1,592 @@
+// kit.ui.kit: widgets for a mod's own panels: buttons, sliders, toggles, colour pickers, lists, text
+// fields, a wheel, a model view, pictures and labels, with pad, mouse and touch focus. A panel is drawn by svc.draw over
+// the game's HUD (LUMA_DRAW_HUD_AFTER) in the HUD's 4:3 frame, at a corner of it or in its middle, one widget a row
+// (a list one row each of its rows, a wheel, a picture and a model view as tall as they are). The newest open panel
+// with something to take takes the controls, read as the game reads them (input.game: after the bindings, so a
+// keyboard and a pad count alike):
+//   up and down move the focus over the stops (a button, slider, toggle, colour, text field, each row of a list, a
+//   wheel); left and right move a slider a twentieth, flip a toggle, step a colour through the palette, turn a wheel;
+//   the stick points a wheel's entry; A presses a button, flips a toggle, steps a colour, takes a list's row, takes a
+//   wheel's entry, opens a text field's platform keyboard (input's text request; its text given to on_done when the
+//   player confirms).
+//   The pointer (the mouse, touch) on a stop focuses it; A with the pointer on a slider's track sets it there, on a
+//   colour's swatch takes that colour, on a wheel's entry takes it.
+// A panel that pauses holds the world (svc.time) while it is open. Callbacks run at the frame's start after the press
+//. Everything belongs to the mod that opened it: its panels close when it stops.
+// A ModelView shows its frame only, and touch_layout's buttons are drawn but press nothing.
+
+use svc.draw
+use svc.input
+use svc.time
+use ./hud
+
+pub enum Widget {
+    Button(label: text, on_press: fn())
+    Slider(label: text, min: f32, max: f32, value: f32, on_change: fn(f32))
+    Toggle(label: text, is_on: bool, on_change: fn(bool))
+    Colour(label: text, value: color, on_change: fn(color))
+    List(rows: list<text>, on_choose: fn(int))
+    TextField(label: text, max_chars: u32, on_done: fn(text))
+    Wheel(entries: list<(draw.Texture, text)>, on_choose: fn(int))
+    ModelView(look: model, size: vec2)
+    Picture(tex: draw.Texture, size: vec2)
+    Label(s: text)
+}
+
+pub struct Panel { title: text? = none, widgets: list<Widget>, at: hud.Corner? = none, pauses: bool = false }
+
+// An open panel's handle: its number, 0 when none opened. Its functions are also module functions
+// (`kit.set(o, i, w)`).
+pub struct Open {
+    id: u32
+    fn set(self, index: int, w: Widget) { set(self, index, w) }
+    fn close(self) { close(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+
+let width: f32 = 380.0
+let row: f32 = 34.0
+let pad: f32 = 10.0
+let wheel_size: f32 = 200.0
+let text_size: f32 = 22.0
+// The game's buttons in LumaInputGame.buttons (luma_input.h LUMA_INPUT_BUTTON_*, an anonymous C enum scripts do not name).
+let button_a: u32 = 1
+let button_up: u32 = 128
+let button_down: u32 = 256
+let button_left: u32 = 512
+let button_right: u32 = 1024
+let palette: list<color> = [#FFFFFF, #FF4040, #FF9A2E, #FFE14D, #7BE04A, #2EC27E, #3DC8F0, #3D6BF0, #9B5CF0, #F05CC8,
+                            #8A5A3C, #000000]
+
+// The open panels, oldest first: each one's id, owner, panel, the focused stop and its wheels' entries.
+var ids: list<u32> = []
+var owners: list<u64> = []
+var panels: list<Panel> = []
+var focus: list<i32> = []
+var wheel_at: list<map<int, int>> = []
+var next_id: u32 = 0
+var holding: u32 = 0
+var drawing: bool = false
+// The buttons held last frame (press edges) and the panel and widget a text field is open for.
+var held: u32 = 0
+var editing_id: u32 = 0
+var editing_widget: i32 = -1
+// A callback taken this frame, run at the next frame's start.
+var queued: list<fn()> = []
+
+// A box of a panel's layout: where a widget (and its row, for a list) is drawn, and whether it is a stop.
+struct Box {
+    x: f32
+    y: f32
+    w: f32
+    h: f32
+    widget: i32
+    sub: i32
+    takes: bool
+}
+
+pub fn open(p: Panel) -> Open {
+    next_id += 1
+    ids.push(next_id)
+    owners.push(caller())
+    panels.push(p)
+    focus.push(0)
+    wheel_at.push({})
+    if p.pauses {
+        hold_world(true)
+    }
+    if not drawing {
+        draw.at(draw.Point.HudAfter, paint)
+        drawing = true
+    }
+    return Open { id: next_id }
+}
+
+fn index_of(o: Open) -> i32 {
+    for i in 0..ids.len() {
+        if ids[i] == o.id {
+            return i
+        }
+    }
+    return -1
+}
+
+// The widget at `index` replaced (a slider's value, a list's rows, a label's text...); the focus kept on its stop.
+pub fn set(o: Open, index: int, w: Widget) {
+    let i = index_of(o)
+    if i < 0 or index < 0 or index >= panels[i].widgets.len() {
+        return
+    }
+    panels[i].widgets[index] = w
+}
+
+pub fn close(o: Open) {
+    let i = index_of(o)
+    if i >= 0 {
+        remove_at(i)
+    }
+}
+
+pub fn alive(o: Open) -> bool {
+    return index_of(o) >= 0
+}
+
+fn remove_at(i: i32) {
+    if panels[i].pauses {
+        hold_world(false)
+    }
+    if editing_id == ids[i] {
+        editing_id = 0
+        editing_widget = -1
+    }
+    ids.remove(i)
+    owners.remove(i)
+    panels.remove(i)
+    focus.remove(i)
+    wheel_at.remove(i)
+}
+
+fn hold_world(yes: bool) {
+    if yes {
+        if holding == 0 {
+            time.hold()
+        }
+        holding += 1
+    } else if holding > 0 {
+        holding -= 1
+        if holding == 0 {
+            time.release()
+        }
+    }
+}
+
+// The widget's height in the panel.
+fn height_of(w: Widget) -> f32 {
+    match w {
+        Widget.List(rows, u1) => return row * (rows.len() as f32)
+        Widget.Wheel(u2, u3) => return wheel_size + pad
+        Widget.ModelView(u4, size) => return size.y + pad
+        Widget.Picture(u5, size) => return size.y + pad
+        else => return row
+    }
+}
+
+// A panel's frame on the screen: its corner of the HUD's 4:3 frame, or the frame's middle.
+fn frame_of(p: Panel, s: draw.Screen) -> draw.Rect {
+    var h = pad * 2.0
+    if p.title != none {
+        h += row
+    }
+    for w in p.widgets {
+        h += height_of(w)
+    }
+    var x = s.safe_x + (s.safe_w - width) * 0.5
+    var y = s.safe_y + (s.safe_h - h) * 0.5
+    if let c = p.at {
+        match c {
+            hud.Corner.TopLeft => { x = s.safe_x + pad
+                                    y = s.safe_y + pad }
+            hud.Corner.Top => y = s.safe_y + pad
+            hud.Corner.TopRight => { x = s.safe_x + s.safe_w - width - pad
+                                     y = s.safe_y + pad }
+            hud.Corner.Left => x = s.safe_x + pad
+            hud.Corner.Right => x = s.safe_x + s.safe_w - width - pad
+            hud.Corner.BottomLeft => { x = s.safe_x + pad
+                                       y = s.safe_y + s.safe_h - h - pad }
+            hud.Corner.Bottom => y = s.safe_y + s.safe_h - h - pad
+            hud.Corner.BottomRight => { x = s.safe_x + s.safe_w - width - pad
+                                        y = s.safe_y + s.safe_h - h - pad }
+        }
+    }
+    return draw.Rect { x: x, y: y, w: width, h: h }
+}
+
+// The panel's boxes, top to bottom.
+fn boxes_of(p: Panel, s: draw.Screen) -> list<Box> {
+    let f = frame_of(p, s)
+    var out: list<Box> = []
+    var y = f.y + pad
+    if p.title != none {
+        y += row
+    }
+    for i in 0..p.widgets.len() {
+        let w = p.widgets[i]
+        match w {
+            Widget.List(rows, u6) => {
+                for r in 0..rows.len() {
+                    out.push(Box { x: f.x + pad, y: y, w: width - pad * 2.0, h: row, widget: i, sub: r, takes: true })
+                    y += row
+                }
+            }
+            Widget.Label(u7) => {
+                out.push(Box { x: f.x + pad, y: y, w: width - pad * 2.0, h: row, widget: i, sub: 0, takes: false })
+                y += row
+            }
+            Widget.Picture(u8, size) => {
+                out.push(Box { x: f.x + (width - size.x) * 0.5, y: y, w: size.x, h: size.y, widget: i, sub: 0, takes: false })
+                y += size.y + pad
+            }
+            Widget.ModelView(u9, size) => {
+                out.push(Box { x: f.x + (width - size.x) * 0.5, y: y, w: size.x, h: size.y, widget: i, sub: 0, takes: false })
+                y += size.y + pad
+            }
+            Widget.Wheel(u10, u11) => {
+                out.push(Box { x: f.x + (width - wheel_size) * 0.5, y: y, w: wheel_size, h: wheel_size, widget: i, sub: 0,
+                               takes: true })
+                y += wheel_size + pad
+            }
+            else => {
+                out.push(Box { x: f.x + pad, y: y, w: width - pad * 2.0, h: row, widget: i, sub: 0, takes: true })
+                y += row
+            }
+        }
+    }
+    return out
+}
+
+// The stops of a panel's boxes, in order: their places in the box list.
+fn stops_of(b: list<Box>) -> list<int> {
+    var out: list<int> = []
+    for i in 0..b.len() {
+        if b[i].takes {
+            out.push(i)
+        }
+    }
+    return out
+}
+
+fn inside(b: Box, x: f32, y: f32) -> bool {
+    return x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h
+}
+
+// A wheel's entry at the angle of (dx, dy) from its middle (0 at the top, clockwise).
+fn wheel_entry(count: int, dx: f32, dy: f32) -> int {
+    if count == 0 {
+        return 0
+    }
+    var a = atan2(dx, -dy)
+    if a < 0.0 {
+        a += 6.2831853
+    }
+    let step = 6.2831853 / (count as f32)
+    return ((a + step * 0.5) / step) as int % count
+}
+
+// A palette swatch under x in a colour row (the right half of the row, twelve swatches).
+fn swatch_at(b: Box, x: f32) -> int {
+    let left = b.x + b.w * 0.5
+    let each = b.w * 0.5 / (palette.len() as f32)
+    if x < left {
+        return -1
+    }
+    let k = ((x - left) / each) as int
+    if k >= palette.len() {
+        return palette.len() - 1
+    }
+    return k
+}
+
+fn next_colour(c: color, step: int) -> color {
+    var at = 0
+    for k in 0..palette.len() {
+        if palette[k] == c {
+            at = k
+        }
+    }
+    return palette[(at + step + palette.len()) % palette.len()]
+}
+
+// A text field's platform keyboard, its text given to on_done when the player confirms.
+task edit(id: u32, widget: i32, max_chars: u32, done: fn(text)) {
+    editing_id = id
+    editing_widget = widget
+    let got = wait input.text_request(input.TextRequest { kind: 0, max_length: max_chars })
+    if editing_id == id {
+        editing_id = 0
+        editing_widget = -1
+        if let s = got {
+            done(s)
+        }
+    }
+}
+
+// Each frame's start: the callbacks taken last frame, then the newest panel with a stop takes the controls.
+on frame {
+    let run = queued
+    queued = []
+    for f in run {
+        f()
+    }
+    guard let g = input.game(0) else {
+        return
+    }
+    let pressed = g.buttons - (g.buttons & held)
+    held = g.buttons
+    if ids.len() == 0 or editing_id != 0 {
+        return
+    }
+    let s = draw.screen()
+    var i = ids.len() - 1
+    while i >= 0 {
+        if stops_of(boxes_of(panels[i], s)).len() > 0 {
+            break
+        }
+        i -= 1
+    }
+    if i < 0 {
+        return
+    }
+    let boxes = boxes_of(panels[i], s)
+    let stops = stops_of(boxes)
+    if focus[i] >= stops.len() {
+        focus[i] = stops.len() - 1
+    }
+    if pressed & button_up != 0 {
+        focus[i] = (focus[i] + stops.len() - 1) % stops.len()
+    } else if pressed & button_down != 0 {
+        focus[i] = (focus[i] + 1) % stops.len()
+    }
+    // The pointer (mouse, touch) on a stop focuses it.
+    var px: f32 = -1.0
+    var py: f32 = -1.0
+    if g.pointer_on != 0 {
+        px = (g.pointer_x + 1.0) * 0.5 * s.w
+        py = (g.pointer_y + 1.0) * 0.5 * s.h
+        for k in 0..stops.len() {
+            if inside(boxes[stops[k]], px, py) {
+                focus[i] = k
+            }
+        }
+    }
+    let b = boxes[stops[focus[i]]]
+    let over = g.pointer_on != 0 and inside(b, px, py)
+    let a = pressed & button_a != 0
+    let step = if pressed & button_right != 0 { 1 } else if pressed & button_left != 0 { -1 } else { 0 }
+    let w = panels[i].widgets[b.widget]
+    match w {
+        Widget.Button(label, on_press) => {
+            if a {
+                queued.push(on_press)
+            }
+        }
+        Widget.Slider(label, min, max, value, on_change) => {
+            var v = value
+            if step != 0 {
+                v = value + (max - min) / 20.0 * (step as f32)
+            }
+            // A held with the pointer on the track (the row's right half) sets the value there.
+            if g.buttons & button_a != 0 and over and px >= b.x + b.w * 0.5 {
+                v = min + (max - min) * (px - b.x - b.w * 0.5) / (b.w * 0.5)
+            }
+            v = clamp(v, min, max)
+            if v != value {
+                panels[i].widgets[b.widget] = Widget.Slider(label, min, max, v, on_change)
+                queued.push(fn() { on_change(v) })
+            }
+        }
+        Widget.Toggle(label, is_on, on_change) => {
+            if a or step != 0 {
+                let now = not is_on
+                panels[i].widgets[b.widget] = Widget.Toggle(label, now, on_change)
+                queued.push(fn() { on_change(now) })
+            }
+        }
+        Widget.Colour(label, value, on_change) => {
+            var c = value
+            if a and over and swatch_at(b, px) >= 0 {
+                c = palette[swatch_at(b, px)]
+            } else if a or step != 0 {
+                c = next_colour(value, if step == 0 { 1 } else { step })
+            }
+            if c != value {
+                panels[i].widgets[b.widget] = Widget.Colour(label, c, on_change)
+                queued.push(fn() { on_change(c) })
+            }
+        }
+        Widget.List(rows, on_choose) => {
+            if a {
+                let r = b.sub
+                queued.push(fn() { on_choose(r) })
+            }
+        }
+        Widget.TextField(label, max_chars, on_done) => {
+            if a {
+                start edit(ids[i], b.widget, max_chars, on_done)
+            }
+        }
+        Widget.Wheel(entries, on_choose) => {
+            var at = wheel_at[i].get(b.widget) ?? 0
+            if step != 0 {
+                at = (at + step + entries.len()) % entries.len()
+            }
+            if g.stick_x * g.stick_x + g.stick_y * g.stick_y > 0.25 {
+                at = wheel_entry(entries.len(), g.stick_x, -g.stick_y)
+            }
+            if over {
+                at = wheel_entry(entries.len(), px - (b.x + b.w * 0.5), py - (b.y + b.h * 0.5))
+            }
+            wheel_at[i][b.widget] = at
+            if a {
+                queued.push(fn() { on_choose(at) })
+            }
+        }
+        else => {}
+    }
+}
+
+// The open panels drawn over the HUD, oldest first; the focused stop of the panel that takes the controls outlined.
+fn paint(s: draw.Screen) {
+    paint_touch(s)
+    guard let f = draw.font("MessageFont26") else {
+        return
+    }
+    var taker = -1
+    for i in 0..ids.len() {
+        if stops_of(boxes_of(panels[i], s)).len() > 0 {
+            taker = i
+        }
+    }
+    for i in 0..ids.len() {
+        let p = panels[i]
+        let fr = frame_of(p, s)
+        draw.rect(fr, #000000C0)
+        if let t = p.title {
+            draw.text(f, t, fr.x + width * 0.5, fr.y + pad, 26.0, #FFFFFF, draw.Align.Centre, 0.0)
+        }
+        let boxes = boxes_of(p, s)
+        let stops = stops_of(boxes)
+        for k in 0..boxes.len() {
+            let b = boxes[k]
+            paint_box(f, p.widgets[b.widget], b, i)
+        }
+        if i == taker and editing_id == 0 and stops.len() > 0 {
+            let b = boxes[stops[focus[i]]]
+            draw.rect_outline(draw.Rect { x: b.x - 2.0, y: b.y - 2.0, w: b.w + 4.0, h: b.h + 4.0 }, 2.0, #FFE14D)
+        }
+    }
+}
+
+fn paint_box(f: draw.Font, w: Widget, b: Box, panel: i32) {
+    let ty = b.y + (row - text_size) * 0.5
+    match w {
+        Widget.Button(label, u12) => {
+            draw.rect(draw.Rect { x: b.x, y: b.y + 2.0, w: b.w, h: b.h - 4.0 }, #3D6BF0C0)
+            draw.text(f, label, b.x + b.w * 0.5, ty, text_size, #FFFFFF, draw.Align.Centre, 0.0)
+        }
+        Widget.Slider(label, min, max, value, u13) => {
+            draw.text(f, label, b.x, ty, text_size, #FFFFFF, draw.Align.Left, 0.0)
+            let tx = b.x + b.w * 0.5
+            let tw = b.w * 0.5
+            draw.rect(draw.Rect { x: tx, y: b.y + b.h * 0.5 - 2.0, w: tw, h: 4.0 }, #FFFFFF80)
+            var t: f32 = 0.0
+            if max > min {
+                t = (value - min) / (max - min)
+            }
+            draw.rect(draw.Rect { x: tx + tw * t - 5.0, y: b.y + 6.0, w: 10.0, h: b.h - 12.0 }, #FFFFFF)
+        }
+        Widget.Toggle(label, is_on, unused) => {
+            draw.text(f, label, b.x, ty, text_size, #FFFFFF, draw.Align.Left, 0.0)
+            let box = draw.Rect { x: b.x + b.w - b.h + 6.0, y: b.y + 6.0, w: b.h - 12.0, h: b.h - 12.0 }
+            draw.rect_outline(box, 2.0, #FFFFFF)
+            if is_on {
+                draw.rect(draw.Rect { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, #7BE04A)
+            }
+        }
+        Widget.Colour(label, value, u14) => {
+            draw.text(f, label, b.x, ty, text_size, #FFFFFF, draw.Align.Left, 0.0)
+            let each = b.w * 0.5 / (palette.len() as f32)
+            for k in 0..palette.len() {
+                let sx = b.x + b.w * 0.5 + each * (k as f32)
+                draw.rect(draw.Rect { x: sx + 1.0, y: b.y + 8.0, w: each - 2.0, h: b.h - 16.0 }, palette[k])
+                if palette[k] == value {
+                    draw.rect_outline(draw.Rect { x: sx, y: b.y + 6.0, w: each, h: b.h - 12.0 }, 2.0, #FFFFFF)
+                }
+            }
+        }
+        Widget.List(rows, u15) => {
+            draw.text(f, rows[b.sub], b.x + 8.0, ty, text_size, #FFFFFF, draw.Align.Left, 0.0)
+        }
+        Widget.TextField(label, u16, u17) => {
+            draw.rect_outline(draw.Rect { x: b.x, y: b.y + 2.0, w: b.w, h: b.h - 4.0 }, 2.0, #FFFFFF)
+            var shown = label
+            if editing_id == ids[panel] and editing_widget == b.widget {
+                shown = "{label} ..."
+            }
+            draw.text(f, shown, b.x + 8.0, ty, text_size, #FFFFFF, draw.Align.Left, 0.0)
+        }
+        Widget.Wheel(entries, u18) => {
+            let at = wheel_at[panel].get(b.widget) ?? 0
+            let cx = b.x + b.w * 0.5
+            let cy = b.y + b.h * 0.5
+            let r = b.w * 0.36
+            for k in 0..entries.len() {
+                let a = 6.2831853 * (k as f32) / (entries.len() as f32)
+                let ex = cx + sin(a) * r
+                let ey = cy - cos(a) * r
+                let (tex, name) = entries[k]
+                let size: f32 = if k == at { 52.0 } else { 40.0 }
+                draw.image(tex, draw.Rect { x: ex - size * 0.5, y: ey - size * 0.5, w: size, h: size }, none, #FFFFFF)
+                if k == at {
+                    draw.text(f, name, cx, cy - text_size * 0.5, text_size, #FFFFFF, draw.Align.Centre, b.w * 0.5)
+                }
+            }
+        }
+        Widget.Picture(tex, size) => {
+            draw.image(tex, draw.Rect { x: b.x, y: b.y, w: size.x, h: size.y }, none, #FFFFFF)
+        }
+        Widget.Label(s) => {
+            draw.text(f, s, b.x, ty, text_size, #FFFFFF, draw.Align.Left, b.w)
+        }
+        Widget.ModelView(u19, u20) => {
+            // The frame only: the model is not drawn.
+            draw.rect_outline(draw.Rect { x: b.x, y: b.y, w: b.w, h: b.h }, 2.0, #FFFFFF80)
+        }
+    }
+}
+
+// On-screen buttons where the player plays by touch: each a circle at (x, y) in the HUD's 4:3 frame (0 to
+// 1), radius in layout units. The buttons are drawn only: pressing one does not press its action. The newest
+// caller's layout shows; an empty list takes it away.
+var touch_buttons: list<(input.Action, vec2, f32)> = []
+var touch_owner: u64 = 0
+
+pub fn touch_layout(buttons: list<(input.Action, vec2, f32)>) {
+    touch_buttons = buttons
+    touch_owner = caller()
+    if not drawing {
+        draw.at(draw.Point.HudAfter, paint)
+        drawing = true
+    }
+}
+
+// The touch layout's buttons, drawn only while the player plays by touch.
+fn paint_touch(s: draw.Screen) {
+    if touch_buttons.len() == 0 {
+        return
+    }
+    guard let g = input.game(0) else {
+        return
+    }
+    if g.device != 3 {
+        return
+    }
+    for (action, at, radius) in touch_buttons {
+        let x = s.safe_x + at.x * s.safe_w
+        let y = s.safe_y + at.y * s.safe_h
+        draw.rect_outline(draw.Rect { x: x - radius, y: y - radius, w: radius * 2.0, h: radius * 2.0 }, 3.0, #FFFFFFA0)
+    }
+}
+
+on mods.stopped(gone) {
+    var i = ids.len()
+    while i > 0 {
+        i -= 1
+        if owners[i] == gone {
+            remove_at(i)
+        }
+    }
+    if touch_owner == gone {
+        touch_buttons = []
+        touch_owner = 0
+    }
+}

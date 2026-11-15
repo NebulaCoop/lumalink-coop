@@ -83,7 +83,7 @@ pub struct Emitted {
 
 /// Writes the C of a checked mod. `checked` must have no error (notes are fine); every module of `sources` is the
 /// mod's own, in the checker's order.
-/// The checker's results with every content type but `nerve` (C2: `model`, `effect`, `sound`, `layout`, `font`,
+/// The checker's results with every content type but `nerve` (`model`, `effect`, `sound`, `layout`, `font`,
 /// `movie`) as `text`: a content value is its name at run time, so the back end writes it as any text.
 fn content_as_text(checked: &Checked) -> Checked {
     fn text(t: &Ty) -> Ty {

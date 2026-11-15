@@ -27,35 +27,8 @@ pub fn name(language: &str) -> &'static str {
 
 /// The language to start in.
 pub fn language() -> &'static str {
-    let wanted = std::env::var("LUMALINK_LANGUAGE").ok().or_else(sys_locale::get_locale).unwrap_or_default();
-    pick(&wanted)
-}
-
-/// The game's language for a language's name in the game or a system language code (`fr-CA`, `zh-Hant-TW`, `pt_BR`).
-fn pick(wanted: &str) -> &'static str {
-    if let Some(l) = luma_validate::LANGUAGES.iter().find(|l| l.eq_ignore_ascii_case(wanted)) {
-        return l;
-    }
-    let code = wanted.to_ascii_lowercase().replace('_', "-");
-    let mut parts = code.split('-');
-    let base = parts.next().unwrap_or("");
-    let rest: Vec<&str> = parts.collect();
-    let region = |r: &[&str]| rest.iter().any(|p| r.contains(p));
-    match base {
-        // The Americas' English is the US one; every other English the European one.
-        "en" => if rest.is_empty() || region(&["us", "ca", "mx", "ph"]) { "UsEnglish" } else { "EuEnglish" },
-        "fr" => if region(&["ca", "us"]) { "UsFrench" } else { "EuFrench" },
-        // Spain's Spanish is the European one; every other the Americas' (as the game's own regions split them).
-        "es" => if rest.is_empty() || region(&["es"]) { "EuSpanish" } else { "UsSpanish" },
-        "de" => "EuGerman",
-        "it" => "EuItalian",
-        "nl" => "EuDutch",
-        "pt" => "UsPortuguese",
-        "ja" => "JpJapanese",
-        "ko" => "KrKorean",
-        "zh" => if region(&["hant", "tw", "hk", "mo"]) { "TwTradChinese" } else { "CnSimpChinese" },
-        _ => "UsEnglish",
-    }
+    let wanted = std::env::var("LUMALINK_LANGUAGE").ok().filter(|l| !l.is_empty()).or_else(sys_locale::get_locale).unwrap_or_default();
+    lumalink_core::text::language_for(&wanted)
 }
 
 /// Which of the four the rounded font does not hold all of the language is in: Japanese 0, Korean 1, Simplified 2,
@@ -116,25 +89,6 @@ pub fn system_fonts(bold: bool) -> Vec<(std::path::PathBuf, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_system_language_picks_the_games() {
-        assert_eq!(pick("en-US"), "UsEnglish");
-        assert_eq!(pick("en-GB"), "EuEnglish");
-        assert_eq!(pick("fr-ca"), "UsFrench");
-        assert_eq!(pick("fr-FR"), "EuFrench");
-        assert_eq!(pick("es-MX"), "UsSpanish");
-        assert_eq!(pick("es-ES"), "EuSpanish");
-        assert_eq!(pick("pt_BR"), "UsPortuguese");
-        assert_eq!(pick("ja"), "JpJapanese");
-        assert_eq!(pick("zh-cn"), "CnSimpChinese");
-        assert_eq!(pick("zh-Hans-CN"), "CnSimpChinese");
-        assert_eq!(pick("zh-TW"), "TwTradChinese");
-        assert_eq!(pick("zh-hant"), "TwTradChinese");
-        assert_eq!(pick("sv-se"), "UsEnglish");
-        assert_eq!(pick(""), "UsEnglish");
-        assert_eq!(pick("KrKorean"), "KrKorean");
-    }
 
     #[test]
     fn every_language_has_its_own_name() {

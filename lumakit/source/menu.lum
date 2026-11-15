@@ -1,0 +1,477 @@
+// kit.menu: entries in the game's pause menu. While the pause menu is open (PauseMenu::appear to
+// PauseMenu::kill) the entries that are on show as the game's own buttons: each pair of rows is a screen of the game's
+// PauseMenu layout with everything hidden but its two buttons (NBackUp, NBackDown), their text the entries' labels, as
+// Nebula's Settings button is made from the same layout. The game's Back and Quit move up and shrink to make room;
+// the rows stand under them at the Settings button's size, two columns of two. Past four a page shows ▲ first and ▼
+// last to page through them; at most ten entries in all (`most`; one more is not added, logged). Order: the Mods
+// list's order (top first), then each mod's in the order made. The rows join the game's own menu highlight
+// beside Back and Quit (ui.share_rows); the pad, pointer and touch reach them as the game's buttons. The button with
+// the highlight lights as the game's (ButtonSelectIn, ButtonSelectOut on its own pane); one taken plays the game's
+// decide and its function runs when that ends, at a frame's start. Disabled entries are never highlighted or
+// taken. Everything belongs to the mod that added it.
+
+use svc.ui
+use svc.mods
+
+let most: i32 = 10
+
+// An entry's handle: its number, 0 for none. Its functions are also module functions (`menu.set_label(e, s)`).
+pub struct Entry {
+    id: u32
+    fn set_label(self, s: text) { set_label(self, s) }
+    fn enable(self, is_on: bool) { enable(self, is_on) }
+    fn remove(self) { remove(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+
+var ids: list<u32> = []
+var labels: list<text> = []
+var enabled: list<bool> = []
+var actions: list<fn()> = []
+var owners: list<u64> = []
+var next_id: u32 = 0
+
+// The row screens: screens[k] shows rows 2k and 2k+1 of the window. Open while the pause menu is.
+var screens: list<ui.Screen> = []
+var shown: list<u32> = []
+var shown_panes: list<ui.Pane> = []
+// The page of the window shown (page_slots); the ids ▲ and ▼ stand for in `shown` (no entry has them).
+var page: i32 = 0
+let page_up: u32 = 4294967295
+let page_down: u32 = 4294967294
+// An entry taken: its id, run at the next frame's start; 0 none.
+var taken: u32 = 0
+
+pub fn add_pause_entry(label: text, on_choose: fn()) -> Entry {
+    if ids.len() as i32 >= most {
+        log "kit.menu: the pause menu holds {most} entries; \"{label}\" not added"
+        return Entry { id: 0 }
+    }
+    next_id += 1
+    ids.push(next_id)
+    labels.push(label)
+    enabled.push(true)
+    actions.push(on_choose)
+    owners.push(caller())
+    refresh()
+    return Entry { id: next_id }
+}
+
+fn find(e: Entry) -> i32 {
+    for i in 0..ids.len() {
+        if ids[i] == e.id {
+            return i
+        }
+    }
+    return -1
+}
+
+// An entry of another mod's is not changed: set_label, enable and remove act on the caller's own.
+fn mine(e: Entry) -> i32 {
+    let i = find(e)
+    if i >= 0 and owners[i] == caller() {
+        return i
+    }
+    return -1
+}
+
+pub fn set_label(e: Entry, s: text) {
+    let i = mine(e)
+    if i >= 0 {
+        labels[i] = s
+        refresh()
+    }
+}
+
+pub fn enable(e: Entry, is_on: bool) {
+    let i = mine(e)
+    if i >= 0 {
+        enabled[i] = is_on
+        refresh()
+    }
+}
+
+pub fn remove(e: Entry) {
+    let i = mine(e)
+    if i >= 0 {
+        ids.remove(i)
+        labels.remove(i)
+        enabled.remove(i)
+        actions.remove(i)
+        owners.remove(i)
+        refresh()
+    }
+}
+
+pub fn alive(e: Entry) -> bool {
+    return find(e) >= 0
+}
+
+// The entries in the order the menu shows them: by their mod's place in the Mods list, then as made.
+fn order() -> list<i32> {
+    var out: list<i32> = []
+    var places: list<u32> = []
+    for i in 0..ids.len() {
+        // The maker's place in the Mods list (svc.mods of_mod); one it no longer knows goes last.
+        var place: u32 = 4294967295
+        if let info = mods.of_mod(owners[i]) {
+            place = info.order
+        }
+        var at = out.len()
+        while at > 0 and places[at - 1] > place {
+            at -= 1
+        }
+        out.insert(at, i)
+        places.insert(at, place)
+    }
+    return out
+}
+
+// Where things stand, in the pause menu layout's units (456 high, y up, 0 the middle): the band between the title and
+// the counters runs from +77 to -122, the Settings button at -161. The game's Back and Quit at 0.8 of their size,
+// centred at +48 and -12; the rows at the Settings button's 0.62, in two columns (x -105, +105) on two lines (y -70,
+// -115). The first line stands far enough under Quit that the highlight goes across from row to row, not up to Quit
+// (the focus ring scores a place by its distance along the press plus twice its distance across: across 210 against
+// 105 along and 2 x 58 to Quit).
+let back_scale: f32 = 0.8
+let back_y: f32 = 48.0
+let quit_y: f32 = -12.0
+let row_scale: f32 = 0.62
+let row_x: list<f32> = [-105.0, 105.0]
+let row_y: list<f32> = [-70.0, -115.0]
+let shown_most: i32 = 4
+// Every pane of the game's PauseMenu layout but its buttons' (the cooked layout's names).
+let hidden_panes: list<text> = ["PicStagebase", "ShaStageTitle", "ScenarioTitle", "Stars", "PicStagebase1", "Counter",
+                                "LetterButton", "PositionNull"]
+let button_panes: list<text> = ["NBackUp", "NBackDown"]
+let box_panes: list<text> = ["BackUp", "BackDown"]
+
+// A row screen: the game's PauseMenu layout with only its two buttons, each at the rows' size.
+fn open_row_screen() -> ui.Screen? {
+    guard let sc = ui.open("PauseMenu", ui.Layer.Pause) else {
+        return none
+    }
+    for n in hidden_panes {
+        if let p = ui.pane(sc, n) {
+            ui.set_visible(p, false)
+        }
+    }
+    // Each button's own appear on its own pane, as the game's button plays it (its colours and alpha come in with it);
+    // it moves the button's scale, not its place, so the size is the group's (BackButton, which no animation moves)
+    // and the places are the buttons' own.
+    if let g = ui.pane(sc, "BackButton") {
+        ui.set_scale(g, row_scale, row_scale)
+        ui.set_position(g, 0.0, 0.0)
+    }
+    for n in button_panes {
+        if let p = ui.pane(sc, n) {
+            ui.play_pane(sc, p, "ButtonAppear", false, none)
+            ui.set_position(p, 0.0, 0.0)
+        }
+    }
+    return sc
+}
+
+// A row's button lit or put out with the game's own animations (ButtonSelectIn, ButtonSelectOut) when the highlight
+// comes to it or leaves; `lit[k]` is slot k's (screen k / 2, button k % 2) state.
+var lit: list<bool> = []
+
+fn light(k: i32, want: bool) {
+    while lit.len() as i32 <= k {
+        lit.push(false)
+    }
+    if lit[k as int] == want {
+        return
+    }
+    lit[k as int] = want
+    if let g = ui.pane(screens[k / 2], button_panes[k % 2]) {
+        if want {
+            ui.play_pane(screens[k / 2], g, "ButtonSelectIn", false, none)
+        } else {
+            ui.play_pane(screens[k / 2], g, "ButtonSelectOut", false, none)
+        }
+    }
+}
+
+// The window over the entries: past four, a page shows "▲" first when pages come before it and "▼" last when pages
+// follow, the entries between. Its slots: an entry's index into the ordered list, or -1 for ▲, -2 for ▼.
+fn page_slots(n: i32, p: i32) -> list<i32> {
+    var out: list<i32> = []
+    if n <= shown_most {
+        for i in 0..n {
+            out.push(i as i32)
+        }
+        return out
+    }
+    // Page 0 holds three entries and ▼; every later page ▲, two entries and ▼, or ▲ and up to three at the end.
+    var at: i32 = 0
+    var pg: i32 = 0
+    while true {
+        let up = pg > 0
+        var room = shown_most
+        if up {
+            room -= 1
+        }
+        let rest = n - at
+        let last = rest <= room
+        var take = room
+        if not last {
+            take = room - 1
+        } else {
+            take = rest
+        }
+        if pg == p {
+            if up {
+                out.push(-1)
+            }
+            for i in 0..take {
+                out.push(at + i as i32)
+            }
+            if not last {
+                out.push(-2)
+            }
+            return out
+        }
+        at += take
+        pg += 1
+        if last {
+            // Past the last page: the last page.
+            return page_slots(n, pg - 1)
+        }
+    }
+    return out
+}
+
+// The open menu's rows written again (nothing while the pause menu is closed).
+fn refresh() {
+    if not pause_open {
+        return
+    }
+    let list = order()
+    if page < 0 {
+        page = 0
+    }
+    let slots = page_slots(list.len() as i32, page)
+    // Screens for the rows the window shows (two a screen), opened as needed while the pause menu is up.
+    while screens.len() * 2 < slots.len() {
+        guard let sc = open_row_screen() else {
+            break
+        }
+        screens.push(sc)
+    }
+    shown = []
+    shown_panes = []
+    var rows: list<ui.MenuRow> = []
+    for k in 0..screens.len() {
+        let sc = screens[k]
+        for b in 0..2 {
+            let r = k * 2 + b
+            guard let group = ui.pane(sc, button_panes[b]) else {
+                continue
+            }
+            guard let bx = ui.pane(sc, box_panes[b]) else {
+                continue
+            }
+            if r < slots.len() {
+                let slot = slots[r]
+                var row_on = true
+                if slot == -1 {
+                    ui.set_text(group, "▲")
+                    shown.push(page_up)
+                } else if slot == -2 {
+                    ui.set_text(group, "▼")
+                    shown.push(page_down)
+                } else {
+                    let i = list[slot as int]
+                    ui.set_text(group, labels[i])
+                    row_on = enabled[i]
+                    shown.push(ids[i])
+                }
+                ui.set_visible(group, true)
+                ui.set_position(bx, row_x[b] / row_scale, row_y[k] / row_scale)
+                rows.push(ui.MenuRow { pane: bx, enabled: row_on })
+                shown_panes.push(bx)
+            } else {
+                // An empty slot keeps no highlight for when it shows again.
+                light(r as i32, false)
+                ui.set_visible(group, false)
+            }
+        }
+    }
+    // One set for all the rows, in the host's own focus ring beside the game's Back and Quit.
+    ui.share_rows(rows)
+}
+
+// The game's Back and Quit made room for the rows (scaled and moved up), or put back as the layout has them; only
+// while some mod has an entry. Their layout places are read once, from a pause menu the kit has not moved.
+var back_at: vec3? = none
+var quit_at: vec3? = none
+var group_scale: vec2? = none
+var moved: bool = false
+
+fn place_game_buttons(m: PauseMenu, room: bool) {
+    guard let group = MR::getPane(m, "BackButton") else {
+        return
+    }
+    guard let nup = MR::getPane(m, "NBackUp") else {
+        return
+    }
+    guard let ndown = MR::getPane(m, "NBackDown") else {
+        return
+    }
+    guard let up = MR::getPane(m, "BackUp") else {
+        return
+    }
+    guard let down = MR::getPane(m, "BackDown") else {
+        return
+    }
+    if back_at == none {
+        back_at = up.mTranslate
+        quit_at = down.mTranslate
+        group_scale = group.mScale
+    }
+    if room {
+        // A button's centre is the group's place plus the group's scale times its own place under the group.
+        let g = group.mTranslate.y
+        group.mScale = vec2(back_scale, back_scale)
+        up.mTranslate = vec3(back_at!.x, (back_y - g) / back_scale - nup.mTranslate.y, back_at!.z)
+        down.mTranslate = vec3(quit_at!.x, (quit_y - g) / back_scale - ndown.mTranslate.y, quit_at!.z)
+        moved = true
+    } else if moved {
+        group.mScale = group_scale!
+        up.mTranslate = back_at!
+        down.mTranslate = quit_at!
+        moved = false
+    }
+}
+
+// The game's pause menu closed for a mod, as the player closes it with the pause button (PauseMenu::exeSelecting: its
+// sound, its own disappear, the world going on once it is gone): the menu reads the pause button pressed while it
+// takes input. Nothing while the pause menu is not open; the request ends with the menu.
+var pause_open: bool = false
+var close_wanted: bool = false
+var in_selecting: bool = false
+
+pub fn close_pause() {
+    if pause_open {
+        close_wanted = true
+    }
+}
+
+hook before PauseMenu::exeSelecting() {
+    in_selecting = true
+}
+
+hook after PauseMenu::exeSelecting() {
+    in_selecting = false
+}
+
+hook after MR::isPressedPause(_) -> pressed {
+    if close_wanted and in_selecting {
+        result = true
+    }
+}
+
+hook after PauseMenu::appear() {
+    pause_open = true
+    close_wanted = false
+    page = 0
+    place_game_buttons(self, ids.len() > 0)
+    refresh()
+}
+
+hook before PauseMenu::kill() {
+    pause_open = false
+    close_wanted = false
+    ui.share_rows([])
+    for sc in screens {
+        ui.close(sc)
+    }
+    screens = []
+    shown = []
+    shown_panes = []
+    lit = []
+    deciding_slot = -1
+    deciding = 0
+}
+
+// Each frame's start.
+on frame {
+    if taken != 0 {
+        let t = taken
+        taken = 0
+        if t == page_up {
+            page -= 1
+            refresh()
+        } else if t == page_down {
+            page += 1
+            refresh()
+        } else {
+            let i = find(Entry { id: t })
+            if i >= 0 and enabled[i] {
+                let f = actions[i]
+                f()
+            }
+        }
+    }
+    if screens.len() == 0 {
+        return
+    }
+    let got = ui.shared_focus()
+    for k in 0..shown_panes.len() {
+        if deciding_slot == k as i32 {
+            continue
+        }
+        light(k as i32, same(got.0, shown_panes[k]))
+        if same(got.1, shown_panes[k]) and deciding_slot < 0 {
+            // The game's decide on the button; its entry runs when that ends, as the game's buttons act.
+            if let g = ui.pane(screens[k / 2], button_panes[k % 2]) {
+                deciding_slot = k as i32
+                deciding = shown[k]
+                ui.play_pane(screens[k / 2], g, "ButtonDecide", false, fn(e: ui.Event) { decided(e) })
+            }
+        }
+    }
+}
+
+// The row being decided: its slot and the id it stands for; -1 and 0 none.
+var deciding_slot: i32 = -1
+var deciding: u32 = 0
+
+// The decide's end: the entry taken, and the button back to waiting as the game's after a decide (lit again at the
+// next frame while it keeps the highlight). A decide cut short (the pause menu closed) takes nothing.
+fn decided(e: ui.Event) {
+    match e {
+        ui.Event.AnimationEnd(status) => {
+            let k = deciding_slot
+            if status == none {
+                taken = deciding
+            }
+            deciding_slot = -1
+            deciding = 0
+            if k >= 0 and k / 2 < screens.len() as i32 {
+                if let g = ui.pane(screens[k / 2], button_panes[k % 2]) {
+                    ui.play_pane(screens[k / 2], g, "ButtonWait", false, none)
+                }
+                if k < lit.len() as i32 {
+                    lit[k as int] = false
+                }
+            }
+        }
+    }
+}
+
+on mods.stopped(gone) {
+    var i = ids.len()
+    while i > 0 {
+        i -= 1
+        if owners[i] == gone {
+            ids.remove(i)
+            labels.remove(i)
+            enabled.remove(i)
+            actions.remove(i)
+            owners.remove(i)
+        }
+    }
+    refresh()
+}

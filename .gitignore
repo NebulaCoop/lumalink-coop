@@ -1,4 +1,6 @@
 /target
+# installer/build-setup.ps1 writes the Setup and its signature here.
+/dist
 /.cargo/config.toml
 *.nebulamod/
 # The Nebula tree the shared crates come from (Cargo.toml).

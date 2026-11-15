@@ -22,7 +22,7 @@ pub const MAX_DEPTH: u32 = 512;
 
 /// The stack of the thread the compiler works on. A process's main thread may have 1 MB (Windows), too little for
 /// [`MAX_DEPTH`]. At the limit the costliest form (strings in interpolations) needs 2.3 MB in a release build and
-/// 15.1 MB in a debug build (2026-11-11, `cargo run --example depth_stack`), so this holds it 27 and 4 times over.
+/// 15.1 MB in a debug build (`cargo run --example depth_stack`), so this holds it 27 and 4 times over.
 /// Only the pages used are committed.
 pub const COMPILER_STACK: usize = 64 << 20;
 

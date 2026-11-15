@@ -1,0 +1,251 @@
+{
+ "size": [
+  608,
+  456
+ ],
+ "panes": [
+  {
+   "name": "Panel",
+   "type": "picture",
+   "position": [
+    0,
+    0
+   ],
+   "size": [
+    540,
+    380
+   ],
+   "anchor": "center",
+   "colour": "000000c0",
+   "visible": true
+  },
+  {
+   "name": "Title",
+   "type": "text",
+   "position": [
+    -250,
+    170
+   ],
+   "size": [
+    500,
+    34
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 26,
+   "place": "center",
+   "visible": true
+  },
+  {
+   "name": "Line",
+   "type": "text",
+   "position": [
+    -250,
+    40
+   ],
+   "size": [
+    500,
+    120
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 255,
+   "font": "MessageFont26",
+   "font_size": 24,
+   "place": "center",
+   "visible": false
+  },
+  {
+   "name": "Row0",
+   "type": "text",
+   "position": [
+    -250,
+    120
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row1",
+   "type": "text",
+   "position": [
+    -250,
+    90
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row2",
+   "type": "text",
+   "position": [
+    -250,
+    60
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row3",
+   "type": "text",
+   "position": [
+    -250,
+    30
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row4",
+   "type": "text",
+   "position": [
+    -250,
+    0
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row5",
+   "type": "text",
+   "position": [
+    -250,
+    -30
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row6",
+   "type": "text",
+   "position": [
+    -250,
+    -60
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row7",
+   "type": "text",
+   "position": [
+    -250,
+    -90
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row8",
+   "type": "text",
+   "position": [
+    -250,
+    -120
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  },
+  {
+   "name": "Row9",
+   "type": "text",
+   "position": [
+    -250,
+    -150
+   ],
+   "size": [
+    500,
+    28
+   ],
+   "anchor": "top_left",
+   "text": " ",
+   "length": 96,
+   "font": "MessageFont26",
+   "font_size": 22,
+   "place": "left",
+   "visible": false
+  }
+ ]
+}

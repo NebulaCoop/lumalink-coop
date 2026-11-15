@@ -110,6 +110,11 @@ int32_t lumart_raise(const char* file, uint32_t line, uint32_t code, uint32_t ar
     return 1;
 }
 
+int32_t lumart_for_caller(const char* service, uint32_t major, uint32_t minor) {
+    if (lumart_caller.mod == 0 || lumart_caller.mod == luma_rt_self || luma_rt_core == 0) return 0;
+    return luma_rt_core->service(lumart_caller.mod, service, major, minor) != 0 ? 0 : 1;
+}
+
 int32_t lumart_wrong_call(const char* file, uint32_t line, const char* fn, const char* param, const char* value, const char* must) {
     const char* args[4] = {fn, param, value, must};
     return lumart_raise(file, line, 914, 4, args);

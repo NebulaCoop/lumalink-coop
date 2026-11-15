@@ -115,16 +115,28 @@ pub fn target(platform: &str) -> Option<&'static Target> {
     TARGETS.iter().find(|t| t.platform == platform)
 }
 
-/// The clang to use: `LUMALINK_CLANG`, then LLVM's own folder, then `clang` on the path.
+/// The clang to use: `LUMALINK_CLANG`, then the clang that comes with LumaLink ([`bundled_clang`]), then LLVM's own
+/// folder, then `clang` on the path.
 pub fn default_clang() -> PathBuf {
-    if let Some(p) = std::env::var_os("LUMALINK_CLANG") {
+    if let Some(p) = std::env::var_os("LUMALINK_CLANG").filter(|v| !v.is_empty()) {
         return PathBuf::from(p);
+    }
+    if let Some(own) = bundled_clang() {
+        return own;
     }
     let llvm = Path::new("C:/Program Files/LLVM/bin/clang.exe");
     if cfg!(windows) && llvm.is_file() {
         return llvm.to_path_buf();
     }
     PathBuf::from("clang")
+}
+
+/// The clang that comes with LumaLink: `toolchain/bin/clang` beside the program (LLVM [`LLVM`], with lld and clang's
+/// own headers, as LumaLink's Setup and archives install it). None when LumaLink was installed without it.
+pub fn bundled_clang() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let clang = exe.parent()?.join("toolchain").join("bin").join(if cfg!(windows) { "clang.exe" } else { "clang" });
+    clang.is_file().then_some(clang)
 }
 
 /// The modules under `source/`: (module path with `/`, without `.lum`; file), sorted by path (docs/modding/language/compiled-form.md, section 1.2).
@@ -354,6 +366,7 @@ pub fn game_of(rows: &luma_validate::names::Names, names: &Path, sdk: Option<&Pa
     let mut game = Game::from_names(rows);
     game.factory = factory_rows(names).map_err(GameError::Factory)?;
     game.tables = game_tables(names).map_err(GameError::Tables)?;
+    game.shipped_mods = Some(names.join("mods")).filter(|p| p.is_dir());
     let mut unread = Vec::new();
     if let Some(sdk) = sdk {
         let (services, errors) = services_of_sdk(sdk);
@@ -363,32 +376,110 @@ pub fn game_of(rows: &luma_validate::names::Names, names: &Path, sdk: Option<&Pa
     Ok((game, unread))
 }
 
-/// The interface file of library mod `id` (docs/modding/language/compiled-form.md) for a mod in `folder`: the needed mod's
-/// own folder beside it (`../<id>/code/<id>.lumi`), as LumaLink's mod folder and a modder's workspace both hold mods.
-/// None when it has none (a needed mod with no functions for others).
-pub fn interface_of(folder: &Path, id: &str) -> Option<PathBuf> {
-    let p = folder.parent()?.join(id).join("code").join(format!("{id}.lumi"));
+/// The folder of mod `id`, needed by the mod in `folder`, looked for in this order:
+///
+/// 1. its own folder beside it (`../<id>`), as a modder's workspace holds mods;
+/// 2. the installed game's mods folder (`<data>/mods`), where the game installs the mods it comes with at start;
+/// 3. the `.luma` the game comes with in `shipped` ([`Game::shipped_mods`]), for a game not started since it was
+///    installed or updated: unpacked once into LumaLink's folder in the system's temporary folder.
+///
+/// None when none has it.
+pub fn needed_folder(folder: &Path, id: &str, shipped: Option<&Path>) -> Option<PathBuf> {
+    let beside = folder.parent().map(|p| p.join(id)).filter(|p| p.is_dir());
+    beside
+        .or_else(|| installed_mod(&crate::installed::Installed::find()?.data.join("mods"), id))
+        .or_else(|| unpacked(&shipped_mod(shipped?, id)?))
+}
+
+/// The id a luma.json's bytes give; None when they are not JSON or give none.
+fn manifest_id(bytes: &[u8]) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    Some(json.get("id")?.as_str()?.to_string())
+}
+
+/// The folder in `mods` whose luma.json has id `id`: `<mods>/<id>` first (the game names a mod's folder by its id),
+/// else any other (a folder renamed by the player, or one the game named `<id>-2` beside another).
+fn installed_mod(mods: &Path, id: &str) -> Option<PathBuf> {
+    let has_id = |p: &Path| std::fs::read(p.join("luma.json")).ok().and_then(|b| manifest_id(&b)).is_some_and(|i| i == id);
+    let named = mods.join(id);
+    if has_id(&named) {
+        return Some(named);
+    }
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(mods).ok()?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    folders.sort();
+    folders.into_iter().find(|p| has_id(p))
+}
+
+/// The `.luma` in `shipped` whose luma.json has id `id`: `<id>.luma` first, else any other, by name.
+fn shipped_mod(shipped: &Path, id: &str) -> Option<PathBuf> {
+    let has_id = |p: &Path| crate::luma_file::read_entry(p, "luma.json").ok().and_then(|b| manifest_id(&b)).is_some_and(|i| i == id);
+    let named = shipped.join(format!("{id}.luma"));
+    if named.is_file() && has_id(&named) {
+        return Some(named);
+    }
+    let luma = |p: &Path| p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("luma"));
+    let mut files: Vec<PathBuf> = std::fs::read_dir(shipped).ok()?.flatten().map(|e| e.path()).filter(|p| luma(p)).collect();
+    files.sort();
+    files.into_iter().find(|p| has_id(p))
+}
+
+/// The folder a `.luma` the game comes with is unpacked into: `lumalink-shipped/<name>-<size>-<time>` in the system's
+/// temporary folder, named by the file's size and time so a changed file is unpacked again. Unpacked whole into a
+/// folder of its own first and then named, so two builds at once never read half of one. None when it cannot be
+/// unpacked, or an entry's name is not a plain relative path.
+fn unpacked(luma: &Path) -> Option<PathBuf> {
+    let meta = std::fs::metadata(luma).ok()?;
+    let time = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+    let stem = luma.file_stem()?.to_string_lossy();
+    let root = std::env::temp_dir().join("lumalink-shipped");
+    let folder = root.join(format!("{stem}-{}-{time}", meta.len()));
+    if folder.join("luma.json").is_file() {
+        return Some(folder);
+    }
+    let plain = |name: &str| !name.is_empty() && !name.starts_with('/') && !name.contains(['\\', ':']) && name.split('/').all(|p| !p.is_empty() && p != "." && p != "..");
+    if !crate::luma_file::list(luma).ok()?.iter().all(|e| plain(&e.name)) {
+        return None;
+    }
+    let part = root.join(format!("{stem}-{}-{time}.part-{}", meta.len(), std::process::id()));
+    let _ = std::fs::remove_dir_all(&part);
+    std::fs::create_dir_all(&part).ok()?;
+    if crate::luma_file::extract(luma, &[], &part).is_err() {
+        let _ = std::fs::remove_dir_all(&part);
+        return None;
+    }
+    if std::fs::rename(&part, &folder).is_err() {
+        // Another build named its copy first: that one is the same file's.
+        let _ = std::fs::remove_dir_all(&part);
+    }
+    folder.join("luma.json").is_file().then_some(folder)
+}
+
+/// The interface file of library mod `id` (docs/modding/language/compiled-form.md) for a mod in `folder`, in the needed
+/// mod's folder ([`needed_folder`]): `code/<id>.lumi`. None when it has none (a needed mod with no functions for
+/// others).
+pub fn interface_of(folder: &Path, id: &str, shipped: Option<&Path>) -> Option<PathBuf> {
+    let p = needed_folder(folder, id, shipped)?.join("code").join(format!("{id}.lumi"));
     p.is_file().then_some(p)
 }
 
 /// The names content literals are checked against (docs/modding/language/language.md, section 10): the mod's own assets
 /// (`layers/<layer>/assets/<path>`, docs/modding/format/luma.md, section 5) by their path, and the needed mods' beside it
-/// (`../<id>/`) as `<id>:<path>`. A sound is `<path>.sound.json` (sound.md), a movie `<path>.movie.json`
+/// ([`needed_folder`]) as `<id>:<path>`. A sound is `<path>.sound.json` (sound.md), a movie `<path>.movie.json`
 /// (movies.md), a font `<path>.font.json` (layout.md 2a), a model `<path>.glb` or `.gltf` but not its levels
 /// (`<path>Middle`, `<path>Low`, `.lodN`) nor collision or a camera (models.md); `data` is any asset by its path
 /// with its ending. Effects (names inside effects.json), layouts, nerves and texts (the game's message tables are not
 /// in the build) are given no set, so the checker leaves them unchecked. A bare model name may be one of the game's
 /// archives (ObjectData, MapPartsData), which the build has no list of: one not the mod's is left to `check --game`.
-pub fn content_names(folder: &Path, needs: &[String]) -> ContentNames {
+pub fn content_names(folder: &Path, needs: &[String], shipped: Option<&Path>) -> ContentNames {
     let mut content = ContentNames::default();
     content.game_unlisted.insert("model".to_string());
     for word in ["sound", "movie", "font", "model", "data"] {
         content.names.insert(word.to_string(), Default::default());
     }
     add_assets(&mut content, folder, "");
-    if let Some(parent) = folder.parent() {
-        for id in needs {
-            add_assets(&mut content, &parent.join(id), &format!("{id}:"));
+    for id in needs {
+        if let Some(need) = needed_folder(folder, id, shipped) {
+            add_assets(&mut content, &need, &format!("{id}:"));
         }
     }
     content
@@ -457,18 +548,19 @@ pub struct CheckInputs {
 }
 
 impl CheckInputs {
-    /// The inputs of the mod in `folder`. Err: luma.json cannot be read or has no id, or a file cannot be read.
-    pub fn read(folder: &Path) -> Result<CheckInputs, BuildError> {
+    /// The inputs of the mod in `folder`, its needed mods found by [`needed_folder`] with the game's `.luma` files in
+    /// `shipped`. Err: luma.json cannot be read or has no id, or a file cannot be read.
+    pub fn read(folder: &Path, shipped: Option<&Path>) -> Result<CheckInputs, BuildError> {
         let Manifest { id, version, needs, options } = manifest(folder)?;
         let headers = c_sources(folder)?.headers;
         let mut interfaces = Vec::new();
         for need in &needs {
-            if let Some(path) = interface_of(folder, need) {
+            if let Some(path) = interface_of(folder, need, shipped) {
                 let text = std::fs::read_to_string(&path).map_err(|e| BuildError::Read(path.clone(), e))?;
                 interfaces.push(Interface { id: need.clone(), path, text });
             }
         }
-        let content = content_names(folder, &needs);
+        let content = content_names(folder, &needs, shipped);
         Ok(CheckInputs { id, version, needs, options, headers, content, interfaces })
     }
 
@@ -507,7 +599,7 @@ impl CheckInputs {
 
 /// Checks and writes the mod's C into `work/lum/` (the front end and the back end, on the compiler's stack).
 pub fn generate(folder: &Path, game: &Game, work: &Path) -> Result<(String, emit::Emitted, Vec<(String, Diagnostic)>), BuildError> {
-    let inputs = CheckInputs::read(folder)?;
+    let inputs = CheckInputs::read(folder, game.shipped_mods.as_deref())?;
     let (id, version) = (inputs.id.clone(), inputs.version.clone());
     let files = scripts(folder)?;
     if files.is_empty() {
@@ -892,7 +984,7 @@ fn skip_value(b: &[u8], i: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{content_names, generate, mod_info_has_layout, option_spec, targets, with_platform, BuildError, TARGETS};
+    use super::{content_names, generate, installed_mod, interface_of, mod_info_has_layout, option_spec, targets, with_platform, BuildError, TARGETS};
     use lumascript::check::{OptionKind, OptionSpec};
 
     /// luma.json's options as `option` declarations are checked: a number is whole when every number given is;
@@ -931,6 +1023,60 @@ mod tests {
         assert!(!sdk("    /* no runtime_layout yet */\n    // runtime_layout later\n"));
         assert!(!sdk(""));
         assert!(!mod_info_has_layout(&dir.path().join("none")));
+    }
+
+    /// A needed mod in the installed game's mods folder: the folder of its id first, else the one whose luma.json has
+    /// it; none when no folder has it.
+    #[test]
+    fn a_needed_mod_is_found_in_the_installed_mods_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |p: &str, text: &str| {
+            let p = dir.path().join(p);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        write("mods/My Kit/luma.json", r#"{"id": "kit"}"#);
+        write("mods/other/luma.json", r#"{"id": "other"}"#);
+        let mods = dir.path().join("mods");
+        assert_eq!(installed_mod(&mods, "kit"), Some(mods.join("My Kit")));
+        write("mods/kit/luma.json", r#"{"id": "kit"}"#);
+        assert_eq!(installed_mod(&mods, "kit"), Some(mods.join("kit")));
+        assert_eq!(installed_mod(&mods, "absent"), None);
+    }
+
+    /// A needed mod found nowhere else is read from the `.luma` the game comes with: its interface and its assets'
+    /// names, whatever the file is called; a `.luma` of another id is not it.
+    #[test]
+    fn a_needed_mod_is_read_from_the_luma_the_game_comes_with() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |p: &str, text: &str| {
+            let p = dir.path().join(p);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        // A unique id: the installed game's mods folder, looked in before, never has it.
+        let id = format!("shipped-kit-{}", std::process::id());
+        write("kit/luma.json", &format!(r#"{{"id": "{id}"}}"#));
+        write(&format!("kit/code/{id}.lumi"), "interface");
+        write("kit/layers/base/assets/Pop.sound.json", "{}");
+        write("other/luma.json", r#"{"id": "other"}"#);
+        write("work/gold/luma.json", r#"{"id": "gold"}"#);
+        let shipped = dir.path().join("shipped");
+        std::fs::create_dir_all(&shipped).unwrap();
+        for (folder, file) in [("kit", "Kit Renamed.luma"), ("other", "a.luma")] {
+            let files = crate::luma_file::folder_files(&dir.path().join(folder)).unwrap();
+            crate::luma_file::write(&files, &shipped.join(file)).unwrap();
+        }
+        let gold = dir.path().join("work").join("gold");
+        let lumi = interface_of(&gold, &id, Some(&shipped)).expect("found in the shipped .luma");
+        assert_eq!(std::fs::read_to_string(&lumi).unwrap(), "interface");
+        let c = content_names(&gold, &[id.clone()], Some(&shipped));
+        assert!(c.names["sound"].contains(&format!("{id}:Pop")));
+        assert_eq!(interface_of(&gold, &id, None), None);
+        assert_eq!(interface_of(&gold, "absent", Some(&shipped)), None);
+        // Read again: the same unpacked folder.
+        assert_eq!(interface_of(&gold, &id, Some(&shipped)), Some(lumi.clone()));
+        let _ = std::fs::remove_dir_all(lumi.parent().unwrap().parent().unwrap());
     }
 
     /// A needed mod whose interface file carries another runtime layout is S0160, naming it, before anything is built.
@@ -987,7 +1133,7 @@ mod tests {
         ] {
             file(p);
         }
-        let c = content_names(&dir.path().join("gold"), &["lib".to_string(), "absent".to_string()]);
+        let c = content_names(&dir.path().join("gold"), &["lib".to_string(), "absent".to_string()], None);
         let names = |w: &str| c.names[w].iter().cloned().collect::<Vec<_>>();
         assert_eq!(names("sound"), ["Throw", "lib:Pop"]);
         assert_eq!(names("model"), ["Gold/Ball", "Low"]);

@@ -1971,10 +1971,12 @@ dependencies = [
  "defmt",
  "jiff-core",
  "jiff-static",
+ "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-link",
 ]
 
 [[package]]
@@ -1997,6 +1999,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jiff-tzdb"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0980fca2cc272465bd60e82397607ba9f33add9e48defd77923301bbd03808f2"
+
+[[package]]
+name = "jiff-tzdb-platform"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
+dependencies = [
+ "jiff-tzdb",
 ]
 
 [[package]]
@@ -2243,12 +2260,36 @@ name = "lumalink-gui"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "crc32fast",
  "eframe",
+ "jiff",
  "luma-validate",
  "lumalink-core",
+ "miniz_oxide 0.8.9",
  "rfd",
  "sys-locale",
  "tempfile",
+]
+
+[[package]]
+name = "lumalink-setup"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "eframe",
+ "libc",
+ "lumalink-core",
+ "lumalink-gui",
+ "miniz_oxide 0.8.9",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "windows",
+ "windows-sys 0.61.2",
+ "winreg",
+ "zip",
 ]
 
 [[package]]
@@ -3313,7 +3354,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4641,6 +4682,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "winreg"
+version = "0.55.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5006,6 +5057,7 @@ dependencies = [
  "lzma-rs",
  "memchr",
  "zopfli",
+ "zstd",
 ]
 
 [[package]]

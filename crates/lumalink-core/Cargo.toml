@@ -27,6 +27,7 @@ crc32fast.workspace = true
 tempfile.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-# run's game started hidden when LumaLink was (jobs::start): STARTUPINFO and CreateProcessW.
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
+# run's game started hidden when LumaLink was (jobs::start): STARTUPINFO and CreateProcessW. Updates (update.rs):
+# WinHTTP for the requests, CNG for the Setup's signature.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Networking_WinHttp", "Win32_Security_Cryptography"] }
 

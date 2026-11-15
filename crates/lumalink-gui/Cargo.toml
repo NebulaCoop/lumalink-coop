@@ -14,8 +14,11 @@ anyhow.workspace = true
 eframe.workspace = true
 lumalink-core = { path = "../lumalink-core" }
 luma-validate.workspace = true
+jiff = "0.2"
 rfd.workspace = true
 sys-locale = "0.3"
-
-[dev-dependencies]
 tempfile.workspace = true
+
+[build-dependencies]
+crc32fast = "1.5"
+miniz_oxide = "0.8"

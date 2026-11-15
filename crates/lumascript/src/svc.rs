@@ -605,8 +605,8 @@ impl Header {
             let case = p.ident()?;
             if p.is_punct('=') {
                 p.next_code();
-                // Whole numbers with `( )`, unary `-`, `+ -`, `<<` and `|` as C reads them (J 2026-11-12:
-                // `LUMA_INPUT_BUTTONS_ALL = (1u << 13) - 1u`).
+                // Whole numbers with `( )`, unary `-`, `+ -`, `<<` and `|` as C reads them
+                // (`LUMA_INPUT_BUTTONS_ALL = (1u << 13) - 1u`).
                 next = fold_or(p, &case)?;
             }
             let mut c = std::mem::take(&mut leading);
@@ -627,7 +627,7 @@ impl Header {
         p.punct('{')?;
         let mut members = Vec::new();
         // A section's comment (`/* ---- 2-D (...) ---- ... */`) is every function's below it until the next section
-        // (J 2026-11-12: draw.rect_outline's statuses are its section's).
+        // (draw.rect_outline's statuses are its section's).
         let mut section = String::new();
         loop {
             let mut lead = Vec::new();
@@ -954,13 +954,13 @@ pub fn pixels_in(ps: &[Decl], i: usize) -> bool {
         && is_u32(ps.get(i - 1), 0, &["h"])
 }
 
-/// An array in (C1c): `const T* x, uint32_t count` at `ps[i]` (`ui.menu_rows`, `draw.post.params`): one `list<T>`
+/// An array in: `const T* x, uint32_t count` at `ps[i]` (`ui.menu_rows`, `draw.post.params`): one `list<T>`
 /// argument. The face reading and the back end both ask this.
 pub fn array_in(ps: &[Decl], i: usize) -> bool {
     matches!(ps.get(i), Some(Decl { ty: CT { konst: true, ptrs: 1, .. }, array: None, .. })) && is_u32(ps.get(i + 1), 0, &["count"])
 }
 
-/// An array out (C1c): `T* out, uint32_t capacity|count, uint32_t* count|total|found` at `ps[i]` (`mods.needing`,
+/// An array out: `T* out, uint32_t capacity|count, uint32_t* count|total|found` at `ps[i]` (`mods.needing`,
 /// `content.model.player_parts`, `input.dev.list`): a `list<T>` out; the call asks the number with a capacity of 0
 /// first. The face reading and the back end both ask this.
 pub fn array_out(ps: &[Decl], i: usize) -> bool {
@@ -1103,6 +1103,9 @@ pub struct Face {
     /// (`LUMA_<NAME>_MAJOR`.`MINOR`, `"1.0"`; the kind 5 row, LUMA_SERVICE).
     pub header: String,
     pub version: String,
+    /// The permission the player gives a mod before it may use the service (`#define LUMA_<NAME>_PERMISSION
+    /// "<permission>"` beside its name), or none.
+    pub permission: Option<String>,
     /// A struct's C name by its script name (`Rect` -> `LumaDrawRect`).
     pub struct_c: BTreeMap<String, String>,
     /// The structs (C names, this face's and the shared headers') whose first field is `uint32_t size`: the
@@ -1575,7 +1578,7 @@ impl Face {
         longer_names.dedup();
         let longer: Vec<String> = longer_names.iter().map(|c| format!("Luma{}", camel(c))).collect();
         // The part of a C name after this service's prefix, when it is this service's; a name that is the prefix itself
-        // (`typedef LumaHandle LumaMovie;`) is the service's last word (`movie.Movie`, C1g).
+        // (`typedef LumaHandle LumaMovie;`) is the service's last word (`movie.Movie`).
         let own = |c: &str| -> Option<String> {
             let rest = after_prefix(c, &prefix)?;
             if longer.iter().any(|l| after_prefix(c, l).is_some()) {
@@ -1589,7 +1592,7 @@ impl Face {
         if !matches!(table.members.first(), Some(Member::Field(Decl { ty: CT { base, ptrs: 0, .. }, name, .. })) if base == "LumaServiceTable" && name == "base") {
             return Err(FaceError(format!("{table_name} does not start with LumaServiceTable base")));
         }
-        let mut face = Face { name: service.to_string(), functions: Vec::new(), structs: BTreeMap::new(), enums: BTreeMap::new(), handles: Vec::new(), events: BTreeMap::new(), stream: BTreeMap::new(), constants: BTreeMap::new(), unreadable: Vec::new(), shared: Vec::new(), shared_aliases: Vec::new(), shared_structs: BTreeMap::new(), header: String::new(), version: String::new(), struct_c: BTreeMap::new(), sized: Vec::new(), callbacks: BTreeMap::new(), foreign: foreign.clone(), foreign_structs: included.clone(), field_ptrs: BTreeMap::new() };
+        let mut face = Face { name: service.to_string(), functions: Vec::new(), structs: BTreeMap::new(), enums: BTreeMap::new(), handles: Vec::new(), events: BTreeMap::new(), stream: BTreeMap::new(), constants: BTreeMap::new(), unreadable: Vec::new(), shared: Vec::new(), shared_aliases: Vec::new(), shared_structs: BTreeMap::new(), header: String::new(), version: String::new(), permission: header.texts.get(&format!("LUMA_{}_PERMISSION", upper(service))).cloned(), struct_c: BTreeMap::new(), sized: Vec::new(), callbacks: BTreeMap::new(), foreign: foreign.clone(), foreign_structs: included.clone(), field_ptrs: BTreeMap::new() };
         // The header's structs of the other services it declares (the one with the longest prefix owns each).
         let services: Vec<&str> = catalog.iter().copied().chain(header.texts.iter().filter(|(k, _)| k.ends_with("_NAME")).map(|(_, v)| v.as_str())).collect();
         for s in &header.structs {
@@ -1751,8 +1754,8 @@ impl Face {
             face.functions.push(made);
         }
         face.read_streams(header, service, &own);
-        // A service the header says needs permission `native` (draw.native) is C's alone, every function of it.
-        if header.lead.contains("permission `native`") {
+        // A service of permission `native` (draw.native) is C's alone, every function of it.
+        if face.permission.as_deref() == Some("native") {
             for f in &mut face.functions {
                 f.shape = Shape::NotCallable(Unfit::Native);
             }
@@ -1998,7 +2001,7 @@ impl Face {
                 return Some(STy::Struct(rest));
             }
         }
-        // Another service's handle (C1g): content.fx's start_on_model takes a `content.model.Model`.
+        // Another service's handle: content.fx's start_on_model takes a `content.model.Model`.
         self.foreign.get(&t.base).filter(|(s, _)| *s != self.name).map(|(s, k)| STy::HandleOf(s.clone(), k.clone()))
     }
 
@@ -2120,7 +2123,7 @@ impl Face {
                         return unfit(&d.name, ParamWhy::Buffer, format!("{}*", t.base));
                     }
                     // Its length comes back as the int64_t result, or in the `uint64_t* length` after the size, which
-                    // is then no out of its own (C1b). Names each followed by a 0 byte are a list of texts.
+                    // is then no out of its own. Names each followed by a 0 byte are a list of texts.
                     let ty = match t.base.as_str() {
                         "char" if f.comment.contains(NAMES_PHRASE) => STy::List(Box::new(STy::Text)),
                         "char" => STy::Text,
@@ -2149,7 +2152,7 @@ impl Face {
                     i += 2;
                     continue;
                 }
-                // An array with its count (C1c): a list of a number, enum, handle or struct the script can write whole.
+                // An array with its count: a list of a number, enum, handle or struct the script can write whole.
                 if t.ptrs == 1 && (array_in(ps, i) || array_out(ps, i)) {
                     let pointee = CT { base: t.base.clone(), konst: false, ptrs: 0 };
                     let elem = own(&t.base)

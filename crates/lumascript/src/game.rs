@@ -313,6 +313,9 @@ pub struct Game {
     /// luma_numbers.json's `tables`). None when LumaLink was given none, and then `set_table` and `table` cannot be
     /// laid out (S0150).
     pub tables: Option<HashMap<String, GameTable>>,
+    /// The folder of the `.luma` files the game comes with (`mods` in its self-description folder, LumaKit): a mod
+    /// these need is read from there when it is neither beside the mod nor installed. None when the folder has none.
+    pub shipped_mods: Option<std::path::PathBuf>,
 }
 
 /// A table of the game's data as luma_numbers.json lists it.
@@ -683,7 +686,7 @@ impl Game {
                     return Ok(GameTy::View { record: r, konst: false });
                 }
                 // A record that cannot be the script's copy (its copy or drop is its own code, or it has none) is,
-                // written as a type, its view, as a class is (decision (a): HitSensor); valid
+                // written as a type, its view, as a class is (HitSensor); valid
                 // where a view is, as hook parameters are.
                 match self.by_value(&r) {
                     Ok(()) => Ok(GameTy::Struct(r)),
@@ -1029,7 +1032,7 @@ impl Game {
         };
         let t = ctype::parse_type(&global.ty).map_err(NotCrossing::Unreadable)?;
         let ty = self.map(&t, Place::Global, 0)?;
-        Ok(PlaceTy { read_only: global.konst || top_const(&t) || matches!(ty, GameTy::Opt(ref t) if **t == GameTy::Text), ty, constant: None })
+        Ok(PlaceTy { read_only: global.is_const || top_const(&t) || matches!(ty, GameTy::Opt(ref t) if **t == GameTy::Text), ty, constant: None })
     }
 
     /// A table's element as a part of the table's bytes: the record it names (any record, plain data or not: the

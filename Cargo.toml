@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/lumalink-core", "crates/lumalink", "crates/lumalink-gui", "crates/lumascript"]
+members = ["crates/lumalink-core", "crates/lumalink", "crates/lumalink-gui", "crates/lumalink-setup", "crates/lumascript"]
 exclude = ["nebula"]
 resolver = "2"
 

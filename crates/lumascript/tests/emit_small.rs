@@ -493,7 +493,7 @@ fn json_value_methods_through_question_dot() {
     assert!(c.contains("lumart_json_list(") && c.contains("lumart_text_len("), "{c}");
 }
 
-/// The docs/modding/language/classes.md's make (order 8): the place's fields and the count go to lumart_make with LiveActor's class
+/// The docs/modding/language/classes.md's make: the place's fields and the count go to lumart_make with LiveActor's class
 /// slot; the standard module is its own C file, lum/lm_std.c, and the whole compiles against the SDK.
 #[test]
 fn make_calls_the_kernel_with_the_place() {
@@ -514,7 +514,7 @@ fn make_calls_the_kernel_with_the_place() {
     assert!(std.contains("int32_t lm_init_1(void)"), "{std}");
 }
 
-/// Order 9 (C4, C6): a matrix by its rows, a row and a column (an index outside S0902), and bytes as text when they
+/// A matrix by its rows, a row and a column (an index outside S0902), and bytes as text when they
 /// are well-formed UTF-8.
 #[test]
 fn matrices_and_bytes_as_text() {
@@ -524,7 +524,7 @@ fn matrices_and_bytes_as_text() {
     assert!(c.contains("lumart_bytes_text(&"), "{c}");
 }
 
-/// Order 9 (C6): `T()` is the struct of its defaults; a list's element and an element's field are written in place;
+/// `T()` is the struct of its defaults; a list's element and an element's field are written in place;
 /// a handle to a mod's class where a handle to its base goes is the same handle.
 #[test]
 fn defaults_elements_and_handles_of_a_base() {
@@ -923,8 +923,8 @@ fn a_result_less_task_gives_a_pending_of_nothing() {
     .unwrap();
 }
 
-/// Out buffers (order 2, C1b): the length first with a null buffer of size 0, then the fill. Three forms of the
-/// SDK (tests/data/svc/c2: Nebula-IntS 1cc348af3's headers): an `int64_t` length result (`mods.option` text with its
+/// Out buffers: the length first with a null buffer of size 0, then the fill. Three forms of the
+/// SDK (tests/data/svc/c2's headers): an `int64_t` length result (`mods.option` text with its
 /// NUL, `save.get` bytes, `net.local.address`), a status with the length in `uint64_t* length` (`mods.kit_read`
 /// bytes, `mods.kit_names` names each followed by a 0 byte: `list<text>`). Each has answers, so each is `T?`.
 #[test]
@@ -986,7 +986,7 @@ fn out_buffers_ask_the_length_then_fill() {
     .unwrap();
 }
 
-/// Arrays with a count (order 3, C1c): `const T* x, uint32_t count` is one `list<T>` argument (`ui.menu_rows`
+/// Arrays with a count: `const T* x, uint32_t count` is one `list<T>` argument (`ui.menu_rows`
 /// of structs, `draw.post.params` of floats), its elements passed as C has them, null for none; `T* out, uint32_t
 /// capacity, uint32_t* count` is a `list<T>` out (`mods.needing`), asked with a capacity of 0 first.
 #[test]
@@ -1035,7 +1035,7 @@ fn arrays_with_a_count_are_lists() {
     .unwrap();
 }
 
-/// Order 4 (C1d, C1g): a handle typedef named as its service is that service's last word (`typedef LumaHandle
+/// A handle typedef named as its service is that service's last word (`typedef LumaHandle
 /// LumaMovie;` -> `movie.Movie`), another service's handle is that service's (`content.fx.start_on_model` takes a
 /// `content.model.Model`), and bytes go in as their block's bytes and length (`save.set`).
 #[test]
@@ -1079,7 +1079,7 @@ fn handles_named_as_their_service_and_bytes_in() {
     .unwrap();
 }
 
-/// Content values (order 7): `model effect sound layout font movie` are types whose value is the name, so a
+/// Content values: `model effect sound layout font movie` are types whose value is the name, so a
 /// literal is its text, `name()` gives it, two compare as their names, `<kind>_named(t)` gives `none` for an empty
 /// name, and a name goes to a service's `Luma*Name` parameter as its C text (`content.fx.start_on_model`).
 #[test]
@@ -1118,9 +1118,9 @@ fn content_values_are_their_names() {
     .unwrap();
 }
 
-/// Requests (order 5, C1a): with a closure (`time.timer`, `clipboard.get_text`) the call gives the handle and
+/// Requests: with a closure (`time.timer`, `clipboard.get_text`) the call gives the handle and
 /// a trampoline fills the event's record, its take (take_text) called inside the event's call; waited (`fs.read`,
-/// `fs.list`) a one-step task parks until the event and gives the data. Headers: Nebula-IntS's of 2026-11-12.
+/// `fs.list`) a one-step task parks until the event and gives the data.
 #[test]
 fn requests_with_a_closure_or_waited() {
     let dir = format!("{}/tests/data/svc/c2", env!("CARGO_MANIFEST_DIR"));
@@ -1213,7 +1213,7 @@ fn a_service_takes_structs_colours_and_callbacks() {
     .unwrap();
 }
 
-/// Director 2026-11-12: a hook's `const char *` parameter is `text?`, read at the hook's start; a text written to it
+/// A hook's `const char *` parameter is `text?`, read at the hook's start; a text written to it
 /// goes to the call as its kept copy (a wrap's before `proceed()`, a before's on its way out), only when changed. A
 /// parameter that does not cross is bound as `_` (by a name: S0060); a `const char16_t *` result takes a text, its
 /// UTF-16 kept copy. `use` paths take reserved words, and a reserved word before `.` names that module.
@@ -1244,7 +1244,7 @@ fn hooks_read_and_write_texts_and_pass_what_does_not_cross() {
 }
 
 /// A service's enum compares with `==`, is matched by its cases (`draw.Point.Loading`, every case covering it) and
-/// converts with `as` (J, FB 2026-11-12). A type on an `on` event's second name is a
+/// converts with `as`. A type on an `on` event's second name is a
 /// parse error.
 #[test]
 fn a_service_enum_compares_matches_and_converts() {
@@ -1283,7 +1283,7 @@ fn a_service_enum_compares_matches_and_converts() {
     assert!(d.iter().any(|d| d.code == code::UNEXPECTED), "{d:?}");
 }
 
-/// Order 6 (C1f): streams. net.local's udp_open and tcp_listen take `fn(local.Event)`, matched by kind with
+/// Streams. net.local's udp_open and tcp_listen take `fn(local.Event)`, matched by kind with
 /// their fields (a datagram's `from` a `local.Peer`, an accepted socket from the event's value); net.internet's
 /// tcp_connect takes its DATA through `take`, whose comment it has by "As net.local's send, take and close"; a watch
 /// (input.watch_device, mods.watch_mods) gives no handle; audio.play's closure and `how` may be none; input's TEXT
@@ -1401,9 +1401,9 @@ on start {
     .unwrap();
 }
 
-/// Fixed arrays and another service's struct (C order 9b): `const float scale[3]` takes a vec3, `const LumaDrawVec2
+/// Fixed arrays and another service's struct: `const float scale[3]` takes a vec3, `const LumaDrawVec2
 /// points[3]` and `const float m[6]` a tuple, each passed as an array made in the call; input.inject's `const
-/// LumaInputGame* state` takes input's own `input.Game`. Headers: Nebula-IntS's of 2026-11-12 (data/svc/c3).
+/// LumaInputGame* state` takes input's own `input.Game`. Headers: data/svc/c3.
 #[test]
 fn fixed_arrays_and_a_parents_struct() {
     use lumascript::svc::{SParam, STy, Shape};
@@ -1462,7 +1462,7 @@ fn a_copy_goes_to_a_const_reference() {
 /// A service struct holding text and an actor (draw.view's Camera: vectors, an enum, `LumaActor actor`,
 /// `char joint[32]`) is the script's own copy: made by a literal, its actor kept as a handle (read back as the view,
 /// S0903 once gone), its fields read, `T?` of it, and written as the header's struct for a call (`rig`, a const
-/// pointer), its text checked to fit the array (S0908). The C compiles against the SDK's headers of 2026-11-12.
+/// pointer), its text checked to fit the array (S0908). The C compiles against the SDK's headers.
 #[test]
 fn a_service_struct_with_text_and_an_actor() {
     let dir = format!("{}/tests/data/svc/c4", env!("CARGO_MANIFEST_DIR"));
@@ -1500,7 +1500,7 @@ fn a_service_struct_with_text_and_an_actor() {
     .unwrap();
 }
 
-/// `as?` and `fail` (C9): the narrowing asks the kernel's as_class (null stays none), `fail` raises S0921 with the
+/// `as?` and `fail`: the narrowing asks the kernel's as_class (null stays none), `fail` raises S0921 with the
 /// mod's words and leaves the function; the C compiles.
 #[test]
 fn narrowing_and_fail_write_c() {

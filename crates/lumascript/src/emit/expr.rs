@@ -582,7 +582,7 @@ impl<'a> Gen<'a> {
             (BinOp::Eq | BinOp::Ne, Ty::Enum(item), _) if self.enum_plain(*item) => {
                 Ok(if op == BinOp::Eq { format!("((uint8_t)({l}.tag == {r}.tag))") } else { format!("((uint8_t)({l}.tag != {r}.tag))") })
             }
-            // A service's enum or handle: its C number (J, FB 2026-11-12).
+            // A service's enum or handle: its C number.
             (BinOp::Eq | BinOp::Ne, Ty::Service { service, name }, _) if self.service_number(service, name) => Ok(cmp(if op == BinOp::Eq { "==" } else { "!=" })),
             (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Game(GameTy::Enum(_)), _) => Ok(cmp(match op {
                 BinOp::Eq => "==",

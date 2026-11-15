@@ -1,0 +1,388 @@
+// kit.screen: whole screens: a message, a choice, a list, a mod's layout as a screen, and a loading screen. Drawn by
+// the game's layout drawer through svc.ui on LumaKit's layout LumaKitScreen (layers/base: a panel, a title, a line and
+// ten rows), on the pause layer, the world held
+// by svc.time while a screen that pauses is open. One kit screen is open at a time: a newer one closes the one before,
+// whose waiter gets none (message: it ends; choose: none; a list: closed). A choice's or a list's rows in sight are a
+// ui menu (ui 1.2): up and down, the pointer and touch move the focus as in the game's own menus, A takes the row;
+// more than ten rows are pages, left and right turn them (the title says which). A closes a message; B backs out of
+// any (MR::isPressed*, the game's reading of the player's controls after the bindings, so a keyboard bound to them
+// counts too). Everything belongs to the mod that opened it: its screen closes when it stops, the world let go. The
+// loading screen is drawn at svc.draw's loading point.
+
+use svc.ui
+use svc.time
+use svc.draw
+
+let most_rows: i32 = 10
+
+// A list screen's handle: its number, 0 when none was opened. Its functions are also module functions
+// (`screen.set_rows(s, rows)`).
+pub struct ListScreen {
+    id: u32
+    fn set_rows(self, r: list<text>) { set_rows(self, r) }
+    fn close(self) { close(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+
+pub struct List { title: text, rows: list<text>, on_choose: fn(int)? = none, closes: bool = false }
+
+// What is open: none (0), a message (1), a choice (2), a list (3).
+var kind: u32 = 0
+var open_id: u32 = 0
+var next_id: u32 = 0
+var owner: u64 = 0
+var title: text = ""
+var rows: list<text> = []
+// The page of rows in sight (most_rows a page).
+var page: i32 = 0
+var on_choose: fn(int)? = none
+var closes: bool = false
+// The answer a waiting task reads: -1 none yet, -2 backed out or closed, else the row.
+var answer: i32 = -1
+var holding: bool = false
+
+var screen: ui.Screen? = none
+var title_pane: ui.Pane? = none
+var line_pane: ui.Pane? = none
+var row_panes: list<ui.Pane> = []
+
+// The loading screen's tips, its picture and who gave them (the newest caller's show).
+var tips: list<text> = []
+var tip_owner: u64 = 0
+var tip_picture: draw.Texture? = none
+var tip_at: i32 = 0
+var loading_set: bool = false
+
+// The screen open with its panes found; false while no scene runs.
+fn ready() -> bool {
+    if let sc = screen {
+        if ui.alive(sc) {
+            return true
+        }
+        screen = none
+    }
+    // ui.open with no scene up (the boot, a scene being built or taken down, a movie) is the player's mod-log error
+    // Ui.NoScene: the kit asks only while a scene runs, and opens again with the next scene.
+    let st = time.now().state
+    if st != time.State.Play and st != time.State.Menu {
+        return false
+    }
+    let s = ui.open("LumaKitScreen", ui.Layer.Pause)
+    if s == none {
+        return false
+    }
+    let sc = s!
+    var found: list<ui.Pane> = []
+    for r in 0..most_rows {
+        let p = ui.pane(sc, "Row{r}")
+        if p == none {
+            ui.close(sc)
+            return false
+        }
+        found.push(p!)
+    }
+    title_pane = ui.pane(sc, "Title")
+    line_pane = ui.pane(sc, "Line")
+    if title_pane == none or line_pane == none {
+        ui.close(sc)
+        return false
+    }
+    row_panes = found
+    screen = sc
+    return true
+}
+
+// What is open drawn again: the title, the line (a message) or the page of rows in sight as the ui menu.
+fn put() {
+    if not ready() {
+        return
+    }
+    ui.set_text(title_pane!, title)
+    if kind == 1 {
+        if rows.len() > 0 {
+            ui.set_text(line_pane!, rows[0])
+        }
+        ui.set_visible(line_pane!, true)
+        for r in 0..most_rows {
+            ui.set_visible(row_panes[r], false)
+        }
+        ui.menu_rows(screen!, [])
+        return
+    }
+    ui.set_visible(line_pane!, false)
+    let pages = pages_of()
+    if pages > 1 {
+        ui.set_text(title_pane!, "{title}  {page + 1}/{pages}")
+    }
+    var menu: list<ui.MenuRow> = []
+    for r in 0..most_rows {
+        let i = page * most_rows + r
+        if i < rows.len() {
+            ui.set_text(row_panes[r], rows[i])
+            ui.set_visible(row_panes[r], true)
+            menu.push(ui.MenuRow { pane: row_panes[r], enabled: true })
+        } else {
+            ui.set_visible(row_panes[r], false)
+        }
+    }
+    ui.menu_rows(screen!, menu)
+}
+
+fn pages_of() -> i32 {
+    return (rows.len() + most_rows - 1) / most_rows
+}
+
+// The open screen ends with `why` for its waiter (-2: backed out or closed).
+fn end(why: i32) {
+    if kind == 0 {
+        return
+    }
+    answer = why
+    kind = 0
+    open_id = 0
+    on_choose = none
+    if let sc = screen {
+        ui.close(sc)
+    }
+    screen = none
+    if holding {
+        time.release()
+        holding = false
+    }
+}
+
+// A new kit screen for the calling mod; the one open before ends (its waiter gets none).
+fn begin(k: u32, t: text, r: list<text>, pauses: bool) -> u32 {
+    end(-2)
+    kind = k
+    next_id += 1
+    open_id = next_id
+    owner = caller()
+    title = t
+    rows = r
+    page = 0
+    answer = -1
+    if pauses and not holding {
+        time.hold()
+        holding = true
+    }
+    put()
+    return open_id
+}
+
+// A line shown until A or B; the task ends then (or when another screen or the mod's stop ends it).
+pub task message(line: text) {
+    let id = begin(1, "", [line], true)
+    wait until answer != -1 or open_id != id
+}
+
+// A choice of rows: the row taken, none when the player backed out (or another screen or the mod's stop closed it).
+pub task choose(t: text, choices: list<text>) -> int? {
+    if choices.len() == 0 {
+        return none
+    }
+    let id = begin(2, t, choices, true)
+    wait until answer != -1 or open_id != id
+    if open_id != id and answer == -1 {
+        return none
+    }
+    if answer < 0 {
+        return none
+    }
+    return answer as int
+}
+
+// A list that stays open: on_choose gets each row taken (the screen closes then when `closes`); B closes it.
+pub fn list(l: List) -> ListScreen {
+    if l.rows.len() == 0 {
+        return ListScreen { id: 0 }
+    }
+    let id = begin(3, l.title, l.rows, false)
+    on_choose = l.on_choose
+    closes = l.closes
+    return ListScreen { id: id }
+}
+
+// The list's rows changed while it is open (its page kept where it still is, the menu's focus on its row).
+pub fn set_rows(s: ListScreen, r: list<text>) {
+    if s.id == 0 or s.id != open_id {
+        return
+    }
+    rows = r
+    if rows.len() == 0 {
+        end(-2)
+        return
+    }
+    if page >= pages_of() {
+        page = pages_of() - 1
+    }
+    put()
+}
+
+pub fn close(s: ListScreen) {
+    if s.id != 0 and s.id == open_id {
+        end(-2)
+    }
+}
+
+pub fn alive(s: ListScreen) -> bool {
+    return s.id != 0 and s.id == open_id
+}
+
+// A mod's own layout as a screen: opened on the pause layer, the world held while it is open when
+// `pauses`; the screen is the caller's to close (ui.close), and the world goes on when it does or its mod stops.
+pub fn layout(name: text, pauses: bool = true) -> ui.Screen? {
+    let s = ui.open(name, ui.Layer.Pause)
+    if s != none {
+        layout_screens.push(s!)
+        layout_owners.push(caller())
+        layout_pauses.push(pauses)
+        if pauses and not holding {
+            time.hold()
+            holding = true
+        }
+    }
+    return s
+}
+
+// A layout the calling mod opened through layout(), closed (the kit opened it, so the kit closes it; the world goes
+// on once no pausing one is left). Another mod's, or one already closed: nothing.
+pub fn close_layout(s: ui.Screen) {
+    let me = caller()
+    for i in 0..layout_screens.len() {
+        if same(layout_screens[i], s) and layout_owners[i] == me {
+            ui.close(s)
+            return
+        }
+    }
+}
+
+// The layouts open through layout(): each one's owner and whether it holds the world.
+var layout_screens: list<ui.Screen> = []
+var layout_owners: list<u64> = []
+var layout_pauses: list<bool> = []
+
+fn layouts_pausing() -> bool {
+    return layout_pauses.contains(true)
+}
+
+// The tips shown while stages load, one each load in turn, with a picture over them; the newest caller's
+//. An empty list takes them away.
+pub fn loading(t: list<text>, picture: draw.Texture? = none) {
+    tips = t
+    tip_owner = caller()
+    tip_picture = picture
+    tip_at = 0
+    if not loading_set {
+        draw.at(draw.Point.Loading, paint_loading)
+        loading_set = true
+    }
+}
+
+// Whether the loading point drew last frame (a new load shows the next tip), and this frame.
+var was_loading: bool = false
+var painted: bool = false
+
+fn paint_loading(s: draw.Screen) {
+    if tips.len() == 0 {
+        return
+    }
+    if not was_loading and not painted {
+        tip_at = (tip_at + 1) % tips.len()
+    }
+    painted = true
+    if let p = tip_picture {
+        draw.image(p, draw.Rect { x: s.safe_x + s.safe_w * 0.5 - 96.0, y: s.h * 0.30, w: 192.0, h: 192.0 }, none, #FFFFFF)
+    }
+    if let f = draw.font("MessageFont26") {
+        draw.text(f, tips[tip_at], s.w * 0.5, s.h * 0.72, 26.0, #FFFFFF, draw.Align.Centre, s.safe_w * 0.8)
+    }
+}
+
+// Each frame's start.
+on frame {
+    was_loading = painted
+    painted = false
+    // A pausing layout its mod closed: the world goes on once none is left.
+    var i = layout_screens.len()
+    while i > 0 {
+        i -= 1
+        if not ui.alive(layout_screens[i]) {
+            layout_screens.remove(i)
+            layout_owners.remove(i)
+            layout_pauses.remove(i)
+        }
+    }
+    if holding and kind == 0 and not layouts_pausing() {
+        time.release()
+        holding = false
+    }
+    if kind == 0 {
+        return
+    }
+    if not ready() {
+        return
+    }
+    if MR::isPressedFire(0) {
+        end(-2)
+        return
+    }
+    if kind == 1 {
+        if MR::isPressedJump(0) {
+            end(0)
+        }
+        return
+    }
+    // The row the menu took at its last reading (ui 1.2: after the frame handlers, so the frame before's press), on
+    // the page shown then: read before this frame turns a page.
+    let row = ui.menu_chosen(screen!)
+    if row >= 0 {
+        let taken = page * most_rows + row
+        if kind == 2 {
+            end(taken as i32)
+            return
+        }
+        // A list: its function at the frame's start after the press, the screen closed first when it closes.
+        let f = on_choose
+        if closes {
+            end(taken as i32)
+        }
+        if let call = f {
+            call(taken as int)
+        }
+        return
+    }
+    let pages = pages_of()
+    if pages > 1 and MR::isPressedLeft(0) {
+        page = (page + pages - 1) % pages
+        put()
+    } else if pages > 1 and MR::isPressedRight(0) {
+        page = (page + 1) % pages
+        put()
+    }
+}
+
+on mods.stopped(gone) {
+    if kind != 0 and owner == gone {
+        end(-2)
+    }
+    var i = layout_screens.len()
+    while i > 0 {
+        i -= 1
+        if layout_owners[i] == gone {
+            ui.close(layout_screens[i])
+            layout_screens.remove(i)
+            layout_owners.remove(i)
+            layout_pauses.remove(i)
+        }
+    }
+    if tip_owner == gone {
+        tips = []
+        tip_picture = none
+        tip_owner = 0
+    }
+    if holding and kind == 0 and not layouts_pausing() {
+        time.release()
+        holding = false
+    }
+}

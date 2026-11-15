@@ -1,0 +1,242 @@
+{
+  "$comment": "kit/stage/<file>.json (lumakit data version 1; stage.lum's StageData). Galaxies and domes of the mod without code. dome is one of the game's domes or {\"Mod\": {\"name\": ...}} for a dome of a mod; unlock is Always, {\"Stars\": {\"count\": n}} or {\"Star\": {\"galaxy\": ..., \"scenario\": n}} (a Code unlock is code only); music, icon name the mod's sound and texture.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "enum": [
+        1
+      ],
+      "default": 1
+    },
+    "galaxies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "title",
+          "dome",
+          "stars"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "dome": {
+            "$ref": "#/$defs/dome"
+          },
+          "unlock": {
+            "$ref": "#/$defs/unlock"
+          },
+          "stars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scenario",
+                "title"
+              ],
+              "properties": {
+                "scenario": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "comet": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "enum": [
+                        "Speedy",
+                        "Daredevil",
+                        "Cosmic",
+                        "FastFoe",
+                        "Purple"
+                      ]
+                    }
+                  ],
+                  "default": null
+                },
+                "hidden": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          },
+          "music": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            ],
+            "default": null
+          },
+          "icon": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            ],
+            "default": null
+          }
+        }
+      },
+      "default": []
+    },
+    "domes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "title"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "unlock": {
+            "$ref": "#/$defs/unlock"
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "unlock": {
+      "oneOf": [
+        {
+          "enum": [
+            "Always"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Stars"
+          ],
+          "properties": {
+            "Stars": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count"
+              ],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Star"
+          ],
+          "properties": {
+            "Star": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "galaxy",
+                "scenario"
+              ],
+              "properties": {
+                "galaxy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "scenario": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dome": {
+      "oneOf": [
+        {
+          "enum": [
+            "Terrace",
+            "Fountain",
+            "Kitchen",
+            "Bedroom",
+            "Engine",
+            "Garden"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Mod"
+          ],
+          "properties": {
+            "Mod": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

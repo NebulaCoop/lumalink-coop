@@ -914,7 +914,7 @@ impl<'a> Parser<'a> {
                 items.push(self.ty()?);
             }
             self.expect(")")?;
-            // `(T)` is T, grouped: `(fn(A) -> bool)?` is an optional function (FB, FC 2026-11-12).
+            // `(T)` is T, grouped: `(fn(A) -> bool)?` is an optional function.
             if items.len() == 1 {
                 let mut inner = items.pop().expect("one type");
                 while self.at("?") {

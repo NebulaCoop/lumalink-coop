@@ -9,7 +9,7 @@
 //! Written so far: values (bool, numbers, the service's enums and handles, an actor's view, colours), `text` without
 //! and with its size, structs of plain fields (by value, by `const T*`, `T?` for a pointer that may be null, and as
 //! outs, `size` set), callbacks (`X fn, void* user`: the script's `fn` value, kept until the mod ends, called through
-//! a trampoline), outs of those kinds, every result form, out buffers and arrays (C1b, C1c), and requests (C1a): with
+//! a trampoline), outs of those kinds, every result form, out buffers and arrays, and requests: with
 //! a closure, kept until the mod ends and called with the event's record; waited, a one-step task that parks until
 //! the event. Content names and stream events are S0800 at the call until they are written.
 
@@ -18,7 +18,7 @@ use crate::ast::{self, Expr};
 use crate::check::{Ty, SHARED_SERVICE};
 use crate::svc::{array_in, array_out, camel, case_name, floats_in, items_by, length_out, lent_out, pixels_in, sized_in_32, FieldPtr, Gives, SParam, STy, Shape, CT};
 
-/// A face's type as the back end writes it: the checker's ([`crate::check::service_sty`]) with a content name (C2's
+/// A face's type as the back end writes it: the checker's ([`crate::check::service_sty`]) with a content name (as
 /// `LumaModelName`) as the text it is at run time.
 pub(super) fn service_sty(service: &str, t: &STy) -> Ty {
     match t {
@@ -38,7 +38,7 @@ enum Pass {
     /// A function the service calls back: the script's `fn` value as `user`, a trampoline as the function.
     Callback { args: Vec<STy>, c_args: Vec<CT>, c_fn: String },
     /// An out buffer (`char*|void* buf, uint64_t size`): `text`, `bytes` or `list<text>`; or an array out
-    /// (`T* out, uint32_t capacity, uint32_t* count`, C1c): `list<T>`. Called twice: the length, then the fill.
+    /// (`T* out, uint32_t capacity, uint32_t* count`): `list<T>`. Called twice: the length, then the fill.
     Buffer { ty: STy, form: Form },
     /// A request's `LumaEventFn fn, void* user`: the closure given, or a waited request's box.
     Event,
@@ -73,7 +73,7 @@ enum ArgForm {
     Sized,
     /// `const T*` of a struct: the value's address (`T?`: null for none).
     Ref,
-    /// `const T* x, uint32_t count`: a list's elements and their number (C1c).
+    /// `const T* x, uint32_t count`: a list's elements and their number.
     List,
     /// `const T x[N]`, T the C element type: a vec's floats or a tuple's values, as an array made in the call.
     Array(String),
@@ -935,7 +935,7 @@ impl Gen<'_> {
                 i += 2;
                 continue;
             }
-            // The twin of make_fn's arrays with a count (C1c).
+            // The twin of make_fn's arrays with a count.
             if t.ptrs == 1 && array_in(ps, i) {
                 passes.push(Pass::Arg(value(&mut values)?, ArgForm::List));
                 i += 2;
@@ -990,6 +990,12 @@ impl Gen<'_> {
             }
         }
         let Some(slot) = self.service_slot(service) else { return self.not_yet(fx, e, "a service its header gives no version") };
+        // A service that needs a permission, used by a library while it runs for another mod: the player's answer for
+        // that mod counts (lumart_for_caller).
+        if let Some(face) = self.game.services.faces.get(service).filter(|f| f.permission.is_some()) {
+            let (major, minor) = face.version.split_once('.').ok_or_else(lost)?;
+            fx.fail_if(&format!("lumart_for_caller({}, {major}u, {minor}u) != 0", c_string(service)));
+        }
         // The arguments, positional then by name; a service's parameters have no defaults. A waited request is given no
         // closure (the checker took it out of the parameters).
         let names: Vec<&str> = params
@@ -1235,7 +1241,7 @@ impl Gen<'_> {
                                     list.push(format!("lumart_text_p({t})"));
                                     list.push(format!("lumart_text_n({t})"));
                                 }
-                                // Bytes in (C1d): the block's bytes, null for an empty one, and its length.
+                                // Bytes in: the block's bytes, null for an empty one, and its length.
                                 STy::Bytes => {
                                     list.push(format!("({t} != 0 ? (const void*)lumart_bytes_p({t}) : (const void*)0)"));
                                     list.push(format!("lumart_list_n({t})"));
@@ -1629,7 +1635,7 @@ impl Gen<'_> {
     /// A face type the call writing above handles.
     fn service_ty_written(&self, service: &str, ty: &STy) -> bool {
         match ty {
-            // An out buffer's names, or an array of values the call writing passes as C has them (C1c).
+            // An out buffer's names, or an array of values the call writing passes as C has them.
             STy::List(x) => match &**x {
                 STy::Text => true,
                 // Elements as C has them (a struct of plain fields), or a struct holding text written item by item.

@@ -168,6 +168,13 @@ fn validate_as(path: &Path, mod_path: &Path, inputs: &Inputs) -> Result<Report> 
     // arguments by name are read from the game's placement facts in the self-description folder (docs/modding/content/stages.md, section 1).
     if let Some(folder) = &inputs.names {
         nebula_import::cook::placement_args::use_file(folder);
+        // A shader material's code is compiled as the game compiles it: with the dxc Nebula installs in the version
+        // folder that holds this self-description folder, or one beside LumaLink. With none, a note says so (L804).
+        let own = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
+        let version = folder.parent().map(Path::to_path_buf);
+        let beside: Vec<&Path> = [own.as_deref(), version.as_deref()].into_iter().flatten().collect();
+        let found = nebula_import::cook::surface_shader::find_compiler(&beside);
+        *nebula_import::cook::surface_shader::CHECK_COMPILER.lock().unwrap_or_else(|e| e.into_inner()) = Some(found);
     }
     match crate::files_check::findings(path, inputs.game.as_deref(), id.as_deref()) {
         Ok(found) => report.findings.extend(found),
@@ -342,8 +349,9 @@ pub fn pack(folder: &Path, output: Option<PathBuf>, inputs: &Inputs) -> Result<(
 
 /// What came of putting a mod into the installed game's mods.
 pub enum Install {
-    /// The game's mod tool took it.
-    Imported { luma: PathBuf },
+    /// The game's mod tool took it: as `id` (its answer's; None from a game that does not say) into `mods` (the game's
+    /// mods folder, from its answer; the found data folder's when it does not say).
+    Imported { luma: PathBuf, id: Option<String>, mods: PathBuf },
     /// The game's mod tool refused it, with its words.
     NotImported { luma: PathBuf, why: String },
     /// A folder that does not pack: its report and what came of packing.
@@ -393,13 +401,42 @@ pub fn install(path: &Path, inputs: &Inputs, found: &Installed, game_args: &[OsS
         let why = serde_json::from_str::<serde_json::Value>(&said).ok().and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_string)).unwrap_or(said);
         return Ok(Install::NotImported { luma: shown, why });
     }
-    Ok(Install::Imported { luma: shown })
+    // {"folder": <the mods folder>, "results": [{"id": ...}], "ok": true}
+    let answer = serde_json::from_str::<serde_json::Value>(&said).ok();
+    let id = answer.as_ref().and_then(|a| a.pointer("/results/0/id")).and_then(|i| i.as_str()).filter(|i| !i.is_empty()).map(str::to_string);
+    let mods = answer.as_ref().and_then(|a| a.get("folder")).and_then(|f| f.as_str()).map(PathBuf::from).unwrap_or_else(|| found.data.join("mods"));
+    Ok(Install::Imported { luma: shown, id, mods })
 }
 
 /// The installed game started on `pak` with its own data folder and saves, then `game_args` (its command line,
 /// docs/COMMAND_LINE.md; a --data or --saves there is used instead of the found one). It runs on after LumaLink ends.
 /// A LumaLink started hidden (a test's) starts it hidden, as the harness does. The program started.
 pub fn start(found: &Installed, pak: &Path, game_args: &[OsString]) -> Result<PathBuf> {
+    start_game(found, pak, game_args).map(|(program, _)| program)
+}
+
+/// A game LumaLink started: whether it has ended. Dropping it leaves the game running.
+pub struct Game(GameProcess);
+
+enum GameProcess {
+    Child(std::process::Child),
+    #[cfg(windows)]
+    Hidden(hidden::Process),
+}
+
+impl Game {
+    /// It has ended (or cannot be asked any more).
+    pub fn ended(&mut self) -> bool {
+        match &mut self.0 {
+            GameProcess::Child(child) => !matches!(child.try_wait(), Ok(None)),
+            #[cfg(windows)]
+            GameProcess::Hidden(process) => process.ended(),
+        }
+    }
+}
+
+/// [`start`], with the game started, to watch it end.
+pub fn start_game(found: &Installed, pak: &Path, game_args: &[OsString]) -> Result<(PathBuf, Game)> {
     let program = found.program().with_context(|| say!("LumaLink.Run.NoProgram", folder = found.version.as_ref().unwrap_or(&found.data).display()))?;
     let named = |option: &str| game_args.iter().any(|a| a == option);
     let mut args: Vec<OsString> = vec!["--pak".into(), pak.as_os_str().to_owned()];
@@ -410,8 +447,8 @@ pub fn start(found: &Installed, pak: &Path, game_args: &[OsString]) -> Result<Pa
         args.extend(["--data".into(), found.data.clone().into_os_string()]);
     }
     args.extend(game_args.iter().cloned());
-    spawn_like_this(&program, &args).with_context(|| say!("LumaLink.Run.CannotStart", program = program.display()))?;
-    Ok(program)
+    let game = spawn_like_this(&program, &args).with_context(|| say!("LumaLink.Run.CannotStart", program = program.display()))?;
+    Ok((program, game))
 }
 
 /// The game's options that name its folders (docs/COMMAND_LINE.md), each with its value.
@@ -438,12 +475,12 @@ fn folder_args(found: &Installed, game_args: &[OsString]) -> Vec<OsString> {
 
 /// `program` with `args`, detached; hidden when this process was started hidden (Windows: its STARTUPINFO's SW_HIDE,
 /// as a test starts it), so a test of `run` shows no window and plays no sound.
-fn spawn_like_this(program: &Path, args: &[OsString]) -> std::io::Result<()> {
+fn spawn_like_this(program: &Path, args: &[OsString]) -> std::io::Result<Game> {
     #[cfg(windows)]
     if hidden::started_hidden() {
-        return hidden::spawn(program, args);
+        return hidden::spawn(program, args).map(|p| Game(GameProcess::Hidden(p)));
     }
-    std::process::Command::new(program).args(args).spawn().map(|_| ())
+    std::process::Command::new(program).args(args).spawn().map(|c| Game(GameProcess::Child(c)))
 }
 
 #[cfg(windows)]
@@ -451,10 +488,30 @@ mod hidden {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_TIMEOUT};
     use windows_sys::Win32::System::Threading::{
-        CreateProcessW, GetStartupInfoW, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
+        CreateProcessW, GetStartupInfoW, WaitForSingleObject, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
     };
+
+    /// A game started hidden, held to see it end; the handle closes with it.
+    pub struct Process(HANDLE);
+
+    // SAFETY: a process handle may be waited on and closed from any thread.
+    unsafe impl Send for Process {}
+
+    impl Process {
+        pub fn ended(&self) -> bool {
+            // SAFETY: the handle CreateProcessW gave, open until drop.
+            unsafe { WaitForSingleObject(self.0, 0) != WAIT_TIMEOUT }
+        }
+    }
+
+    impl Drop for Process {
+        fn drop(&mut self) {
+            // SAFETY: as above; closed once.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
 
     /// SW_HIDE (winuser.h).
     const SW_HIDE: u16 = 0;
@@ -490,7 +547,7 @@ mod hidden {
         out.push(quote_mark);
     }
 
-    pub fn spawn(program: &Path, args: &[OsString]) -> std::io::Result<()> {
+    pub fn spawn(program: &Path, args: &[OsString]) -> std::io::Result<Process> {
         let mut line = Vec::new();
         quote(&program.as_os_str().encode_wide().collect::<Vec<u16>>(), &mut line);
         for arg in args {
@@ -512,12 +569,9 @@ mod hidden {
         if made == 0 {
             return Err(std::io::Error::last_os_error());
         }
-        // SAFETY: the handles CreateProcessW gave; the game runs on without them.
-        unsafe {
-            CloseHandle(process.hThread);
-            CloseHandle(process.hProcess);
-        }
-        Ok(())
+        // SAFETY: the thread handle CreateProcessW gave; the game runs on without it. The process handle is kept.
+        unsafe { CloseHandle(process.hThread) };
+        Ok(Process(process.hProcess))
     }
 
     #[cfg(test)]
@@ -777,6 +831,8 @@ pub fn not_built(command: &str) -> Option<String> {
 #[derive(Clone, Debug)]
 pub struct TestSetup {
     pub bin: PathBuf,
+    /// The game each run starts, for a bin folder without pak.path (an installed version folder).
+    pub pak: Option<PathBuf>,
     pub runner: PathBuf,
     pub python: PathBuf,
     pub work: PathBuf,
@@ -817,7 +873,8 @@ impl TestRun {
 /// build folders are under the tree).
 pub fn find_runner(bin: &Path) -> Option<PathBuf> {
     let bin = std::path::absolute(bin).ok()?;
-    bin.ancestors().map(|a| a.join("tools/lumacore/luma_test.py")).find(|p| p.is_file())
+    // An installed version keeps it in luma/test (Setup); a build tree has it above the build folder.
+    std::iter::once(bin.join("luma/test")).chain(bin.ancestors().map(Path::to_path_buf)).map(|a| a.join("tools/lumacore/luma_test.py")).find(|p| p.is_file())
 }
 
 /// Whether the mod has code to build: LumaScript, C or C++ under `source/`.
@@ -971,6 +1028,9 @@ pub fn test(folder: &Path, setup: &TestSetup, build: &dyn Fn(&Path) -> Result<()
     let mut cmd = std::process::Command::new(&setup.python);
     cmd.args(["-X", "utf8", "-I"]).arg(&setup.runner).arg("run").arg(&suite);
     cmd.arg("--bin").arg(&setup.bin).arg("--work").arg(&session).arg("--who").arg("lumalink").arg("--lock").arg(&setup.lock);
+    if let Some(pak) = &setup.pak {
+        cmd.arg("--pak").arg(pak);
+    }
     if let Some(r) = &setup.renderer {
         cmd.arg("--renderer").arg(r);
     }
@@ -1099,7 +1159,7 @@ mod tests {
         let none = dir.path().join("none");
         std::fs::create_dir_all(&none).unwrap();
         std::fs::write(none.join("luma.json"), "{}").unwrap();
-        let setup = TestSetup { bin: dir.path().into(), runner: file.clone(), python: "python".into(), work: dir.path().into(), lock: dir.path().join("run.lock"), renderer: None };
+        let setup = TestSetup { bin: dir.path().into(), pak: None, runner: file.clone(), python: "python".into(), work: dir.path().into(), lock: dir.path().join("run.lock"), renderer: None };
         let e = test(&none, &setup, &|_| Ok(()), &mut |_| {}).err().unwrap();
         assert!(e.to_string().contains("tests"), "{e}");
     }
@@ -1150,7 +1210,7 @@ lock.unlink()
         .unwrap();
         let work = dir.path().join("work");
         std::fs::create_dir_all(&work).unwrap();
-        let setup = TestSetup { bin: dir.path().into(), runner, python: "python".into(), work: work.clone(), lock: dir.path().join("run.lock"), renderer: None };
+        let setup = TestSetup { bin: dir.path().into(), pak: None, runner, python: "python".into(), work: work.clone(), lock: dir.path().join("run.lock"), renderer: None };
         let mut heard = Vec::new();
         let runs = test(&m, &setup, &|_| Ok(()), &mut |r| heard.push(r.test.clone())).unwrap();
         assert_eq!(heard.len(), 2);
@@ -1274,5 +1334,130 @@ lock.unlink()
             assert_eq!(e.to_string(), say!("LumaLink.Character.AsPath", value = bad), "{bad}");
         }
         assert!(!folder.join("layers").exists());
+    }
+}
+
+/// One line a build says: on the error stream when `to_stderr` (clang's own output, already ending in a newline).
+#[derive(Clone, Debug)]
+pub struct BuildLine {
+    pub text: String,
+    pub error: bool,
+    pub to_stderr: bool,
+}
+
+/// Why a build made no libraries, past what its lines say.
+#[derive(Clone, Debug)]
+pub enum BuildFailed {
+    /// The mod's scripts have this many errors, each a line.
+    Script(usize),
+    /// Platforms clang failed for, said in one line.
+    Platforms(String),
+}
+
+/// What a build said, and whether it failed.
+#[derive(Clone, Debug, Default)]
+pub struct BuildOutcome {
+    pub lines: Vec<BuildLine>,
+    pub failed: Option<BuildFailed>,
+}
+
+/// The SDK folder (the game's luma.h): `sdk` when given, else LUMA_INCLUDE, else the `sdk` folder of the game's
+/// self-description `names`, where Nebula installs the headers of the version that runs.
+pub fn sdk_folder(sdk: Option<PathBuf>, names: Option<&Path>) -> Option<PathBuf> {
+    sdk.or_else(|| std::env::var_os("LUMA_INCLUDE").filter(|v| !v.is_empty()).map(PathBuf::from))
+        .or_else(|| names.map(|n| n.join("sdk")).filter(|s| s.join("luma.h").is_file()))
+}
+
+/// Whether a mod folder has code to build: LumaScript or C under `source/`.
+pub fn has_source(folder: &Path) -> bool {
+    std::fs::read_dir(folder.join("source")).is_ok_and(|entries| {
+        entries.filter_map(|e| e.ok()).any(|e| e.path().extension().and_then(|x| x.to_str()).is_some_and(|x| matches!(x, "lum" | "c" | "h")))
+    })
+}
+
+/// Builds a mod's code (`lumalink build`): the game's names from `names`, the SDK `sdk` (see [`sdk_folder`]), clang
+/// (the one LumaLink ships when None), in `work` (a temporary folder when None), for `platforms` (all when empty).
+pub fn build_mod(folder: &Path, names: &Path, sdk: Option<PathBuf>, clang: Option<PathBuf>, work: Option<PathBuf>, platforms: &[String]) -> Result<BuildOutcome> {
+    use crate::build::{self, BuildError};
+    let mut rows = Names::from_rows_folder(names, 1).map_err(|e| rows_error(names, e))?;
+    rows.api = 1;
+    // Without the types file every game type is unknown and each call would be refused one by one: say why once.
+    if rows.types.is_none() {
+        bail!(say!("LumaLink.Build.NoTypes", folder = names.display(), file = luma_validate::names::TYPES_FILE));
+    }
+    let Some(sdk) = sdk else {
+        bail!(say!("LumaLink.Build.NoSdk", folder = names.join("sdk").display()));
+    };
+    let mut out = BuildOutcome::default();
+    let say_line = |out: &mut BuildOutcome, text: String, error: bool| out.lines.push(BuildLine { text, error, to_stderr: false });
+    // The services the SDK's headers declare: their calls are kind 5 imports the loader checks. A service header the
+    // compiler cannot read is said (its scripts then find no such module, S0027).
+    let (game, unread) = build::game_of(&rows, names, Some(&sdk)).map_err(game_error)?;
+    for e in &unread {
+        out.lines.push(BuildLine { text: say!("LumaLink.Build.ServiceUnread", why = e), error: true, to_stderr: true });
+    }
+    let clang = clang.unwrap_or_else(build::default_clang);
+    let temp;
+    let work = match work {
+        Some(w) => w,
+        None => {
+            temp = tempfile::tempdir().context(say!("LumaLink.Build.NoWork"))?;
+            temp.path().to_path_buf()
+        }
+    };
+    match build::build(folder, &game, &sdk, &clang, &work, platforms) {
+        Ok(built) => {
+            for (file, d) in &built.notes {
+                say_line(&mut out, crate::script::line(file, d), false);
+            }
+            for (file, line, function) in &built.kept {
+                say_line(&mut out, say!("LumaLink.Build.Kept", file = format!("source/{file}"), line = line, function = function), false);
+            }
+            for platform in &built.recorded {
+                say_line(&mut out, say!("LumaLink.Build.PlatformRecorded", platform = platform), false);
+            }
+            for (_, library, bytes) in &built.libraries {
+                say_line(&mut out, say!("LumaLink.Build.Built", path = library.display(), bytes = bytes, c = built.c_bytes, imports = built.imports.len()), false);
+            }
+        }
+        Err(BuildError::Script(errors)) => {
+            for (file, d) in &errors {
+                say_line(&mut out, crate::script::line(file, d), true);
+            }
+            say_line(&mut out, say!("LumaLink.Build.ScriptErrors", count = errors.len()), true);
+            out.failed = Some(BuildFailed::Script(errors.len()));
+        }
+        Err(BuildError::Platforms { failed, built }) => {
+            // Each platform that failed by name with what clang said; the ones built were recorded.
+            for (platform, code, output) in &failed {
+                out.lines.push(BuildLine { text: output.clone(), error: true, to_stderr: true });
+                say_line(&mut out, say!("LumaLink.Build.PlatformFailed", platform = platform, code = code), true);
+            }
+            let names: Vec<&str> = failed.iter().map(|(p, _, _)| *p).collect();
+            out.failed = Some(BuildFailed::Platforms(say!("LumaLink.Build.PlatformsFailed", count = failed.len(), list = names.join(", "), built = built.len())));
+        }
+        Err(BuildError::UnknownPlatform(p)) => bail!(say!("LumaLink.UnknownPlatform", value = p, list = luma_validate::PLATFORMS.join(", "))),
+        Err(BuildError::NoLinkerScript(path)) => bail!(say!("LumaLink.Build.NoLinkerScript", path = path.display())),
+        Err(BuildError::Read(path, e)) => return Err(anyhow::Error::new(e).context(say!("LumaLink.CannotRead", path = path.display()))),
+        Err(BuildError::Write(path, e)) => return Err(anyhow::Error::new(e).context(say!("LumaLink.Build.CannotWrite", path = path.display()))),
+        Err(BuildError::NoId(path)) => bail!(say!("LumaLink.Build.NoId", path = path.display())),
+        Err(BuildError::NoScripts(folder)) => bail!(say!("LumaLink.Build.NoScripts", folder = folder.display())),
+        Err(BuildError::NoSdk(folder)) => bail!(say!("LumaLink.Build.NoSdk", folder = folder.display())),
+        Err(BuildError::NoClang(path, e)) => return Err(anyhow::Error::new(e).context(say!("LumaLink.Build.NoClang", path = path.display()))),
+        Err(BuildError::ClangVersion { path, found }) => bail!(say!("LumaLink.Build.ClangVersion", expected = build::LLVM, path = path.display(), found = found)),
+    }
+    Ok(out)
+}
+
+/// Why the game's description does not read, in the chosen language.
+pub fn game_error(e: crate::build::GameError) -> anyhow::Error {
+    use crate::build::{FactoryError, GameError, TablesError};
+    match e {
+        GameError::Tables(TablesError::Read(path, e)) => anyhow::Error::new(e).context(say!("LumaLink.CannotRead", path = path.display())),
+        GameError::Tables(TablesError::NotJson { path, line, column }) | GameError::Factory(FactoryError::NotJson { path, line, column }) => {
+            anyhow::anyhow!(say!("LumaLink.SelfNotJson", path = path.display(), line = line, column = column))
+        }
+        GameError::Tables(TablesError::Shape(path)) => anyhow::anyhow!(say!("LumaLink.Build.TablesShape", path = path.display())),
+        GameError::Factory(FactoryError::Shape(path)) => anyhow::anyhow!(say!("LumaLink.Build.FactoryShape", path = path.display())),
     }
 }

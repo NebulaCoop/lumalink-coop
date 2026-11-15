@@ -1,0 +1,428 @@
+// kit.ride: mounts and vehicles: getting on and off, their moves, the player posed on
+// them.
+// A mount is defined once by a mod (define, or its kit/ride/<name>.json, read for every mod needing LumaKit at
+// its start) and is an object of the kit's class KitMount wherever it stands: made by code (spawn: std make) or placed
+// in a stage under "<name>" in its own mod's stages, "<mod id>/<name>" elsewhere (the kernel's run-time alias row; the
+// first argument is the mount). The object shows the mount's model and carries a ride sensor, as the game's own rides
+// (SurfRay, Tamakoro): the player touching it asks to ride (MsgAutoRushBegin) and is bound to it, the game's rush; each
+// frame the game asks the mount where its rider sits (MsgUpdateBaseMtx): the rider's base matrix is the seat joint's;
+// the rider plays `rider_action`. The mount drives with the player's stick in the camera's axes, turning `turn_degrees`
+// a frame at most toward it, `speed` units a frame at a full stick; on the ground A jumps it `jump`. `surface`: along a
+// planet's surface under its gravity (the game's binder and gravity), else it holds its height. The game ends the rush
+// when the rider is hurt (MsgRushCancel): the rider thrown off, on_dismount called. dismount() lets the rider jump off.
+// `moves`: the rider's player.state moves are allowed while mounted only (player.state's allow; `state` is a word,
+// so the module is used as `pstate`).
+// One rider (the player); the newest mount touched holds while another is ridden: it is refused (the game's
+// own answer, false). Every mount belongs to the mod that defined it: when it stops, its objects are killed
+// (a rider on one is let off first), its definitions go off, its alias rows go with the mod (the kernel's).
+// MountId.spawn is also a module function (`ride.spawn(id, at)`); spawn gives none where the stage cannot make one
+// (as item.spawn).
+
+use svc.mods
+use ./player/state as pstate
+use ./item
+
+pub struct Mount {
+    name: text                                // placeable by name
+    look: model
+    seat_joint: text                          // where the player sits
+    rider_action: text = "Ride"               // the player's clip while riding
+    speed: f32 = 15.0
+    jump: f32 = 30.0
+    turn_degrees: f32 = 6.0
+    surface: bool = true                      // drives along a planet's surface under gravity (karts, boards)
+    moves: list<pstate.StateId> = []           // states the rider has while mounted (a tongue, a flutter)
+    on_mount: fn(LiveActor)? = none
+    on_dismount: fn(LiveActor)? = none
+}
+
+// A mount's handle: its number, 0 for none.
+pub struct MountId {
+    n: u32
+    fn spawn(self, at: vec3) -> LiveActor? { return spawn(self, at) }
+}
+
+// A mount as its data file writes it (kit/ride/<name>.json): content by name (the mod's own); moves by their ids.
+struct MountData { look: text, seat_joint: text, rider_action: text = "Ride", speed: f32 = 15.0, jump: f32 = 30.0,
+                   turn_degrees: f32 = 6.0, surface: bool = true, moves: list<text> = [] }
+
+let body_radius: f32 = 120.0
+let fall_strength: f32 = 1.0
+let air_keep: f32 = 0.98
+
+// The definitions: each mount, its mod, whether it holds.
+var defs: list<Mount> = []
+var def_owner: list<u64> = []
+var def_live: list<bool> = []
+// The mounts standing in the stage: each one's definition and the object.
+var obj_def: list<u32> = []
+var obj_ref: list<ref<LiveActor>> = []
+// The ride now (one rider, the player): the mount (none: none), its definition, the rider; the definition the
+// object being made is for (make runs init at once).
+var ridden: ref<LiveActor>? = none
+var ridden_def: u32 = 0
+var rider: ref<LiveActor>? = none
+var making: u32 = 0
+// The mount last left and whether the player touched it this step: the player asks to ride (AutoRushBegin) every
+// step it touches a binder, so a mount just left is not ridden again until the player has been off its sensor a step
+// (the rider jumping off, or thrown off, is still on it the step after).
+var left: ref<LiveActor>? = none
+var left_touched = false
+
+fn def_at(id: MountId) -> int? {
+    if id.n == 0 or id.n > def_live.len() as u32 {
+        return none
+    }
+    let k = (id.n - 1) as int
+    if not def_live[k] or def_owner[k] != caller() {
+        return none
+    }
+    return k
+}
+
+fn define_for(owner: u64, m: Mount) -> MountId {
+    // Its moves start while the player rides it only.
+    for s in m.moves {
+        pstate.allow(s, false)
+    }
+    for k in 0..defs.len() {
+        if def_live[k] and def_owner[k] == owner and defs[k].name == m.name {
+            defs[k] = m
+            return MountId { n: (k + 1) as u32 }
+        }
+    }
+    defs.push(m)
+    def_owner.push(owner)
+    def_live.push(true)
+    let n = defs.len() as u32
+    alias_class(m.name, "KitMount", [n as i32])
+    return MountId { n: n }
+}
+
+// The mount defined for the calling mod (a second of the same name replaces the first; objects of it already standing
+// keep their number and take the new definition).
+pub fn define(m: Mount) -> MountId {
+    return define_for(caller(), m)
+}
+
+fn from_data(owner: u64, name: text, data: bytes) -> MountId? {
+    guard let d = json.decode<MountData>(data) else {
+        log "kit.ride: kit/ride/{name}.json does not read as a mount; not defined"
+        return none
+    }
+    guard let look = item.model_of(owner, d.look) else {
+        log "kit.ride: kit/ride/{name}.json names the model {d.look}, which its mod does not have; not defined"
+        return none
+    }
+    var moves: list<pstate.StateId> = []
+    for id in d.moves {
+        if let s = pstate.find_for(owner, id) {
+            moves.push(s)
+        }
+    }
+    return define_for(owner, Mount { name: name, look: look, seat_joint: d.seat_joint, rider_action: d.rider_action,
+                                     speed: d.speed, jump: d.jump, turn_degrees: d.turn_degrees, surface: d.surface,
+                                     moves: moves })
+}
+
+// The calling mod's mount `name`: one it defined (or its data defined at LumaKit's start), else none.
+pub fn find(name: text) -> MountId? {
+    let owner = caller()
+    for k in 0..defs.len() {
+        if def_live[k] and def_owner[k] == owner and defs[k].name == name {
+            return MountId { n: (k + 1) as u32 }
+        }
+    }
+    guard let data = mods.kit_read(owner, "ride", name) else { return none }
+    return from_data(owner, name, data)
+}
+
+// Each enabled mod's kit/ride files, at LumaKit's start, so a mount from data alone is placeable.
+on start {
+    for m in mods.needing() {
+        for name in mods.kit_names(m, "ride") ?? [] {
+            if let b = mods.kit_read(m, "ride", name) {
+                from_data(m, name, b)
+            }
+        }
+    }
+}
+
+// The mount at `at` in the stage playing now, for the calling mod; none for a handle not the calling mod's or when the
+// stage cannot make one.
+pub fn spawn(id: MountId, at: vec3) -> LiveActor? {
+    guard let k = def_at(id) else { return none }
+    making = id.n
+    let made = make("KitMount", MakePlace { at: at, args: [id.n as i32, 0, 0, 0, 0, 0, 0, 0] }, 1)
+    making = 0
+    return made.first()
+}
+
+// The mount the player rides now, or none.
+pub fn riding() -> ref<LiveActor>? {
+    guard let r = ridden else { return none }
+    if r.get() == none {
+        return none
+    }
+    return r
+}
+
+// The rider off the mount now, jumping off it (the game's end of a bind); nothing when not riding.
+pub fn dismount() {
+    let_off(true)
+}
+
+// The rider off the mount ridden: the game's bind ended (jumping off when `jump`; the game ended it itself when not),
+// the moves gated again, on_dismount called with the mount.
+fn let_off(jump: bool) {
+    guard let r = ridden else { return }
+    let d = defs[(ridden_def - 1) as int]
+    let mount = r.get()
+    ridden = none
+    ridden_def = 0
+    rider = none
+    if let m = mount {
+        left = ref(m)
+        left_touched = true
+    }
+    for s in d.moves {
+        pstate.allow(s, false)
+    }
+    guard let m = mount else { return }
+    MR::validateClipping(m)
+    if jump {
+        MR::endBindAndPlayerJump(m, m.mGravity * (0.0 - d.jump), 0)
+    }
+    if let f = d.on_dismount {
+        f(m)
+    }
+}
+
+// Whether `a` is the mount just left (see `left`).
+fn is_left(a: LiveActor) -> bool {
+    guard let l = left else { return false }
+    guard let m = l.get() else { return false }
+    return same(m, a)
+}
+
+// Whether `a` is the mount ridden now.
+fn is_ridden(a: LiveActor) -> bool {
+    guard let r = ridden else { return false }
+    guard let m = r.get() else { return false }
+    return same(m, a)
+}
+
+// `v` turned `degrees` about the unit axis `axis` (Rodrigues).
+fn turn_about(v: vec3, axis: vec3, degrees: f32) -> vec3 {
+    let a = degrees * 0.017453292
+    let c = cos(a)
+    let s = sin(a)
+    return v * c + cross(axis, v) * s + axis * (dot(axis, v) * (1.0 - c))
+}
+
+// A direction with its part along `up` taken out, unit length; zero when nothing is left.
+fn flat(v: vec3, up: vec3) -> vec3 {
+    let f = v - up * dot(v, up)
+    if length(f) < 0.0001 {
+        return vec3(0.0, 0.0, 0.0)
+    }
+    return normal(f)
+}
+
+// A mount standing in the stage. Its first placement argument is its definition's number (the alias row's, or
+// spawn's). Made by the game's plain model object's maker.
+class KitMount : LiveActor made by LumaObj {
+    var def: u32 = 0
+    var front: vec3 = vec3(0.0, 0.0, 1.0)
+
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        var n: i32 = making as i32
+        MR::getPlacementArg0NoInit(rIter, var n)
+        if n <= 0 or n > defs.len() as i32 or not def_live[(n - 1) as int] {
+            log "kit.ride: a mount of definition {n} is placed and no mod defines it; not made"
+            self.makeActorDead()
+            return
+        }
+        def = n as u32
+        let d = defs[(def - 1) as int]
+        if not item.has_model(d.look) {
+            log "kit.ride: mount {d.name}'s model {d.look.name()} is not in the game's files; not made"
+            self.makeActorDead()
+            return
+        }
+        self.initModelManagerWithAnm(d.look.name(), none, false)
+        MR::connectToSceneRide(self)
+        self.initHitSensor(1)
+        // A binder (the auto-rush kind: the player asks to ride it by AutoRushBegin, MarioActor::addRushSensor); a Ride
+        // sensor is a rider's own, which the player never binds to.
+        MR::addHitSensorBinder(self, "body", 8, body_radius, vec3(0.0, body_radius, 0.0))
+        self.initBinder(body_radius, body_radius, 0)
+        MR::initShadowVolumeSphere(self, body_radius)
+        MR::onCalcGravity(self)
+        // Its front from its placement: the yaw of its rotation (the game's y turn).
+        let yaw = self.mRotation.y * 0.017453292
+        front = vec3(sin(yaw), 0.0, cos(yaw))
+        obj_def.push(def)
+        obj_ref.push(ref(self))
+        self.makeActorAppeared()
+    }
+
+    override fn receiveMessage(msg, pSender, pReceiver) -> bool {
+        if MR::isMsgAutoRushBegin(msg) {
+            // The player asks to ride: refused while another is ridden or this one is (the game then goes on), and
+            // by the mount just left while the player still touches it.
+            if is_left(self) {
+                left_touched = true
+                return false
+            }
+            if def == 0 or not def_live[(def - 1) as int] or riding() != none {
+                return false
+            }
+            guard let sensor = pSender else { return false }
+            guard let who = MR::getSensorHost(sensor) else { return false }
+            let d = defs[(def - 1) as int]
+            rider = ref(who)
+            ridden = ref(self)
+            ridden_def = def
+            MR::invalidateClipping(self)
+            MR::startBckPlayer(d.rider_action, 0 as s32)
+            for s in d.moves {
+                pstate.allow(s, true)
+            }
+            if let f = d.on_mount {
+                f(self)
+            }
+            return true
+        }
+        if MR::isMsgUpdateBaseMtx(msg) {
+            // Where the rider sits: the seat joint's matrix.
+            if not is_ridden(self) {
+                return false
+            }
+            guard let h = rider else { return false }
+            guard let r = h.get() else { return false }
+            let d = defs[(def - 1) as int]
+            // A seat joint the mount's model lacks poses no rider.
+            guard let seat = `MR::getJointMtx(const LiveActor *, const char *)`(self, d.seat_joint) else { return false }
+            `MR::setBaseTRMtx(LiveActor *, MtxPtr)`(r, seat)
+            return true
+        }
+        if MR::isMsgRushCancel(msg) {
+            // The game ended the ride (the rider hurt, a demo): thrown off, not jumping.
+            if is_ridden(self) {
+                let_off(false)
+            }
+            return true
+        }
+        return base.receiveMessage(msg, pSender, pReceiver)
+    }
+
+    // What hits the rider: the game hands an attack on a bound player to the sensor it is bound to
+    // (MarioActor::receiveMsgEnemyAttack), so the rider is hurt by it and thrown off, as the game's rides do (Pole,
+    // SpaceCocoon: MR::endBindAndPlayerDamageMsg).
+    override fn receiveMsgEnemyAttack(msg, pSender, pReceiver) -> bool {
+        if not is_ridden(self) {
+            return false
+        }
+        `MR::endBindAndPlayerDamageMsg(LiveActor *, u32)`(self, msg)
+        let_off(false)
+        return true
+    }
+
+    // Each step: the game's own movement first (its binder, sensors, gravity), then the drive while ridden.
+    override fn movement() {
+        // The mount just left: free again once a step went by with the player off its sensor (messages come after
+        // the movements).
+        if is_left(self) {
+            if left_touched {
+                left_touched = false
+            } else {
+                left = none
+            }
+        }
+        base.movement()
+        if def == 0 or not is_ridden(self) {
+            return
+        }
+        let d = defs[(def - 1) as int]
+        var up = vec3(0.0, 1.0, 0.0)
+        if length(self.mGravity) > 0.0001 {
+            up = normal(self.mGravity) * -1.0
+        }
+        front = flat(front, up)
+        if length(front) < 0.5 {
+            front = flat(MR::getCamZdir(), up)
+        }
+        // The stick in the camera's axes on the mount's ground.
+        let ahead = flat(MR::getCamZdir(), up)
+        let side = flat(MR::getCamXdir(), up)
+        let sx = MR::getPlayerStickX()
+        let sy = MR::getPlayerStickY()
+        let want = ahead * sy + side * sx
+        let push = min(length(vec3(sx, sy, 0.0)), 1.0)
+        if push > 0.1 and length(want) > 0.0001 {
+            let w = normal(want)
+            let angle = atan2(dot(cross(front, w), up), dot(front, w)) * 57.29578
+            front = normal(turn_about(front, up, clamp(angle, 0.0 - d.turn_degrees, d.turn_degrees)))
+        }
+        // Along the ground at the stick's speed; what it had along its up kept (gravity and jumps).
+        let along_up = dot(self.mVelocity, up)
+        var v = front * (d.speed * push)
+        if d.surface {
+            v = v + up * along_up
+            self.mVelocity = v
+            MR::addVelocityToGravity(self, fall_strength)
+            if MR::isOnGround(self) and MR::isPressedJump(0) {
+                MR::addVelocityJump(self, d.jump)
+            }
+        } else {
+            v = v + up * (along_up * air_keep)
+            self.mVelocity = v
+            if MR::isPressedJump(0) {
+                MR::addVelocityJump(self, d.jump)
+            }
+        }
+    }
+
+    // The mount's pose: its up against gravity, its front the drive's, at its place.
+    override fn calcAndSetBaseMtx() {
+        var up = vec3(0.0, 1.0, 0.0)
+        if length(self.mGravity) > 0.0001 {
+            up = normal(self.mGravity) * -1.0
+        }
+        let f = flat(front, up)
+        if length(f) < 0.5 {
+            base.calcAndSetBaseMtx()
+            return
+        }
+        let s = normal(cross(up, f))
+        let p = self.mPosition
+        `MR::setBaseTRMtx(LiveActor *, MtxPtr)`(self, mat34(vec4(s.x, up.x, f.x, p.x), vec4(s.y, up.y, f.y, p.y), vec4(s.z, up.z, f.z, p.z)))
+    }
+}
+
+// A mod that defined mounts was taken out: a rider on one of its mounts is let off, its mounts killed with
+// the game's own kill (newest first), its definitions off in their places (other mods' numbers hold).
+on mods.stopped(gone) {
+    var i = obj_ref.len()
+    while i > 0 {
+        i -= 1
+        let k = (obj_def[i] - 1) as int
+        if def_owner[k] == gone {
+            if let a = obj_ref[i].get() {
+                if is_ridden(a) {
+                    let_off(true)
+                }
+                a.kill()
+            }
+            obj_ref.remove(i)
+            obj_def.remove(i)
+        }
+    }
+    for k in 0..defs.len() {
+        if def_owner[k] == gone {
+            def_live[k] = false
+        }
+    }
+}

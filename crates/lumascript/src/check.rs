@@ -507,7 +507,7 @@ const BUILTIN_TYPES: [(&str, usize); 29] = [
     ("bytes", 0),
     ("list", 1),
     ("set", 1),
-    // Content values (C2): a name of the mod's content (`model "x"`), a text at run time.
+    // Content values: a name of the mod's content (`model "x"`), a text at run time.
     ("model", 0),
     ("effect", 0),
     ("sound", 0),

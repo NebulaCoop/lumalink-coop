@@ -26,6 +26,13 @@ fn vertical_gradient(painter: &Painter, area: Rect, top: Color32, bottom: Color3
     painter.add(Shape::mesh(mesh));
 }
 
+/// The backdrop's colour at height `y` of `area`.
+pub fn backdrop_at(area: Rect, y: f32) -> Color32 {
+    let t = ((y - area.top()) / area.height().max(1.0)).clamp(0.0, 1.0);
+    let f = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
+    Color32::from_rgb(f(BACKDROP_TOP.r(), BACKDROP_BOTTOM.r()), f(BACKDROP_TOP.g(), BACKDROP_BOTTOM.g()), f(BACKDROP_TOP.b(), BACKDROP_BOTTOM.b()))
+}
+
 /// The pale backdrop with its fine ruled lines.
 pub fn backdrop(painter: &Painter, area: Rect) {
     vertical_gradient(painter, area, BACKDROP_TOP, BACKDROP_BOTTOM);

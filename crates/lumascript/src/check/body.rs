@@ -1351,7 +1351,7 @@ impl<'w, 'a> Walk<'w, 'a> {
             }
             None => match (&record, has_this) {
                 (Some(r), true) => {
-                    let konst = facts.as_ref().is_some_and(|f| f.konst);
+                    let konst = facts.as_ref().is_some_and(|f| f.is_const);
                     (Some(Ty::Game(GameTy::View { record: r.clone(), konst })), Some(Members::Game(r.clone())))
                 }
                 _ => (None, None),

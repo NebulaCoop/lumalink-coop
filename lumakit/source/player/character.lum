@@ -1,0 +1,510 @@
+// kit.player.character: a playable character (name, icon, model, animations, voice, constants),
+// switched to mid-level and back. Built on the game's player by name: its animations through MarioActor::
+// changeAnimation (and the non-stop and upper-body forms), its voice through MarioActor::playSound, the game's Luigi
+// checks through MR::isPlayerLuigi, its constants through kit.player.state's tune.
+// The newest `play` holds; when its mod stops, or `mario()` is played by it, the one before holds again.
+// Characters and plays are recorded under caller(); `on mods.stopped` takes a stopped mod's away and the game's
+// own Mario (or the character played before) comes back.
+// The look: the character's model drawn with the player through content.model's attach, every joint
+// following the player's joint of its name (its own skeleton's or Mario's: LumaLink binds and scales it), and the
+// game's own body, hands and face not drawn while it shows (MarioActor::drawMarioModel skipped). The icon: a
+// draw.Texture the character carries for what shows the player (the hud, a select screen).
+// A second player: an extra MarioActor from svc.player, driven by the game's second controller, playing its own
+// character (its look, clips and voice) or the game's own.
+// `voice` maps the game's sound names to the names of the sounds played instead.
+
+use ./player/state as pst
+use ./item
+use svc.content.model as cm
+use svc.draw
+use svc.mods
+use svc.player
+
+pub struct Character {
+    id: text
+    name: text                                // C.text
+    icon: draw.Texture? = none
+    look: model? = none                       // its own skeleton or Mario's (LumaLink binds and scales it)
+    actions: map<text, text> = {}             // the game's action name -> this character's clip
+    voice: map<text, text> = {}               // the game's voice name -> this character's sound
+    tuning: pst.Tuning? = none
+    as_luigi: bool = false                    // the game's Luigi checks answer true (MR::isPlayerLuigi)
+}
+// A defined character: its slot + 1; 0 is the game's own Mario or Luigi.
+pub struct CharacterId {
+    n: int
+    fn play(self) { play_character(self) }
+    fn is_current(self) -> bool { return is_current_character(self) }
+}
+// look: the second player's model (none: its character's look, or the game's own body).
+pub struct Second { look: model? = none, pad: u32 = 1, character: CharacterId? = none }
+pub struct SecondPlayer {
+    n: int
+    fn view(self) -> MarioActor? { return second_view(self) }
+    fn remove(self) { remove_second(self) }
+    fn alive(self) -> bool { return second_alive(self) }
+}
+
+var characters: list<Character> = []
+var owners: list<u64> = []
+var live: list<bool> = []
+// The plays in force, oldest first: the character (slot + 1, 0 the game's own) and the mod that asked; the last holds.
+var plays: list<int> = []
+var play_owners: list<u64> = []
+// The character whose constants are tuned now (slot + 1) and its tuning's handle.
+var tuned_for: int = 0
+var tuned: pst.Tuned = pst.Tuned { n: 0 }
+// The look shown now: the character it is (slot + 1, 0 none), its attached model and whether the attach holds (the
+// body hidden then).
+var look_for: int = 0
+var look_model: cm.Model? = none
+var look_shown = false
+// The extra players made through second_player, by SecondPlayer.n - 1: the handle (none once removed), the character
+// each plays (slot + 1, 0 the game's own), its attached look (none: the game's body shows) and the mod that asked.
+var seconds: list<ref<MarioActor>?> = []
+var second_chars: list<int> = []
+var second_looks: list<cm.Model?> = []
+var second_given: list<bool> = []         // the look was Second's own, not its character's
+var second_owners: list<u64> = []
+
+fn player_one() -> MarioActor? {
+    return MarioAccess::getPlayerActor()
+}
+
+// Whether `m` is the game's own player (player 1), not an extra one.
+fn is_player_one(m: MarioActor) -> bool {
+    if let p = player_one() {
+        return same(p, m)
+    }
+    return false
+}
+
+fn holding() -> int {
+    if let n = plays.last() {
+        return n
+    }
+    return 0
+}
+
+fn slot_of(id: CharacterId) -> int? {
+    if id.n <= 0 or id.n > characters.len() or not live[id.n - 1] {
+        return none
+    }
+    return id.n - 1
+}
+
+fn character_at(n: int) -> Character? {
+    if n <= 0 or not live[n - 1] {
+        return none
+    }
+    return characters[n - 1]
+}
+
+// The character holding now (player 1's), if one of the mods' holds.
+fn now() -> Character? {
+    return character_at(holding())
+}
+
+// The character `m` plays: an extra player made here its own (none: the game's own), any other player 1's.
+fn character_of(m: MarioActor) -> Character? {
+    for k in 0..seconds.len() {
+        if let r = seconds[k] {
+            if let v = r.get() {
+                if same(v, m) {
+                    return character_at(second_chars[k])
+                }
+            }
+        }
+    }
+    return now()
+}
+
+// The constants of the character holding now, and only those, tuned.
+fn settle() {
+    let n = holding()
+    settle_look(n)
+    if n == tuned_for {
+        return
+    }
+    pst.end_tuned(tuned)
+    tuned = pst.Tuned { n: 0 }
+    tuned_for = 0
+    if let c = now() {
+        if let t = c.tuning {
+            tuned = pst.tune(t)
+        }
+        tuned_for = n
+    }
+}
+
+// The look of the character holding now (`n`, slot + 1; 0 the game's own): the old one detached, the new attached.
+fn settle_look(n: int) {
+    if n == look_for {
+        return
+    }
+    if let h = look_model {
+        cm.detach(h)
+    }
+    look_model = none
+    look_shown = false
+    look_for = n
+    if let c = character_at(n) {
+        if let m = c.look {
+            if let p = player_one() {
+                look_model = cm.attach(p, m, cm.Follow.Skeleton, none, none)
+                look_shown = look_model != none
+            }
+        }
+    }
+}
+
+// A new scene builds the player anew and ends every attached model: the look of the character holding is attached
+// again to the new player. An extra player is made while player 1 stands (MarioActor::init2 names player 1 only after
+// initDrawAndModel, so player 1's own making finds no other player): it changes nothing here.
+hook after MarioActor::initDrawAndModel() {
+    if let p = player_one() {
+        if not same(p, self) {
+            return
+        }
+    }
+    look_for = 0
+    look_model = none
+    look_shown = false
+    // The old scene's extra players went with it, and their looks.
+    for k in 0..seconds.len() {
+        seconds[k] = none
+        second_looks[k] = none
+    }
+    settle_look(holding())
+}
+
+// The game's own body, hands and face are not drawn while a character's look shows (its model is drawn by
+// content.model with the game's lights, shadows and draw order).
+// (drawMarioModel is const: `self` is a read-only view, compared here, not passed to is_player_one.)
+hook before MarioActor::drawMarioModel() {
+    if look_shown {
+        if let p = player_one() {
+            if same(p, self) { skip }
+        }
+    }
+    for k in 0..seconds.len() {
+        if second_looks[k] != none {
+            if let r = seconds[k] {
+                if let v = r.get() {
+                    if same(v, self) { skip }
+                }
+            }
+        }
+    }
+}
+
+// The game's Luigi checks answer as the character holding asks (as_luigi), the game's own answer with none.
+hook after MR::isPlayerLuigi() -> luigi {
+    if let c = now() {
+        result = c.as_luigi
+    }
+}
+
+// The character's clip for each of the game's actions it names, and its voice for each voice; the game's own for the
+// others. A name written here reaches the call as the back end's kept copy (it lives past the call and the clip's load).
+wrap MarioActor::changeAnimation(name, next) {
+    if let c = character_of(self) {
+        if let n = name {
+            if let clip = c.actions.get(n) {
+                name = clip
+            }
+        }
+    }
+    proceed()
+}
+
+wrap MarioActor::changeAnimationNonStop(name) {
+    if let c = character_of(self) {
+        if let n = name {
+            if let clip = c.actions.get(n) {
+                name = clip
+            }
+        }
+    }
+    proceed()
+}
+
+wrap MarioActor::changeAnimationUpper(name) {
+    if let c = character_of(self) {
+        if let n = name {
+            if let clip = c.actions.get(n) {
+                name = clip
+            }
+        }
+    }
+    proceed()
+}
+
+wrap MarioActor::playSound(name, level) {
+    if let c = character_of(self) {
+        if let n = name {
+            if let v = c.voice.get(n) {
+                name = v
+            }
+        }
+    }
+    proceed()
+}
+
+pub fn define(c: Character) -> CharacterId {
+    if let t = c.tuning {
+        for name in t.values.keys() {
+            if not pst.is_constant(name) {
+                fail "kit.player.character.define: tuning: the player has no constant named {name}"
+            }
+        }
+    }
+    return define_for(caller(), c)
+}
+
+fn define_for(owner: u64, c: Character) -> CharacterId {
+    characters.push(c)
+    owners.push(owner)
+    live.push(true)
+    return CharacterId { n: characters.len() }
+}
+
+// kit/player.character/<id>.json: every field; `icon` a texture's name in the stores,
+// `tuning` the constants by name.
+struct CharacterData {
+    id: text
+    name: text
+    icon: text? = none
+    look: text = ""
+    actions: map<text, text> = {}
+    voice: map<text, text> = {}
+    tuning: map<text, f32>? = none
+    as_luigi: bool = false
+}
+
+// One kit/player.character file of `owner`'s, read: its character defined under that mod (find gives it to the mod's
+// code). An icon the stores lack is drawn as the missing-texture checker and named in the log there; a look that is
+// neither the mod's model nor the game's leaves the character out, named in the log.
+fn define_data(owner: u64, file: text, bytes_of: bytes) {
+    guard let d = json.decode<CharacterData>(bytes_of) else {
+        log "kit.player.character: {file} is not a character (json)"
+        return
+    }
+    var icon: draw.Texture? = none
+    if let name = d.icon {
+        icon = draw.texture(name)
+    }
+    var look: model? = none
+    if d.look != "" {
+        guard let m = item.model_of(owner, d.look) else {
+            log "kit.player.character: {file}: look {d.look} is neither the mod's model nor the game's; left out"
+            return
+        }
+        look = m
+    }
+    var tuning: pst.Tuning? = none
+    if let t = d.tuning {
+        tuning = pst.known(pst.Tuning { values: t }, "kit.player.character: {file}")
+    }
+    define_for(owner, Character { id: d.id, name: d.name, icon: icon, look: look, actions: d.actions, voice: d.voice,
+        tuning: tuning, as_luigi: d.as_luigi })
+}
+
+// Each enabled mod's kit/player.character files, at LumaKit's start.
+on start {
+    for m in mods.needing() {
+        for name in mods.kit_names(m, "player.character") ?? [] {
+            if let b = mods.kit_read(m, "player.character", name) {
+                define_data(m, "kit/player.character/{name}", b)
+            }
+        }
+    }
+}
+
+// A character of the calling mod by its id.
+pub fn find(id: text) -> CharacterId? {
+    let me = caller()
+    var i = characters.len()
+    while i > 0 {
+        i -= 1
+        if live[i] and owners[i] == me and characters[i].id == id {
+            return CharacterId { n: i + 1 }
+        }
+    }
+    return none
+}
+
+// The character holding now; none: the game's own Mario or Luigi.
+pub fn current() -> CharacterId? {
+    let n = holding()
+    if n <= 0 {
+        return none
+    }
+    return CharacterId { n: n }
+}
+
+// The game's own, to switch back.
+pub fn mario() -> CharacterId {
+    return CharacterId { n: 0 }
+}
+
+// The calling mod's character plays from now (mid-level too: the next animation and sound are its own); `mario()`
+// gives the game's own back for this mod's plays. The newest play of any mod holds.
+pub fn play_character(id: CharacterId) {
+    let me = caller()
+    // This mod's earlier plays give way to the new one.
+    var i = plays.len()
+    while i > 0 {
+        i -= 1
+        if play_owners[i] == me {
+            plays.remove(i)
+            play_owners.remove(i)
+        }
+    }
+    if id.n != 0 {
+        guard let s = slot_of(id) else { return }
+        plays.push(s + 1)
+        play_owners.push(me)
+    }
+    settle()
+}
+
+pub fn is_current_character(id: CharacterId) -> bool {
+    return holding() == id.n
+}
+
+// A second player: an extra MarioActor of the game's (svc.player), standing where player 1 stands,
+// driven by the game's second controller (`pad` 1; svc.player drives none other from a pad) and playing `character`
+// (none: the game's own; svc.player makes the scene's own brother, so as_luigi does not change it), shown as `look`,
+// else its character's look. It falls and comes back at that place, and goes with its scene. The handle is empty
+// (view none, alive false) when it could not be made: past 3 extra players, or with no scene with a player running
+// (the reason in the mod log).
+pub fn second_player(s: Second) -> SecondPlayer {
+    let me = caller()
+    if s.pad != 1 {
+        log "kit.player.character.second_player: pad {s.pad}: an extra player is driven by the game's second controller (pad 1)"
+        return SecondPlayer { n: 0 }
+    }
+    var ch = 0
+    if let id = s.character {
+        guard let k = slot_of(id) else {
+            log "kit.player.character.second_player: no such character"
+            return SecondPlayer { n: 0 }
+        }
+        ch = k + 1
+    }
+    guard let p = player_one() else {
+        log "kit.player.character.second_player: no player in this scene"
+        return SecondPlayer { n: 0 }
+    }
+    guard let made = player.make(player.Init { input: player.Input.Pad, pad: 1, pos: p.mPosition, rot: p.mRotation }) else {
+        return SecondPlayer { n: 0 }
+    }
+    guard let mario = as_class<MarioActor>(made) else {
+        player.remove(made)
+        return SecondPlayer { n: 0 }
+    }
+    var look = s.look
+    if look == none {
+        if let c = character_at(ch) {
+            look = c.look
+        }
+    }
+    var shown: cm.Model? = none
+    if let m = look {
+        shown = cm.attach(mario, m, cm.Follow.Skeleton, none, none)
+    }
+    seconds.push(ref(mario))
+    second_chars.push(ch)
+    second_looks.push(shown)
+    second_given.push(s.look != none)
+    second_owners.push(me)
+    return SecondPlayer { n: seconds.len() }
+}
+
+fn second_ref(p: SecondPlayer) -> ref<MarioActor>? {
+    if p.n <= 0 or p.n > seconds.len() {
+        return none
+    }
+    return seconds[p.n - 1]
+}
+
+pub fn second_view(p: SecondPlayer) -> MarioActor? {
+    if let r = second_ref(p) {
+        return r.get()
+    }
+    return none
+}
+
+pub fn remove_second(p: SecondPlayer) {
+    if let r = second_ref(p) {
+        drop_second(p.n - 1)
+    }
+}
+
+// Extra player `k` (SecondPlayer.n - 1) removed: its look detached, the player taken out of the scene.
+fn drop_second(k: int) {
+    if let h = second_looks[k] {
+        cm.detach(h)
+    }
+    second_looks[k] = none
+    if let r = seconds[k] {
+        if let v = r.get() {
+            player.remove(v)
+        }
+    }
+    seconds[k] = none
+}
+
+pub fn second_alive(p: SecondPlayer) -> bool {
+    if let v = second_view(p) {
+        return true
+    }
+    return false
+}
+
+// A mod that defined or played characters was taken out: its plays end, its characters go, and the character
+// played before (or the game's own) holds again with its constants.
+on mods.stopped(gone) {
+    var i = plays.len()
+    while i > 0 {
+        i -= 1
+        if play_owners[i] == gone {
+            plays.remove(i)
+            play_owners.remove(i)
+        }
+    }
+    for k in 0..characters.len() {
+        if owners[k] == gone {
+            live[k] = false
+        }
+    }
+    // A play of a character whose mod stopped, made by another mod, ends too.
+    i = plays.len()
+    while i > 0 {
+        i -= 1
+        if not live[plays[i] - 1] {
+            plays.remove(i)
+            play_owners.remove(i)
+        }
+    }
+    // Its extra players go with it (svc.player removes a mod's own; these are LumaKit's, made for it).
+    // An extra player playing a character that went shows the game's body again (or the look it was given).
+    for k in 0..seconds.len() {
+        if second_owners[k] == gone {
+            drop_second(k)
+        } else if second_chars[k] != 0 and not live[second_chars[k] - 1] {
+            second_chars[k] = 0
+            if not second_given[k] {
+                if let h = second_looks[k] {
+                    cm.detach(h)
+                }
+                second_looks[k] = none
+            }
+        }
+    }
+    if tuned_for != 0 and not live[tuned_for - 1] {
+        tuned_for = -1
+    }
+    settle()
+}

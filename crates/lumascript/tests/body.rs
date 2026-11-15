@@ -1035,7 +1035,7 @@ fn marked_pointer_parameters() {
     ]);
 }
 
-/// The docs/modding/language/classes.md's make (order 8): `make(name, place, count = 1) -> list<LiveActor>`, the place the standard
+/// The docs/modding/language/classes.md's make: `make(name, place, count = 1) -> list<LiveActor>`, the place the standard
 /// module's MakePlace (its fields' defaults as any struct's); a literal name is a factory row or a mod class's, said
 /// only with the placement facts.
 #[test]
@@ -1141,7 +1141,7 @@ fn frame_start_stop_and_mods_stopped_are_one_a_module() {
     assert_eq!(said, vec![3, 4]);
 }
 
-/// Director 2026-11-12, decision (a): a record that cannot be the script's copy (`Sensor` copies itself, as the
+/// A record that cannot be the script's copy (`Sensor` copies itself, as the
 /// game's HitSensor) written in a type is its view: a parameter, a function type's parameter, a game function's
 /// pointer argument, its fields read. As every view it is not kept (language rule 3): a struct's field of it is S0103.
 #[test]

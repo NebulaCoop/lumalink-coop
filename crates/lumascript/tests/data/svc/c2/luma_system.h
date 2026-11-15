@@ -16,9 +16,11 @@ extern "C" {
 #define LUMA_SYSTEM_CLIPBOARD_NAME "system.clipboard"
 #define LUMA_SYSTEM_CLIPBOARD_MAJOR 1u
 #define LUMA_SYSTEM_CLIPBOARD_MINOR 0u
+#define LUMA_SYSTEM_CLIPBOARD_PERMISSION "system.clipboard"
 #define LUMA_SYSTEM_LINKS_NAME "system.links"
 #define LUMA_SYSTEM_LINKS_MAJOR 1u
 #define LUMA_SYSTEM_LINKS_MINOR 0u
+#define LUMA_SYSTEM_LINKS_PERMISSION "system.links"
 
 typedef enum LumaSystemPlatform {
     LUMA_SYSTEM_WINDOWS = 0,

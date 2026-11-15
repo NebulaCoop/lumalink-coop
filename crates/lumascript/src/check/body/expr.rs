@@ -605,7 +605,7 @@ impl<'w, 'a> Walk<'w, 'a> {
             (a, b) if a == b => true,
             (a, b) if number(a) && number(b) => true,
             (Ty::Game(GameTy::Enum(_)), Ty::Int(_)) | (Ty::Int(_), Ty::Game(GameTy::Enum(_))) => true,
-            // A service's enum is a game enum the same way (J, FB 2026-11-12: `time.now().state as u32`).
+            // A service's enum is a game enum the same way (`time.now().state as u32`).
             (Ty::Service { service, name }, Ty::Int(_)) | (Ty::Int(_), Ty::Service { service, name }) => self.service_enum(service, name),
             (Ty::Enum(e), Ty::Int(_)) => self.c.enum_without_data(*e),
             _ => false,
@@ -1362,7 +1362,7 @@ impl<'w, 'a> Walk<'w, 'a> {
                 Some(fields) if !name.ends_with("Event") => fields.iter().all(|(_, t)| self.equatable_in(t, seen)),
                 _ => false,
             },
-            // A content value is its name (C2): equal names, equal content; a nerve is the game's.
+            // A content value is its name: equal names, equal content; a nerve is the game's.
             Ty::Content(w) => w != "nerve",
             Ty::Fn(..) | Ty::Task | Ty::Pending(_) | Ty::Class(_) | Ty::Group { .. } => false,
             Ty::Game(GameTy::View { .. } | GameTy::Array { .. }) => false,

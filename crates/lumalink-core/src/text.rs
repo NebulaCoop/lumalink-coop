@@ -9,6 +9,9 @@ include!(concat!(env!("OUT_DIR"), "/lumalink_text.rs"));
 
 static LANGUAGE: AtomicUsize = AtomicUsize::new(0);
 
+/// The 14 languages, in the order of the text's columns and of [`say_in`]'s numbers.
+pub use luma_validate::LANGUAGES;
+
 /// Chooses the language of every later line; false (and nothing changed) when `name` is not one of the 14.
 pub fn set_language(name: &str) -> bool {
     match luma_validate::LANGUAGES.iter().position(|l| *l == name) {
@@ -23,6 +26,35 @@ pub fn set_language(name: &str) -> bool {
 /// The language chosen, by its name in the game (UsEnglish ... TwTradChinese).
 pub fn language() -> &'static str {
     luma_validate::LANGUAGES[LANGUAGE.load(Ordering::Relaxed)]
+}
+
+/// The game's language for a language's name in the game or a system language code (`fr-CA`, `zh-Hant-TW`, `pt_BR`,
+/// a POSIX locale such as `de_DE.UTF-8`); UsEnglish for any other.
+pub fn language_for(wanted: &str) -> &'static str {
+    if let Some(l) = luma_validate::LANGUAGES.iter().find(|l| l.eq_ignore_ascii_case(wanted)) {
+        return l;
+    }
+    // A POSIX locale's encoding and modifier (`.UTF-8`, `@euro`) say nothing of the language.
+    let code = wanted.split(['.', '@']).next().unwrap_or("").to_ascii_lowercase().replace('_', "-");
+    let mut parts = code.split('-');
+    let base = parts.next().unwrap_or("");
+    let rest: Vec<&str> = parts.collect();
+    let region = |r: &[&str]| rest.iter().any(|p| r.contains(p));
+    match base {
+        // The Americas' English is the US one; every other English the European one.
+        "en" => if rest.is_empty() || region(&["us", "ca", "mx", "ph"]) { "UsEnglish" } else { "EuEnglish" },
+        "fr" => if region(&["ca", "us"]) { "UsFrench" } else { "EuFrench" },
+        // Spain's Spanish is the European one; every other the Americas' (as the game's own regions split them).
+        "es" => if rest.is_empty() || region(&["es"]) { "EuSpanish" } else { "UsSpanish" },
+        "de" => "EuGerman",
+        "it" => "EuItalian",
+        "nl" => "EuDutch",
+        "pt" => "UsPortuguese",
+        "ja" => "JpJapanese",
+        "ko" => "KrKorean",
+        "zh" => if region(&["hant", "tw", "hk", "mo"]) { "TwTradChinese" } else { "CnSimpChinese" },
+        _ => "UsEnglish",
+    }
 }
 
 /// Whether `id` has a row (for lines whose id is made from a name, as the command line's help is).
@@ -91,16 +123,17 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    /// Every id the code of the three crates (the library, the command line, the window) says has a row, and every row is said somewhere (the help's in the lumalink
-    /// crate's own test).
+    /// Every id the code of the four crates (the library, the command line, the window, Setup) says has a row, and every
+    /// row is said somewhere (the help's in the lumalink crate's own test).
     #[test]
     fn every_id_has_a_row_and_every_row_is_said() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut said = BTreeSet::new();
-        for dir in [root.join("lumalink-core/src"), root.join("lumalink/src"), root.join("lumalink-gui/src")] {
+        for dir in [root.join("lumalink-core/src"), root.join("lumalink/src"), root.join("lumalink-gui/src"), root.join("lumalink-setup/src")] {
             for entry in std::fs::read_dir(&dir).unwrap() {
                 let path = entry.unwrap().path();
-                if path.extension().and_then(|e| e.to_str()) != Some("rs") || path.ends_with("text.rs") {
+                let code = path.extension().is_some_and(|e| e == "rs");
+                if !code || path.ends_with("text.rs") {
                     continue;
                 }
                 let source = std::fs::read_to_string(&path).unwrap();
@@ -124,6 +157,37 @@ mod tests {
         let unsaid: Vec<_> = rows.difference(&said).filter(|id| !id.starts_with("LumaLink.Help.") && !id.starts_with("LumaLink.Cli.Value.") && !id.starts_with("LumaLink.Script.")).collect();
         assert!(missing.is_empty(), "said without a row: {missing:?}");
         assert!(unsaid.is_empty(), "rows never said: {unsaid:?}");
+    }
+
+    #[test]
+    fn a_system_language_picks_the_games() {
+        for (code, language) in [
+            ("en-US", "UsEnglish"),
+            ("en-GB", "EuEnglish"),
+            ("en_GB.UTF-8", "EuEnglish"),
+            ("fr-ca", "UsFrench"),
+            ("fr-FR", "EuFrench"),
+            ("fr_FR@euro", "EuFrench"),
+            ("es-MX", "UsSpanish"),
+            ("es-ES", "EuSpanish"),
+            ("de_DE.UTF-8", "EuGerman"),
+            ("pt_BR", "UsPortuguese"),
+            ("ja", "JpJapanese"),
+            ("ja_JP.eucJP", "JpJapanese"),
+            ("zh-cn", "CnSimpChinese"),
+            ("zh-Hans-CN", "CnSimpChinese"),
+            ("zh-TW", "TwTradChinese"),
+            ("zh_TW.UTF-8", "TwTradChinese"),
+            ("zh-hant", "TwTradChinese"),
+            ("sv-se", "UsEnglish"),
+            ("C", "UsEnglish"),
+            ("POSIX", "UsEnglish"),
+            ("C.UTF-8", "UsEnglish"),
+            ("", "UsEnglish"),
+            ("KrKorean", "KrKorean"),
+        ] {
+            assert_eq!(language_for(code), language, "{code}");
+        }
     }
 
     #[test]

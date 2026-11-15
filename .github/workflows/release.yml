@@ -1,66 +1,56 @@
-name: Release
+name: Release Setups
 
+# A LumaLink release is made on a Windows PC with installer/build-setup.ps1: LumaLink-Setup.exe and its signature,
+# signed with the release key, which never leaves that PC. Publishing the release runs this workflow, which builds the
+# Linux and macOS Setups (installer/build-setup.sh) and adds them to it. installer/sign-release.ps1 then signs them on
+# that PC; updates offer the release on Linux and macOS once their signatures are there.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to add the Setups to (v1.2.3)
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  setup:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: windows-x64
-          - os: ubuntu-latest
-            name: linux-x64
-          - os: macos-latest
-            name: macos-arm64
-          - os: macos-13
-            name: macos-x64
+          - os: ubuntu-22.04
+            llvm: Linux-X64
+          - os: macos-14
+            llvm: macOS-ARM64
     runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - name: Nebula at the pinned commit
         shell: bash
         run: |
           git clone --filter=blob:none https://github.com/keepvaibin/nebula.git nebula
           git -C nebula checkout "$(cat nebula.commit)"
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace --locked
-      - run: cargo build --release --locked -p lumalink
-      - name: Pack
+      - name: The pinned LLVM
         shell: bash
         run: |
-          out="lumalink-${GITHUB_REF_NAME}-${{ matrix.name }}"
-          mkdir "$out"
-          for f in lumalink lumalink.exe; do
-            [ -f "target/release/$f" ] && cp "target/release/$f" "$out/"
-          done
-          cp README.md LICENSE nebula.commit "$out/"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            7z a "$out.zip" "$out" >/dev/null
-          else
-            zip -qr "$out.zip" "$out"
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: lumalink-*.zip
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-      - name: Publish
+          llvm=$(sed -n 's/^pub const LLVM: &str = "\([0-9.]*\)";/\1/p' crates/lumalink-core/src/build.rs)
+          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/LLVM-$llvm-${{ matrix.llvm }}.tar.xz"
+          mkdir "$RUNNER_TEMP/llvm"
+          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "$RUNNER_TEMP/llvm" --strip-components=1
+      - name: Build the Setup
+        shell: bash
+        run: sh installer/build-setup.sh --llvm "$RUNNER_TEMP/llvm" --output "$RUNNER_TEMP/dist"
+      - name: Add it to the release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" lumalink-*.zip --repo "$GITHUB_REPOSITORY" --generate-notes
+        run: gh release upload "$TAG" "$RUNNER_TEMP"/dist/LumaLink-*Setup-* --clobber --repo "$GITHUB_REPOSITORY"

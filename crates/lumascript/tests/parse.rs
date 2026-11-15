@@ -267,7 +267,7 @@ fn the_tree_takes_the_grammars_reading() {
         _ => panic!("two on items"),
     }
 
-    // `(T)` is T grouped, not a tuple of one: `(fn(A) -> bool)?` is an optional function (FB, FC 2026-11-12).
+    // `(T)` is T grouped, not a tuple of one: `(fn(A) -> bool)?` is an optional function.
     let (m, d) = parse_module("fn f(g: (fn(i32) -> bool)?, h: (i32), t: (i32, f32)) {\n}\n");
     assert!(d.is_empty(), "{}", shown("grouped", &d));
     let ItemKind::Fn(f) = &m.items[0].kind else { panic!("a fn") };

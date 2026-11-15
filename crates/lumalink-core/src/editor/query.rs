@@ -298,7 +298,7 @@ impl Analysis {
             Target::R(Resolved::GameFn { name, signature }) => {
                 let facts = game.game.facts.as_ref().and_then(|f| f.rows.get(&(name.clone(), signature.clone())));
                 let virt = if facts.is_some_and(|f| f.is_virtual) { "virtual " } else { "" };
-                let konst = if facts.is_some_and(|f| f.konst) { " const" } else { "" };
+                let konst = if facts.is_some_and(|f| f.is_const) { " const" } else { "" };
                 h.code = format!("{virt}{name}{signature}{konst}");
                 if let Some(ty) = &ty {
                     h.code.push_str(&format!(" -> {ty}"));

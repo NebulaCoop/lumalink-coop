@@ -1,6 +1,7 @@
 //! The mod a service call names: always the mod whose code makes it. A library's calls name the library, in its
-//! exports, in tasks started there, in its requests and in their takes: the library's content, grant and handles are
-//! its own. Acting for the caller is the kernel's explicit call for C mods; LumaScript has no form for it.
+//! exports, in tasks started there, in its requests and in their takes: the library's content and handles are its own.
+//! A service that needs a permission is the exception's check: inside an export, the player's answer for the calling
+//! mod counts (lumart_for_caller before the call).
 
 use luma_validate::names::Types;
 use lumascript::check::{self, ModFacts, Source};
@@ -58,4 +59,18 @@ fn a_librarys_requests_and_their_takes_name_the_library() {
     for want in ["->get_text(luma_rt_self, ", "->take_text(luma_rt_self, ev->handle, ", "->take_read(luma_rt_self, ev->handle, ", "lumart_fn_keep(", "lumart_fn f = (lumart_fn)user;"] {
         assert!(all.contains(want), "{want} in\n{all}");
     }
+}
+
+/// A call to a service that needs a permission asks first whether the mod the library runs for may use it; a call to
+/// one that needs none does not ask.
+#[test]
+fn a_librarys_permissioned_calls_ask_for_the_caller() {
+    let text = "use svc.fs\nuse svc.system.clipboard\n\nvar pasted: text = \"\"\n\n\
+        task load() {\n    if let b = wait fs.read(\"a.txt\") {\n        pasted = \"read\"\n    }\n}\n\n\
+        pub fn paste() -> bool {\n    let k = clipboard.get_text(fn(e: clipboard.TextEvent) {\n        if e.status == none {\n            pasted = e.data\n        }\n    })\n    return k != none\n}\n\n\
+        pub fn size() {\n    start load()\n}\n";
+    let all = library_c("/c2", &["luma_services.h", "luma_fs.h", "luma_system.h"], text);
+    assert_eq!(all.matches("lumart_for_caller(").count(), 1, "{all}");
+    let ask = all.find("lumart_for_caller(\"system.clipboard\", 1u, 0u) != 0").expect("the clipboard's check");
+    assert!(ask < all.find("->get_text(luma_rt_self, ").unwrap(), "{all}");
 }

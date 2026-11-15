@@ -15,10 +15,10 @@ use std::path::{Path, PathBuf};
 
 /// luma.json's keys in the format's order (docs/modding/format/luma.md, section 4; the validator's TOP_KEYS); any other key keeps its place
 /// after them, and the check names it.
-const ORDER: [&str; 26] = [
+const ORDER: [&str; 27] = [
     "format", "id", "version", "name", "summary", "text", "authors", "license", "links", "icon", "pictures", "game",
-    "nebula", "needs", "conflicts", "load", "takes_over", "options", "permissions", "renderer", "layers", "code",
-    "saves", "kit", "build", "pre_standard",
+    "library", "nebula", "needs", "conflicts", "load", "takes_over", "options", "permissions", "renderer", "layers",
+    "code", "saves", "kit", "build", "pre_standard",
 ];
 
 /// One part to add.

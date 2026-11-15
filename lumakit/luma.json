@@ -1,0 +1,32 @@
+{
+  "format": "1.0",
+  "id": "lumakit",
+  "version": "1.0.0",
+  "name": "LumaKit",
+  "summary": "Shared functions for other mods: actors, items, the HUD, menus, cutscenes, replays and local network play.",
+  "authors": [
+    "keepvaibin"
+  ],
+  "game": {
+    "id": "RMG"
+  },
+  "library": true,
+  "code": {
+    "platforms": [
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64",
+      "macos-arm64",
+      "macos-x64",
+      "android-arm64",
+      "android-x64",
+      "ios-arm64"
+    ]
+  },
+  "layers": [
+    {
+      "name": "base"
+    }
+  ]
+}

@@ -281,6 +281,7 @@ mod tests {
     fn help_and_refusals_are_in_every_language() {
         let lines: Vec<&str> = text::ids().filter(|id| id.starts_with(HELP) || id.starts_with("LumaLink.Cli.")).filter(|id| !text::template(0, id).unwrap().contains('{')).collect();
         let subs: Vec<String> = crate::Cli::command().get_subcommands().map(|s| s.get_name().to_string()).collect();
+        let hidden: Vec<String> = crate::Cli::command().get_subcommands().filter(|s| s.is_hide_set()).map(|s| s.get_name().to_string()).collect();
         for (i, language) in luma_validate::LANGUAGES.iter().enumerate() {
             choose_language(&os(&["lumalink", "--language", language])).unwrap();
             let own = |id: &str| text::say_in(i, id, &[]);
@@ -296,13 +297,13 @@ mod tests {
                 }
                 for clap_english in ["Usage:", "Print help", "Print version", "[default:", "lumalink.exe"] {
                     let ours = clap_english == "Usage:" && own("LumaLink.Cli.Usage") == "Usage";
-                    assert!(ours || !page.contains(clap_english), "{language} {sub:?}: clap's {clap_english:?} in:
-{page}");
+                    assert!(ours || !page.contains(clap_english), "{language} {sub:?}: clap's {clap_english:?} in:\n{page}");
                 }
             }
             let root = &pages[0].1;
             assert!(root.contains(&own("LumaLink.Cli.Commands")), "{language}: {root}");
-            for s in &subs {
+            // A hidden command is not listed.
+            for s in subs.iter().filter(|s| !hidden.contains(s)) {
                 assert!(root.contains(&own(&format!("{HELP}{s}"))), "{language}: {s}");
             }
 

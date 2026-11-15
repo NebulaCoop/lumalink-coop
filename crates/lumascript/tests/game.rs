@@ -137,7 +137,7 @@ fn parameters_and_results_cross_as_design_section_3_says() {
     // By value only plain data: one that frees what it holds, or copies itself by its own code, is refused.
     assert_eq!(refused("void(MR::GrowBuffer)").why, NotCrossing::OwnsMemory("MR::GrowBuffer".into()));
     assert_eq!(refused("SoundID()").why, NotCrossing::CopiesItself("SoundID".into()));
-    // Written as a type, a record that cannot be the script's copy is its view (decision (a)).
+    // Written as a type, a record that cannot be the script's copy is its view.
     assert_eq!(game.type_by_name("SoundID"), Ok(GameTy::View { record: "SoundID".into(), konst: false }));
     // One no copy can be called on, though clang calls it trivially copyable; said after OwnsMemory.
     assert_eq!(refused("void(NebulaListLink<Mario>)").why, NotCrossing::CannotCopy("NebulaListLink<Mario>".into()));

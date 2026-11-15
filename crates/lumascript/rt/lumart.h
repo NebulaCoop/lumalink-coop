@@ -36,7 +36,7 @@ typedef struct lm_color { float r, g, b, a; } lm_color;
 void* lumart_alloc(uint64_t size);
 void lumart_free(void* p, uint64_t size);
 
-/* ---------------------------------------------------------------- script errors (docs/modding/language/compiled-form.md, section 6, draft 3 addition) */
+/* ---------------------------------------------------------------- script errors (docs/modding/language/compiled-form.md, section 6) */
 
 /* Reports the run-time code `code` (S0901...) at `file`:`line` with its arguments (UTF-8, at most 8), through
    LumaCore.report; the kernel says it once and counts repeats. Returns 1, so a caller writes `return lumart_raise(...)`.*/
@@ -53,6 +53,12 @@ typedef struct lumart_as {
     uint32_t line;
 } lumart_as;
 extern lumart_as lumart_caller;
+
+/* Before a call to a service that needs a permission. A library mod uses such a service for the mod that called it: the
+   player's answer for that mod counts, not one for the library. 0 when this mod runs its own code, or when the calling
+   mod may use the service; else 1, and the game has said in the calling mod's log that the player has not given it the
+   permission. */
+int32_t lumart_for_caller(const char* service, uint32_t major, uint32_t minor);
 
 /* The common ones, each with its arguments written as text. */
 /* S0914, a wrong call (lumakit rule 8): "<fn>: <param> is <value>; it must be <must>". */
