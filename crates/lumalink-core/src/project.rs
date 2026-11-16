@@ -918,6 +918,12 @@ fn character_id_ok(id: &str) -> bool {
     !id.is_empty() && id.len() <= 31 && id.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_' || c == b'-')
 }
 
+/// A colour as luma.cpp reads one (nebula_palette::parseColor): six hex digits, an optional '#' first.
+fn color_ok(text: &str) -> bool {
+    let digits = text.strip_prefix('#').unwrap_or(text);
+    digits.len() == 6 && digits.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore>, found: &mut Findings) -> bool {
     let mut any = false;
     if let Some(rows) = layer.get("object_changes").and_then(Value::as_array) {
@@ -1046,6 +1052,22 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                     }
                     if row.get("name").is_some_and(|n| !n.as_str().is_some_and(|n| n.len() <= 31)) {
                         found.problem(format!("{name}: {id}'s name is text of at most 31 bytes"));
+                    }
+                    if let Some(palette) = row.get("palette") {
+                        // Its own colours (NebulaCoop's player palettes, sm64coopdx's): "rrggbb" by part.
+                        const PARTS: [&str; 9] = ["pants", "overalls", "shirt", "gloves", "shoes", "hair", "skin", "cap", "emblem"];
+                        match palette.as_object() {
+                            None => found.problem(format!("{name}: {id}'s palette is an object of parts and \"rrggbb\" colours")),
+                            Some(parts) => {
+                                for (part, color) in parts {
+                                    if !PARTS.iter().any(|p| p.eq_ignore_ascii_case(part)) {
+                                        found.problem(format!("{name}: {id}'s palette has no part {part} (it has {})", PARTS.join(", ")));
+                                    } else if !color.as_str().is_some_and(color_ok) {
+                                        found.problem(format!("{name}: {id}'s {part} is a colour as \"rrggbb\", not {color}"));
+                                    }
+                                }
+                            }
+                        }
                     }
                     let archive = match row.get("archive") {
                         None => {
@@ -2240,6 +2262,10 @@ mod tests {
         assert_eq!(row(json!({ "id": "w", "like": "wario" })).0, 1);
         assert_eq!(row(json!({ "id": "w", "archive": "../Wario" })).0, 1);
         assert_eq!(check(json!({ "path": "layers/base", "characters": { "id": "w" } })).0, 1);
+        assert_eq!(row(json!({ "id": "wario", "palette": { "cap": "#E8B000", "overalls": "5a22a0" } })), (0, 0));
+        assert_eq!(row(json!({ "id": "wario", "palette": { "hat": "e8b000" } })).0, 1);
+        assert_eq!(row(json!({ "id": "wario", "palette": { "cap": "yellow" } })).0, 1);
+        assert_eq!(row(json!({ "id": "wario", "palette": ["e8b000"] })).0, 1);
         assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "wario": { "mJumpHeight": 20 } } })).0, 0);
         assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "Wario Bros": { "mJumpHeight": 20 } } })).0, 1);
     }
