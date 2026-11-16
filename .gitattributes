@@ -1,2 +1,6 @@
 # Shell scripts run in bash on every system, so they keep LF even in a Windows checkout.
 *.sh text eol=lf
+# The built-in mods are committed packed (builtin/<id>.lumacoop) and a test packs each folder to compare: their files
+# keep LF on Windows so the package comes out the same.
+builtin/** text=auto eol=lf
+*.lumacoop binary

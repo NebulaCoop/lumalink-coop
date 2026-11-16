@@ -3391,6 +3391,22 @@ PartsModel::makeActorAppeared	h
 PartsModel::makeActorDead	h	
 PartsModel::movement	h	
 PartsModel::offFixedPosNormalizeScale	h	
+coop.character	c	c
+coop.character_id	c	g
+coop.chat_say	g	
+coop.connected	c	c
+coop.count		c
+coop.in_room		c
+coop.is_host		c
+coop.max_players		c
+coop.me		c
+coop.mission	c	c
+coop.name	c	g
+coop.ping	c	c
+coop.same_place	c	c
+coop.set_description	cgc	
+coop.stage	c	g
+coop.stars	c	c
 nebula.actor_name	h	g
 nebula.actor_placed_name	h	g
 nebula.add_hungry_luma	gcc	c
@@ -3409,6 +3425,11 @@ nebula.camera_fov		d
 nebula.camera_position	E	
 nebula.camera_target	E	
 nebula.change_stage	gc	
+nebula.character_count		c
+nebula.character_find	g	c
+nebula.character_id	c	g
+nebula.character_like	c	c
+nebula.character_name	c	g
 nebula.circle_wipe	cc	c
 nebula.declare_item	hcc	
 nebula.distance_to_player	h	d
@@ -3438,6 +3459,7 @@ nebula.has_star	gc	c
 nebula.has_switch	hc	c
 nebula.hide_message		
 nebula.hit_player	hc	c
+nebula.hud_counter	ccc	c
 nebula.is_animation_done	h	c
 nebula.is_cutscene_playing		c
 nebula.is_dead	h	c
@@ -3477,6 +3499,7 @@ nebula.play_movie	g	c
 nebula.play_music	g	c
 nebula.play_system_sound	g	
 nebula.player		h
+nebula.player_character		c
 nebula.player_constant	cgc	d
 nebula.player_front	E	
 nebula.pointer	J	c
@@ -3505,6 +3528,7 @@ nebula.set_gravity_scale	d
 nebula.set_nerve	hg	c
 nebula.set_object_change	cgg	c
 nebula.set_player_character	c	c
+nebula.set_player_character_id	g	c
 nebula.set_player_constant	cgcd	c
 nebula.set_player_control	c	
 nebula.set_position	he	
@@ -3531,6 +3555,7 @@ nebula.stars_in_galaxy	g	c
 nebula.stars_won_in_galaxy	g	c
 nebula.start_camera	gc	
 nebula.start_cutscene	hg	c
+nebula.stat	g	c
 nebula.state	h	c
 nebula.state_frames	h	c
 nebula.step_game	c	

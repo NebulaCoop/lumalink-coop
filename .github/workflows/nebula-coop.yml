@@ -1,8 +1,8 @@
 name: nebula-coop match
 
 # The SDK files LumaLink gives a mod are copies of nebula-coop's, and tools/tunable_names.py and tools/book.py write
-# tunable_names.rs and docs/book.md from its docs/modding. nebula-coop carries a copy of each built-in mod's luma.json
-# (builtin/, in its runtime/src/builtin_mods.inc). This compares them with nebula-coop's main branch.
+# tunable_names.rs and docs/book.md from its docs/modding. nebula-coop ships the built-in mods packed here
+# (builtin/*.lumacoop) from its `lumalink` submodule. This compares them with nebula-coop's main branch.
 #
 # It doesn't block a merge: the two halves of a change (nebula-coop and lumalink-coop) land one after the other, so
 # one side is behind for a while. It runs every day too, so that main falling behind nebula-coop shows.
@@ -41,7 +41,6 @@ jobs:
             native/include/nebula_mod_api.h
             native/petari/include/Game/System/LumaScript.hpp
             docs/modding
-            runtime/src/builtin_mods.inc
           sparse-checkout-cone-mode: false
       - name: SDK files
         shell: bash
@@ -64,25 +63,19 @@ jobs:
           exit $failed
       - name: Built-in mods
         if: always()
-        shell: python
+        shell: bash
         run: |
-          import pathlib, re, sys
-          inc = pathlib.Path("nebula/runtime/src/builtin_mods.inc")
-          if not inc.is_file():
-              print("::error::nebula-coop has no runtime/src/builtin_mods.inc: land the nebula-coop side of the built-in mods first")
-              sys.exit(1)
-          theirs = inc.read_text(encoding="utf-8")
-          copies = dict(re.findall(r'\{"([^"]+)", R"luma\(\n(.*?)\)luma"\}', theirs, re.S))
-          failed = False
-          for manifest in sorted(pathlib.Path("builtin").glob("*/luma.json")):
-              mod = manifest.parent.name
-              if copies.pop(mod, None) != manifest.read_text(encoding="utf-8"):
-                  print(f"::error file={manifest}::differs from nebula-coop's copy in runtime/src/builtin_mods.inc: copy it there (or land the nebula-coop side first)")
-                  failed = True
-          for mod in copies:
-              print(f"::error::nebula-coop has a built-in mod {mod} that builtin/ doesn't")
-              failed = True
-          sys.exit(1 if failed else 0)
+          # nebula-coop's `lumalink` submodule is the commit whose builtin/*.lumacoop it ships.
+          pin=$(git -C nebula ls-tree HEAD lumalink | awk '{print $3}')
+          if [ -z "$pin" ]; then
+            echo "::error::nebula-coop has no lumalink submodule: land the nebula-coop side of the built-in mods first"
+            exit 1
+          fi
+          git fetch --quiet --depth 1 origin "$pin"
+          if ! git diff --quiet FETCH_HEAD HEAD -- 'builtin/*.lumacoop'; then
+            echo "::warning::nebula-coop ships the built-in mods of ${pin:0:7}: move its lumalink submodule here to ship these"
+            git diff --stat FETCH_HEAD HEAD -- 'builtin/*.lumacoop'
+          fi
       - name: Tunable names
         if: always()
         run: python3 tools/tunable_names.py nebula --check

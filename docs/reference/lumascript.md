@@ -168,6 +168,7 @@ it.
 | `room_closed` | (co-op) this player's room ended | | |
 | `player_join`, `player_leave` | (co-op) another player came in, left | their index, their name | |
 | `player_place` | (co-op) a player (this one too) reached another galaxy or mission | their index, the stage | |
+| `chat_command` | (co-op) this player typed one of the mod's chat commands (luma.json `commands`) | the word's place in the command's `options` (1 the first, 0 none), the command | |
 
 Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
 
@@ -301,7 +302,9 @@ the host.
 | `coop.connected(i)` | 1 when someone has index `i` |
 | `coop.name(i)`, `coop.character(i)` | their name; 0 Mario, 1 Luigi, -1 nobody |
 | `coop.stage(i)`, `coop.mission(i)`, `coop.same_place(i)` | where they play; 1 when it is this player's galaxy and mission |
-| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room (Personal Star Counter), round trip in ms |
+| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room, round trip in ms |
+| `coop.set_description(i, text, rgba)` | the player list's last column for a player, on this player's screen (sm64coopdx's `network_player_set_description`); text tags such as `[icon 7]` work, "" clears it |
+| `coop.chat_say(text)` | writes a line in this player's chat, for them alone; a message id (`"CoopCmdPscOn"`) gives that message |
 
 ```text
 var others: int
@@ -320,6 +323,23 @@ on player_leave(index, name) { others = others - 1 }
 ```
 
 The plugin reference (plugin-api.md) explains each call as `coop_<call>`.
+
+A co-op mod's chat commands are luma.json rows (format.md's `commands`), as sm64coopdx's `hook_chat_command`. Typing
+one in a room fires `chat_command` for the mod that has it:
+
+```text
+on chat_command(word, command) {
+    if command == "psc" {
+        hidden = word == 2
+    }
+}
+```
+
+The HUD's star counter takes lines under it for a mod's own counts: `nebula.hud_counter(line, rgba, number)` shows
+`number` on line 1 to 4 with the star tinted (`rgba` as one number, 0xRRGGBBAA written in decimal), -1 hides the line.
+They come and go with the game's counter. `nebula.stat("power_stars")` reads one of the save's all-time stats (the
+Stats page's), -1 for a name it doesn't know. The built-in Personal Star Counter
+([builtin/personal-star-counter](../../builtin/personal-star-counter)) uses all of these.
 
 ## Fields
 

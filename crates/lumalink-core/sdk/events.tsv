@@ -43,3 +43,4 @@ player_leave	game
 room_joined	game
 room_closed	game
 player_place	game
+chat_command	game
