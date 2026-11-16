@@ -369,7 +369,23 @@ typedef struct NebulaCharacterClass {
     const char* name;    /* as menus show it ("WARIO"); null: the id in capitals */
     const char* like;    /* "mario" or "luigi"; null: "mario" */
     const char* archive; /* null: the id with a capital first letter ("Wario") */
+    /* Its own colours (sm64coopdx's character palette): 0xRRGGBB for each NEBULA_PALETTE_* part, as its model's
+       textures have them, which the parts are found by and a player's colours drawn against. Null: its base's. */
+    const int32_t* palette;
 } NebulaCharacterClass;
+
+/* A player's colours, sm64coopdx's PlayerPart: the parts of a palette, in its order. A colour is 0xRRGGBB. */
+enum {
+    NEBULA_PALETTE_PANTS = 0, /* the overalls */
+    NEBULA_PALETTE_SHIRT = 1,
+    NEBULA_PALETTE_GLOVES = 2,
+    NEBULA_PALETTE_SHOES = 3,
+    NEBULA_PALETTE_HAIR = 4,
+    NEBULA_PALETTE_SKIN = 5,
+    NEBULA_PALETTE_CAP = 6,
+    NEBULA_PALETTE_EMBLEM = 7, /* the cap's letter */
+    NEBULA_PALETTE_PARTS = 8
+};
 
 /* A new power-up. Give it to the player with set_value(NEBULA_SET_POWER_UP, its number). */
 typedef struct NebulaPowerUpClass {
@@ -1014,6 +1030,22 @@ typedef struct NebulaModApi {
     /* Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has.
        coop_character gives its base. Valid until the next frame. */
     const char* (*coop_character_id)(int32_t index);
+
+    /* Colours (docs/modding/CHARACTERS.md "Colours"), sm64coopdx's palettes: `part` is a NEBULA_PALETTE_*, a colour
+       0xRRGGBB. A player wears the Options page's colours, else their character's own, and a mod's parts over them. */
+    /* A character's own colour for a part (its model's: luma.json "palette", NebulaCharacterClass's); -1 for no such
+       character or part. */
+    int32_t (*character_palette_color)(int32_t index, int32_t part);
+    /* The colour the player wears for a part now; -1 for no such part. */
+    int32_t (*player_palette_color)(int32_t part);
+    /* Puts a colour on a part of the player over their own, as sm64coopdx's network_player_set_override_palette_color;
+       the others in a room see it. A negative colour takes it off. 1: done; 0: no such part. */
+    int32_t (*set_player_palette_color)(int32_t part, int32_t color);
+    /* Every part back to the player's own colours (network_player_reset_override_palette). */
+    void (*reset_player_palette)(void);
+    /* Online co-op: the colour a player wears for a part (this player's own outside a room, as index 0); -1 for an
+       index nobody has or no such part. */
+    int32_t (*coop_palette_color)(int32_t index, int32_t part);
 } NebulaModApi;
 
 /* True when this Nebula has `field` (fields are added at the end over time):

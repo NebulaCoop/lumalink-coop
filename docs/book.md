@@ -3970,7 +3970,7 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](#p-reference-lumascript--forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`; a character's id (`"wario"`) for a mod's character. See [player numbers](#p-reference-player-numbers). |
-| `characters` | Playable characters (NebulaCoop), as sm64coopdx's character table: `{ "id": "wario", "name": "WARIO", "like": "mario", "archive": "Wario" }`. The model is the layer's `files/ObjectData/<archive>.arc` with the base's skeleton; `like` (mario or luigi) gives the animations, voice and the game's code. Its other models follow the game's names with the base's name swapped (`MarioFace` → `WarioFace`, `BeeMario` → `BeeWario`); one left out is the base's. `name` defaults to the id in capitals, `archive` to the id with a capital first letter. Players pick it on Options' PLAYER page; others in a room see it. The mod says `"requires": ["characters"]`. See nebula-coop's docs/modding/CHARACTERS.md. |
+| `characters` | Playable characters (NebulaCoop), as sm64coopdx's character table: `{ "id": "wario", "name": "WARIO", "like": "mario", "archive": "Wario" }`. The model is the layer's `files/ObjectData/<archive>.arc` with the base's skeleton; `like` (mario or luigi) gives the animations, voice and the game's code. Its other models follow the game's names with the base's name swapped (`MarioFace` → `WarioFace`, `BeeMario` → `BeeWario`); one left out is the base's. `name` defaults to the id in capitals, `archive` to the id with a capital first letter. Players pick it on Options' PLAYER page; others in a room see it. `palette` gives the colours its model's textures are painted in, as `"rrggbb"` by part (`pants` or `overalls`, `shirt`, `gloves`, `shoes`, `hair`, `skin`, `cap`, `emblem`; one left out is the base's), so players' colours (sm64coopdx's palettes) draw on it. The mod says `"requires": ["characters"]`. See nebula-coop's docs/modding/CHARACTERS.md. |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
 | `stages` | Rules for stages: `{ "stage": "MyHub", "scenario": 1, "acts_as": ["AstroGalaxy"], "own_rules": true }`. See [stage rules](#p-reference-stage-rules). |
@@ -4865,6 +4865,11 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `player_character` | `int32_t player_character(void)` |
 | `set_player_character_id` | `int32_t set_player_character_id(const char* id)` |
 | `coop_character_id` | `const char* coop_character_id(int32_t index)` |
+| `character_palette_color` | `int32_t character_palette_color(int32_t index, int32_t part)` |
+| `player_palette_color` | `int32_t player_palette_color(int32_t part)` |
+| `set_player_palette_color` | `int32_t set_player_palette_color(int32_t part, int32_t color)` |
+| `reset_player_palette` | `void reset_player_palette(void)` |
+| `coop_palette_color` | `int32_t coop_palette_color(int32_t index, int32_t part)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -7080,6 +7085,56 @@ const char* coop_character_id(int32_t index)
 
 Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has. coop_character gives its base. Valid until the next frame.
 
+<a id="p-reference-plugin-api--characterpalettecolor"></a>
+
+#### `character_palette_color`
+
+```c
+int32_t character_palette_color(int32_t index, int32_t part)
+```
+
+A character's own colour for a part (its model's: luma.json "palette", NebulaCharacterClass's); -1 for no such character or part.
+
+<a id="p-reference-plugin-api--playerpalettecolor"></a>
+
+#### `player_palette_color`
+
+```c
+int32_t player_palette_color(int32_t part)
+```
+
+The colour the player wears for a part now; -1 for no such part.
+
+<a id="p-reference-plugin-api--setplayerpalettecolor"></a>
+
+#### `set_player_palette_color`
+
+```c
+int32_t set_player_palette_color(int32_t part, int32_t color)
+```
+
+Puts a colour on a part of the player over their own, as sm64coopdx's network_player_set_override_palette_color; the others in a room see it. A negative colour takes it off. 1: done; 0: no such part.
+
+<a id="p-reference-plugin-api--resetplayerpalette"></a>
+
+#### `reset_player_palette`
+
+```c
+void reset_player_palette(void)
+```
+
+Every part back to the player's own colours (network_player_reset_override_palette).
+
+<a id="p-reference-plugin-api--cooppalettecolor"></a>
+
+#### `coop_palette_color`
+
+```c
+int32_t coop_palette_color(int32_t index, int32_t part)
+```
+
+Online co-op: the colour a player wears for a part (this player's own outside a room, as index 0); -1 for an index nobody has or no such part.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -7463,6 +7518,9 @@ Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "
     const char* name;    /* as menus show it ("WARIO"); null: the id in capitals */
     const char* like;    /* "mario" or "luigi"; null: "mario" */
     const char* archive; /* null: the id with a capital first letter ("Wario") */
+    /* Its own colours (sm64coopdx's character palette): 0xRRGGBB for each NEBULA_PALETTE_* part, as its model's
+       textures have them, which the parts are found by and a player's colours drawn against. Null: its base's. */
+    const int32_t* palette;
 ```
 
 <a id="p-reference-plugin-api--nebulapowerupclass"></a>
