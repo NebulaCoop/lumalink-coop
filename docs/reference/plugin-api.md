@@ -227,6 +227,11 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `player_character` | `int32_t player_character(void)` |
 | `set_player_character_id` | `int32_t set_player_character_id(const char* id)` |
 | `coop_character_id` | `const char* coop_character_id(int32_t index)` |
+| `character_palette_color` | `int32_t character_palette_color(int32_t index, int32_t part)` |
+| `player_palette_color` | `int32_t player_palette_color(int32_t part)` |
+| `set_player_palette_color` | `int32_t set_player_palette_color(int32_t part, int32_t color)` |
+| `reset_player_palette` | `void reset_player_palette(void)` |
+| `coop_palette_color` | `int32_t coop_palette_color(int32_t index, int32_t part)` |
 | `hud_counter` | `int32_t hud_counter(int32_t line, uint32_t rgba, int32_t number)` |
 | `stat` | `int32_t stat(const char* name)` |
 | `coop_set_description` | `void coop_set_description(int32_t index, const char* utf8, uint32_t rgba)` |
@@ -2002,6 +2007,46 @@ const char* coop_character_id(int32_t index)
 
 Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has. coop_character gives its base. Valid until the next frame.
 
+### `character_palette_color`
+
+```c
+int32_t character_palette_color(int32_t index, int32_t part)
+```
+
+A character's own colour for a part (its model's: luma.json "palette", NebulaCharacterClass's); -1 for no such character or part.
+
+### `player_palette_color`
+
+```c
+int32_t player_palette_color(int32_t part)
+```
+
+The colour the player wears for a part now; -1 for no such part.
+
+### `set_player_palette_color`
+
+```c
+int32_t set_player_palette_color(int32_t part, int32_t color)
+```
+
+Puts a colour on a part of the player over their own, as sm64coopdx's network_player_set_override_palette_color; the others in a room see it. A negative colour takes it off. 1: done; 0: no such part.
+
+### `reset_player_palette`
+
+```c
+void reset_player_palette(void)
+```
+
+Every part back to the player's own colours (network_player_reset_override_palette).
+
+### `coop_palette_color`
+
+```c
+int32_t coop_palette_color(int32_t index, int32_t part)
+```
+
+Online co-op: the colour a player wears for a part (this player's own outside a room, as index 0); -1 for an index nobody has or no such part.
+
 ### `hud_counter`
 
 ```c
@@ -2379,6 +2424,9 @@ Online co-op: a line in the chat for this player alone, as a command's answer (s
     const char* name;    /* as menus show it ("WARIO"); null: the id in capitals */
     const char* like;    /* "mario" or "luigi"; null: "mario" */
     const char* archive; /* null: the id with a capital first letter ("Wario") */
+    /* Its own colours (sm64coopdx's character palette): 0xRRGGBB for each NEBULA_PALETTE_* part, as its model's
+       textures have them, which the parts are found by and a player's colours drawn against. Null: its base's. */
+    const int32_t* palette;
 ```
 
 ### `NebulaPowerUpClass`
