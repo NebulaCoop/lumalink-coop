@@ -1,0 +1,65 @@
+// sm64coopdx's Personal Star Counter (personal-starcount-ex.lua), on Galaxy's HUD and in the player list.
+//
+// Red: the Power Stars this player got in this room, new to its save. The host counts each one for who got it
+// (coop.stars), as the mod counts a star only when the save's count goes up.
+// Green: every Power Star this player ever got, kept across saves with Nebula's other all-time counts (stats.ini's
+// power_stars, nebula.stat), as the mod keeps its total in its storage.
+//
+// Both come in under the HUD's Power Star counter, in its look with the star tinted (nebula.hud_counter): red first in
+// a room, green alone outside one. The player list shows each player's red count beside their round trip
+// (coop.set_description, the mod's network_player_set_description). /psc off hides the counters for this player,
+// /psc on brings them back, and /psc alone turns them over.
+
+var hidden: bool    // /psc off
+var tick: int
+
+fn counters() {
+    if hidden {
+        nebula.hud_counter(1, 0, -1)
+        nebula.hud_counter(2, 0, -1)
+        return
+    }
+    let red = 3893437439       // 0xE81123FF, the mod's red
+    let green = 850405631      // 0x32B028FF, its green
+    let all_time = nebula.stat("power_stars")
+    if coop.in_room() {
+        nebula.hud_counter(1, red, coop.stars(coop.me()))
+        nebula.hud_counter(2, green, all_time)
+    } else {
+        nebula.hud_counter(1, green, all_time)
+        nebula.hud_counter(2, 0, -1)
+    }
+}
+
+fn player_list() {
+    let i = 0
+    while i < coop.max_players() {
+        if coop.connected(i) {
+            let stars = coop.stars(i)
+            // A Power Star and their count: white once they have one, the list's dim blue before.
+            let colour = 2796476159    // 0xA6AED6FF
+            if stars > 0 { colour = 4294967295 }
+            coop.set_description(i, format("[icon 7]{}", stars), colour)
+        }
+        i = i + 1
+    }
+}
+
+on frame {
+    // A few times a second: the counts change a star at a time.
+    tick = tick + 1
+    if tick % 10 != 0 { return }
+    counters()
+    if coop.in_room() { player_list() }
+}
+
+on room_joined(me) { counters(); player_list() }
+on player_join(index, name) { player_list() }
+
+on chat_command(word, command) {
+    if command != "psc" { return }
+    // 1: on, 2: off, 0: no word, which turns them over.
+    if word == 1 { hidden = false } else if word == 2 { hidden = true } else { hidden = !hidden }
+    counters()
+    if hidden { coop.chat_say("CoopCmdPscOff") } else { coop.chat_say("CoopCmdPscOn") }
+}

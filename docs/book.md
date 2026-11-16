@@ -2026,7 +2026,7 @@ Per mod, in the settings folder, beside the player's saves. Saved at once.
 
 ### Everything else
 
-[The whole interface](#p-reference-plugin-api) lists all 221 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
+[The whole interface](#p-reference-plugin-api) lists all 225 calls: registries, animations, switches, rails, cameras, cutscenes, music, movies, messages, saves. Past that, [hooks](#p-reference--13-plugins-function-hooks) reach any function, where the device allows them.
 
 <a id="p-tutorials-10-first-plugin--examples"></a>
 
@@ -3970,6 +3970,7 @@ A layer is a folder and the conditions for using it. Layers apply in order; a la
 | `forms` | Power-ups from data: `{ "name": "gold", "acts_like": "fire", "looks_like": "fire", "color_frame": 2, "frames": 600, "music": "BGM_FIRE_A", "model": "GoldMario", "script": "gold" }`. `acts_like` is what the player can do in it (one of the game's: normal, invincible, fire, ice, bee, spring, boo, flying, tornado), and its music and time where the row gives none; `looks_like` or `color_frame` (a frame of Mario.arc's ColorChange) or `model` (ObjectData/<model>.arc) its look. A script runs on the player while he is in it: see [forms](#p-reference-lumascript--forms). Scripts give it with `nebula.set_value(2, registry("form/gold"))`. |
 | `object_classes` | New object names, each made as one of the game's: `{ "name": "Bramblet", "like": "Kuribo" }`. Its files are `ObjectData/<name>.arc`. See [tutorial 8](#p-tutorials-08-new-objects). A `script` runs on every object placed by the name, a new one or the game's own (`{ "name": "Kuribo", "script": "angry" }`): see [class scripts](#p-reference-lumascript--class-scripts). |
 | `player_constants` | How the player moves, by name: `{ "mario": {...}, "luigi": {...}, "both": {...} }`, each a number, a list (`null` keeps a place) or `{ "option": "id" }`; a character's id (`"wario"`) for a mod's character. See [player numbers](#p-reference-player-numbers). |
+| `commands` | Co-op chat commands (NebulaCoop), as sm64coopdx's `hook_chat_command`: `{ "name": "psc", "description": "On or off", "options": ["on", "off"] }`. A name is 1 to 24 letters, digits, `_` or `-`, not `help` or `confirm` (a name the game or another mod already has stays theirs); `description` is the help line (a message id works), `options` the words the command takes. Typing it in a room fires the mod's scripts' `chat_command` event. The mod says `"requires": ["coop"]`. |
 | `characters` | Playable characters (NebulaCoop), as sm64coopdx's character table: `{ "id": "wario", "name": "WARIO", "like": "mario", "archive": "Wario" }`. The model is the layer's `files/ObjectData/<archive>.arc` with the base's skeleton; `like` (mario or luigi) gives the animations, voice and the game's code. Its other models follow the game's names with the base's name swapped (`MarioFace` → `WarioFace`, `BeeMario` → `BeeWario`); one left out is the base's. `name` defaults to the id in capitals, `archive` to the id with a capital first letter. Players pick it on Options' PLAYER page; others in a room see it. The mod says `"requires": ["characters"]`. See nebula-coop's docs/modding/CHARACTERS.md. |
 | `player_animations` | New player animations from the game's or the layer's `ObjectData/MarioAnime.arc`: `{ "name": "GoldFlowerSpin", "file": "FireSpin", "rate": 1.5, "blend_frames": 3 }`. `rate` is over 0, up to 100; `blend_frames` 0 to 600. The mod says `"requires": ["player-animations"]`. |
 | `sound_effects` | One of the game's sounds, by name, played from the layer's file: `{ "name": "SE_PV_JUMP_S", "file": "AudioRes/Stream/Hup.wav" }`. `@luigi` after the name for Luigi's own. |
@@ -4865,6 +4866,10 @@ A null object, layout, point or name where a call needs one makes the call do no
 | `player_character` | `int32_t player_character(void)` |
 | `set_player_character_id` | `int32_t set_player_character_id(const char* id)` |
 | `coop_character_id` | `const char* coop_character_id(int32_t index)` |
+| `hud_counter` | `int32_t hud_counter(int32_t line, uint32_t rgba, int32_t number)` |
+| `stat` | `int32_t stat(const char* name)` |
+| `coop_set_description` | `void coop_set_description(int32_t index, const char* utf8, uint32_t rgba)` |
+| `coop_chat_say` | `void coop_chat_say(const char* utf8)` |
 
 <a id="p-reference-plugin-api--what-each-does"></a>
 
@@ -7080,6 +7085,46 @@ const char* coop_character_id(int32_t index)
 
 Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has. coop_character gives its base. Valid until the next frame.
 
+<a id="p-reference-plugin-api--hudcounter"></a>
+
+#### `hud_counter`
+
+```c
+int32_t hud_counter(int32_t line, uint32_t rgba, int32_t number)
+```
+
+A counter under the HUD's Power Star counter, in its look (the StarCounter layout) with its star tinted `rgba` (0xRRGGBBAA; 0xFFFFFFFF keeps the game's colours): `line` 1 is the first under it, to NEBULA_HUD_COUNTER_LINES. It comes and goes with the HUD's counters, and counts up with their flash as `number` grows; a smaller number, or a new colour, shows at once. `number` below 0 removes the line. Kept across stages until removed or changed. 0: done; -1: no such line.
+
+<a id="p-reference-plugin-api--stat"></a>
+
+#### `stat`
+
+```c
+int32_t stat(const char* name)
+```
+
+One of Nebula's all-time counts (stats.ini, the achievement board's stats page) by its key: "power_stars", "coins"... As high as int32_t goes. -1: no such count.
+
+<a id="p-reference-plugin-api--coopsetdescription"></a>
+
+#### `coop_set_description`
+
+```c
+void coop_set_description(int32_t index, const char* utf8, uint32_t rgba)
+```
+
+Online co-op: text beside a player in this player's player list (sm64coopdx's network_player_set_description), in `rgba` (0xRRGGBBAA), message tags allowed ("[icon 7]3": a Power Star and 3). Null or "" takes it away; a player leaving takes theirs away. Only this player's list shows it: each player's mods set their own.
+
+<a id="p-reference-plugin-api--coopchatsay"></a>
+
+#### `coop_chat_say`
+
+```c
+void coop_chat_say(const char* utf8)
+```
+
+Online co-op: a line in the chat for this player alone, as a command's answer (sm64coopdx's djui_chat_message_create). A text that is one of the game's chat texts' ids ("CoopCmd...") shows in the language played. Nothing outside a room.
+
 <a id="p-reference-plugin-api--numbers-and-names"></a>
 
 ### Numbers and names
@@ -7175,6 +7220,10 @@ Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "
     NEBULA_MOD_EVENT_COOP_ROOM_CLOSED,
     /* A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). */
     NEBULA_MOD_EVENT_COOP_PLAYER_PLACE,
+    /* This player typed one of the mod's chat commands (luma.json "commands", sm64coopdx's hook_chat_command).
+       value: the word after it, by its place in the command's "options" (1 the first; 0 no word). name: the command,
+       as luma.json names it. A word that is none of its options never comes: the chat says the command doesn't take it. */
+    NEBULA_MOD_EVENT_COOP_COMMAND,
     NEBULA_MOD_EVENT_COUNT
 ```
 
@@ -9913,6 +9962,7 @@ it.
 | `room_closed` | (co-op) this player's room ended | | |
 | `player_join`, `player_leave` | (co-op) another player came in, left | their index, their name | |
 | `player_place` | (co-op) a player (this one too) reached another galaxy or mission | their index, the stage | |
+| `chat_command` | (co-op) this player typed one of the mod's chat commands (luma.json `commands`) | the word's place in the command's `options` (1 the first, 0 none), the command | |
 
 Nebula's `docs/modding/EVENTS.md` says exactly what each passes. The SDK's `events.tsv` lists every name.
 
@@ -10066,7 +10116,9 @@ the host.
 | `coop.connected(i)` | 1 when someone has index `i` |
 | `coop.name(i)`, `coop.character(i)` | their name; 0 Mario, 1 Luigi, -1 nobody |
 | `coop.stage(i)`, `coop.mission(i)`, `coop.same_place(i)` | where they play; 1 when it is this player's galaxy and mission |
-| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room (Personal Star Counter), round trip in ms |
+| `coop.stars(i)`, `coop.ping(i)` | Power Stars they got in the room, round trip in ms |
+| `coop.set_description(i, text, rgba)` | the player list's last column for a player, on this player's screen (sm64coopdx's `network_player_set_description`); text tags such as `[icon 7]` work, "" clears it |
+| `coop.chat_say(text)` | writes a line in this player's chat, for them alone; a message id (`"CoopCmdPscOn"`) gives that message |
 
 ```text
 var others: int
@@ -10085,6 +10137,23 @@ on player_leave(index, name) { others = others - 1 }
 ```
 
 The plugin reference (plugin-api.md) explains each call as `coop_<call>`.
+
+A co-op mod's chat commands are luma.json rows (format.md's `commands`), as sm64coopdx's `hook_chat_command`. Typing
+one in a room fires `chat_command` for the mod that has it:
+
+```text
+on chat_command(word, command) {
+    if command == "psc" {
+        hidden = word == 2
+    }
+}
+```
+
+The HUD's star counter takes lines under it for a mod's own counts: `nebula.hud_counter(line, rgba, number)` shows
+`number` on line 1 to 4 with the star tinted (`rgba` as one number, 0xRRGGBBAA written in decimal), -1 hides the line.
+They come and go with the game's counter. `nebula.stat("power_stars")` reads one of the save's all-time stats (the
+Stats page's), -1 for a name it doesn't know. The built-in Personal Star Counter
+([builtin/personal-star-counter](https://github.com/keepvaibin/lumalink/blob/main/builtin/personal-star-counter)) uses all of these.
 
 <a id="p-reference-lumascript--fields"></a>
 
@@ -10120,40 +10189,41 @@ returns. An event no plugin subscribes to costs the game one load and one branch
 
 | Event | When, and what it carries |
 |---|---|
-| `NEBULA_MOD_EVENT_FRAME` | Every frame, in any scene: menus too. player() is null here. |
-| `NEBULA_MOD_EVENT_STAGE_FRAME` | Every frame of a stage, before its objects move. |
-| `NEBULA_MOD_EVENT_STAGE_START` | A stage has started. name: the stage. value: the mission. |
-| `NEBULA_MOD_EVENT_PLAYER_DAMAGE` | The player is about to lose one health. Return 0 to refuse the hit. |
-| `NEBULA_MOD_EVENT_PLAYER_MISS` | The player is about to die. value: how (0 a fall out of the level). Return -1 to refuse it: the player lives on where they are, so move them somewhere safe (set_position) and give back life (set_value) as the plugin's rule says. |
-| `NEBULA_MOD_EVENT_POWER_UP` | The player's power-up is about to change. value: the new one (NEBULA_POWER_UP_*); what you return is used. |
-| `NEBULA_MOD_EVENT_COIN` | Coins are about to be added. value: how many; what you return is added. |
-| `NEBULA_MOD_EVENT_STAR_BIT` | Star bits are about to be added. value: how many; what you return is added. |
-| `NEBULA_MOD_EVENT_STAR_GET` | A star has been won. name: the galaxy. value: the star's number. |
-| `NEBULA_MOD_EVENT_CUTSCENE_START` | A cutscene starts or ends. name: the cutscene. |
-| `NEBULA_MOD_EVENT_CUTSCENE_END` | A cutscene starts or ends. name: the cutscene. |
-| `NEBULA_MOD_EVENT_ACTOR_APPEAR` | Any object appears or dies. actor: the object. name: its name. Subscribing to these costs a call per object. |
-| `NEBULA_MOD_EVENT_ACTOR_KILL` | Any object appears or dies. actor: the object. name: its name. Subscribing to these costs a call per object. |
-| `NEBULA_MOD_EVENT_PLAYER_SPIN` | The player's spin starts. |
-| `NEBULA_MOD_EVENT_PLAYER_JUMP` | The player leaves the ground in a jump; lands. |
-| `NEBULA_MOD_EVENT_PLAYER_LAND` | The player leaves the ground in a jump; lands. |
-| `NEBULA_MOD_EVENT_PAUSE` | The pause menu opens or closes. value: 1 open, 0 closed. |
-| `NEBULA_MOD_EVENT_STAGE_END` | The stage is ending: every actor and layout of it goes after this. name: the stage. |
+| `NEBULA_MOD_EVENT_FRAME` | Every frame, in every scene including menus. player() is null here. |
+| `NEBULA_MOD_EVENT_STAGE_FRAME` | Every frame of a stage, before objects move. |
+| `NEBULA_MOD_EVENT_STAGE_START` | A stage started. name: the stage. value: the mission. |
+| `NEBULA_MOD_EVENT_PLAYER_DAMAGE` | The player is about to lose one health. Return 0 to cancel the hit. |
+| `NEBULA_MOD_EVENT_PLAYER_MISS` | The player is about to die. value: the cause (0 is falling out of the level). Return -1 to cancel: the player stays where they are, so move them somewhere safe (set_position) and restore health (set_value) yourself. |
+| `NEBULA_MOD_EVENT_POWER_UP` | The player's power-up is about to change. value: the new one (NEBULA_POWER_UP_*). The return value is used. |
+| `NEBULA_MOD_EVENT_COIN` | Coins are about to be added. value: how many. The return value is added instead. |
+| `NEBULA_MOD_EVENT_STAR_BIT` | Star bits are about to be added. value: how many. The return value is added instead. |
+| `NEBULA_MOD_EVENT_STAR_GET` | A star was collected. name: the galaxy. value: the star number. |
+| `NEBULA_MOD_EVENT_CUTSCENE_START` | A cutscene started or ended. name: the cutscene. |
+| `NEBULA_MOD_EVENT_CUTSCENE_END` | A cutscene started or ended. name: the cutscene. |
+| `NEBULA_MOD_EVENT_ACTOR_APPEAR` | An object appeared or was killed. actor: the object. name: its name. Costs one call per object. |
+| `NEBULA_MOD_EVENT_ACTOR_KILL` | An object appeared or was killed. actor: the object. name: its name. Costs one call per object. |
+| `NEBULA_MOD_EVENT_PLAYER_SPIN` | The player started a spin. |
+| `NEBULA_MOD_EVENT_PLAYER_JUMP` | The player jumped off the ground, or landed. |
+| `NEBULA_MOD_EVENT_PLAYER_LAND` | The player jumped off the ground, or landed. |
+| `NEBULA_MOD_EVENT_PAUSE` | The pause menu opened (value 1) or closed (value 0). |
+| `NEBULA_MOD_EVENT_STAGE_END` | The stage is ending; all its actors and layouts are destroyed after this. name: the stage. |
 | `NEBULA_MOD_EVENT_GAME_SAVE` | The game is about to write the save. |
-| `NEBULA_MOD_EVENT_POWER_STAR_APPEAR` | A power star comes into the stage. value: its number. |
-| `NEBULA_MOD_EVENT_TALK_LINE` | A line of talk opens in its balloon. actor: who talks. name: the line's message id, as luma.json "text" and add_text name it (null for a line with no id). |
-| `NEBULA_MOD_EVENT_TALK_CHOICE` | The player answered a talk's yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's message id. |
-| `NEBULA_MOD_EVENT_CUTSCENE_PART` | A part of a cutscene starts. value: the part's number in the cutscene, from 0. name: the part, as the cutscene's time sheet names it. |
-| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changes. value: 0 an area's camera (also when the last event camera ends and the area's takes the view back), 1 an event camera (a cutscene's, a talk's, start_camera's). name: its id, as the stage's camera table names it. |
-| `NEBULA_MOD_EVENT_SOUND_START` | A sound effect is about to start. value: its number; name: its name. What you return plays: that number, another sound's, or -1 for none. Subscribing costs a call per sound. |
-| `NEBULA_MOD_EVENT_EFFECT_START` | An object starts one of its effects. actor: the object. name: the effect, as the object's effect table names it. Subscribing costs a call per effect. |
-| `NEBULA_MOD_EVENT_SCREEN` | A screen layout (a counter, a menu, a message box) is shown or goes away. value: 1 shown, 0 gone. name: its name in the game's code. |
-| `NEBULA_MOD_EVENT_ACTOR_MESSAGE` | An object gets a message from another: an attack, a stomp, a push, a grab (docs/modding/EVENTS.md lists the numbers). actor: who gets it. name: its name. value: the message. Return -1 to refuse it: the object acts as if it never came. Subscribing costs a call per message. |
-| `NEBULA_MOD_EVENT_PLAYER_ACTION` | The player starts an action of their own: a swim, a hang, a slide, a fall (docs/modding/EVENTS.md lists the numbers). value: the action. |
+| `NEBULA_MOD_EVENT_POWER_STAR_APPEAR` | A power star appeared in the stage. value: its number. |
+| `NEBULA_MOD_EVENT_TALK_LINE` | A line of dialogue opened in its balloon. actor: the speaker. name: the message id, as used by luma.json "text" and add_text (null for a line without an id). |
+| `NEBULA_MOD_EVENT_TALK_CHOICE` | The player answered a yes/no question. value: 1 yes, 0 no. actor: who asked. name: the question's message id. |
+| `NEBULA_MOD_EVENT_CUTSCENE_PART` | A part of a cutscene started. value: the part's index, from 0. name: the part's name in the cutscene's time sheet. |
+| `NEBULA_MOD_EVENT_CAMERA_CHANGE` | The camera changed. value: 0 for an area camera (also when the last event camera ends), 1 for an event camera (from a cutscene, a conversation or start_camera). name: its id in the stage's camera table. |
+| `NEBULA_MOD_EVENT_SOUND_START` | A sound effect is about to play. value: its number. name: its name. The returned number plays instead (the same, another sound's, or -1 for silence). Costs one call per sound. |
+| `NEBULA_MOD_EVENT_EFFECT_START` | An object started an effect. actor: the object. name: the effect's name in the object's effect table. Costs one call per effect. |
+| `NEBULA_MOD_EVENT_SCREEN` | A screen layout (a counter, a menu, a message box) was shown (value 1) or removed (value 0). name: its name in the game's code. |
+| `NEBULA_MOD_EVENT_ACTOR_MESSAGE` | An object received a message from another: an attack, a stomp, a push, a grab (numbers in docs/modding/EVENTS.md). actor: the receiver. name: its name. value: the message. Return -1 to cancel it, as if it was never sent. Costs one call per message. |
+| `NEBULA_MOD_EVENT_PLAYER_ACTION` | The player started an action: swimming, hanging, sliding, falling (numbers in docs/modding/EVENTS.md). value: the action. |
 | `NEBULA_MOD_EVENT_COOP_PLAYER_JOIN` | Online co-op (NebulaCoop; coop_* below). Another player came into the room. value: their index (coop_name). name: their name. Not sent for the players already there when this player joins: room_joined comes then. |
 | `NEBULA_MOD_EVENT_COOP_PLAYER_LEAVE` | Another player left the room. value: the index they had. name: their name. |
 | `NEBULA_MOD_EVENT_COOP_ROOM_JOINED` | This player is in a room: it opened one, or a host let it in. value: this player's index (coop_me). |
 | `NEBULA_MOD_EVENT_COOP_ROOM_CLOSED` | This player's room ended: it left, or the host closed it. |
 | `NEBULA_MOD_EVENT_COOP_PLAYER_PLACE` | A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). |
+| `NEBULA_MOD_EVENT_COOP_COMMAND` | This player typed one of the mod's chat commands (luma.json "commands", sm64coopdx's hook_chat_command). value: the word after it, by its place in the command's "options" (1 the first; 0 no word). name: the command, as luma.json names it. A word that is none of its options never comes: the chat says the command doesn't take it. |
 
 <a id="p-nebula-events--messages-nebulamodeventactormessage"></a>
 

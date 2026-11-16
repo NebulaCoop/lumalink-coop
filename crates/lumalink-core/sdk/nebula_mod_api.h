@@ -120,6 +120,10 @@ typedef enum NebulaModEvent {
     NEBULA_MOD_EVENT_COOP_ROOM_CLOSED,
     /* A player (this one too) reached another galaxy or mission. value: their index. name: the stage (coop_stage). */
     NEBULA_MOD_EVENT_COOP_PLAYER_PLACE,
+    /* This player typed one of the mod's chat commands (luma.json "commands", sm64coopdx's hook_chat_command).
+       value: the word after it, by its place in the command's "options" (1 the first; 0 no word). name: the command,
+       as luma.json names it. A word that is none of its options never comes: the chat says the command doesn't take it. */
+    NEBULA_MOD_EVENT_COOP_COMMAND,
     NEBULA_MOD_EVENT_COUNT
 } NebulaModEvent;
 
@@ -1014,7 +1018,28 @@ typedef struct NebulaModApi {
     /* Online co-op: the character a player plays, by id ("mario", "luigi", a mod's); "" for an index nobody has.
        coop_character gives its base. Valid until the next frame. */
     const char* (*coop_character_id)(int32_t index);
+
+    /* A counter under the HUD's Power Star counter, in its look (the StarCounter layout) with its star tinted `rgba`
+       (0xRRGGBBAA; 0xFFFFFFFF keeps the game's colours): `line` 1 is the first under it, to NEBULA_HUD_COUNTER_LINES.
+       It comes and goes with the HUD's counters, and counts up with their flash as `number` grows; a smaller number,
+       or a new colour, shows at once. `number` below 0 removes the line. Kept across stages until removed or changed.
+       0: done; -1: no such line. */
+    int32_t (*hud_counter)(int32_t line, uint32_t rgba, int32_t number);
+    /* One of Nebula's all-time counts (stats.ini, the achievement board's stats page) by its key: "power_stars",
+       "coins"... As high as int32_t goes. -1: no such count. */
+    int32_t (*stat)(const char* name);
+    /* Online co-op: text beside a player in this player's player list (sm64coopdx's network_player_set_description),
+       in `rgba` (0xRRGGBBAA), message tags allowed ("[icon 7]3": a Power Star and 3). Null or "" takes it away; a
+       player leaving takes theirs away. Only this player's list shows it: each player's mods set their own. */
+    void (*coop_set_description)(int32_t index, const char* utf8, uint32_t rgba);
+    /* Online co-op: a line in the chat for this player alone, as a command's answer (sm64coopdx's
+       djui_chat_message_create). A text that is one of the game's chat texts' ids ("CoopCmd...") shows in the
+       language played. Nothing outside a room. */
+    void (*coop_chat_say)(const char* utf8);
 } NebulaModApi;
+
+/* The lines hud_counter has under the Power Star counter. */
+#define NEBULA_HUD_COUNTER_LINES 4
 
 /* True when this Nebula has `field` (fields are added at the end over time):
    if (NEBULA_MOD_API_HAS(api, unlock_achievement)) api->unlock_achievement(self, "coins"); */

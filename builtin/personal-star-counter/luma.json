@@ -1,0 +1,32 @@
+{
+  "authors": [
+    "NebulaCoop"
+  ],
+  "description": "See how many Power Stars you've collected, as sm64coopdx's Personal Star Counter: under the star count, red for the ones you got in this room and green for every one you ever got, and each player's red count in the player list. /psc off hides the counters, /psc on brings them back.",
+  "format": 1,
+  "game": "RMG",
+  "id": "personal-star-counter",
+  "layers": [
+    {
+      "path": "layers/base",
+      "commands": [
+        {
+          "name": "psc",
+          "description": "CoopCmdPscHelp",
+          "options": [
+            "on",
+            "off"
+          ]
+        }
+      ],
+      "scripts": [
+        "psc"
+      ]
+    }
+  ],
+  "name": "Personal Star Counter",
+  "requires": [
+    "coop"
+  ],
+  "version": "1.0.0"
+}

@@ -789,6 +789,9 @@ fn check_layers(folder: &Path, manifest: &Value, options: &BTreeMap<String, Vec<
         if layer.get("characters").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !says_characters {
             found.problem("a layer adds characters, so requires has to list characters");
         }
+        if layer.get("commands").and_then(Value::as_array).is_some_and(|r| !r.is_empty()) && !is_coop(manifest) {
+            found.problem("a layer adds chat commands, so requires has to list coop");
+        }
         if let Some(materials) = layer.get("materials") {
             let Some(materials) = materials.as_object() else {
                 found.problem("materials is a set of material names and their shader files");
@@ -1012,6 +1015,10 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
             None => found.problem(format!("{name}: scripts is a list of script names")),
             Some(rows) => {
                 any |= !rows.is_empty();
+                // The compiled scripts go in the layer's files (pack): a layer without a path would lose them.
+                if !rows.is_empty() && layer.get("path").and_then(Value::as_str).is_none_or(str::is_empty) {
+                    found.problem(format!("{name}: a layer with scripts needs a path, where pack puts them compiled"));
+                }
                 let toolkit = crate::lumascript::Toolkit::bundled();
                 for row in rows {
                     match row.as_str() {
@@ -1020,6 +1027,33 @@ fn check_rows(folder: &Path, layer: &Value, name: &str, store: Option<&GameStore
                             if let Err(why) = compile_script(folder, script, &toolkit) {
                                 found.problem(format!("{name}: {why}"));
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(rows) = layer.get("commands") {
+        // Chat commands the mod's scripts answer (luma.cpp "commands", sm64coopdx's hook_chat_command).
+        let word_ok = |w: &str| !w.is_empty() && w.len() <= 24 && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        match rows.as_array() {
+            None => found.problem(format!("{name}: commands is a list of rows")),
+            Some(rows) => {
+                any |= !rows.is_empty();
+                for row in rows {
+                    let command = row.get("name").and_then(Value::as_str).unwrap_or_default();
+                    if !word_ok(command) || command.eq_ignore_ascii_case("help") || command.eq_ignore_ascii_case("confirm") {
+                        found.problem(format!(
+                            "{name}: a command's name is 1 to 24 of letters, digits, _ and - (not help or confirm), not \"{command}\""
+                        ));
+                        continue;
+                    }
+                    if !row.get("description").is_some_and(Value::is_string) {
+                        found.problem(format!("{name}: /{command} needs a description, its line on /help"));
+                    }
+                    if let Some(options) = row.get("options") {
+                        if !options.as_array().is_some_and(|o| o.iter().all(|w| w.as_str().is_some_and(word_ok))) {
+                            found.problem(format!("{name}: /{command}'s options are words of letters, digits, _ and -"));
                         }
                     }
                 }
@@ -2116,7 +2150,7 @@ mod tests {
         assert!(count >= 15, "{count} examples");
     }
 
-    /// NebulaCoop's built-in mods (builtin/, copied into nebula-coop's runtime/src/builtin_mods.inc) check with no
+    /// NebulaCoop's built-in mods (builtin/, embedded by nebula-coop from its `lumalink` submodule) check with no
     /// problem, and Character Movesets sets Luigi's numbers alone, among them NebulaCoop's own.
     #[test]
     fn every_builtin_mod_checks() {
@@ -2137,6 +2171,44 @@ mod tests {
         let numbers = &movesets["layers"][0]["player_constants"];
         assert_eq!(numbers.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["luigi"]);
         assert_eq!(numbers["luigi"]["mBrakeSlide"], json!(1));
+    }
+
+    /// Each built-in mod is committed packed too (builtin/<id>.lumacoop): nebula-coop's build embeds those packages from
+    /// its `lumalink` submodule, so it needs no LumaLink of its own. A package that no longer matches its folder fails
+    /// here; LUMALINK_BLESS=1 cargo test writes them again.
+    #[test]
+    fn every_builtin_mod_is_packed() {
+        let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builtin");
+        let bless = std::env::var_os("LUMALINK_BLESS").is_some();
+        let mut ids = Vec::new();
+        let mut stale = Vec::new();
+        for entry in fs::read_dir(&builtin).unwrap() {
+            let folder = entry.unwrap().path();
+            if !folder.join("luma.json").is_file() {
+                continue;
+            }
+            let id = folder.file_name().unwrap().to_str().unwrap().to_string();
+            assert_eq!(read_manifest(&folder).unwrap()["id"], json!(id), "a built-in mod's folder is named by its id");
+            let out = tempfile::tempdir().unwrap();
+            let packed = fs::read(pack(&folder, out.path(), None).unwrap().file).unwrap();
+            let committed = builtin.join(format!("{id}.lumacoop"));
+            if fs::read(&committed).ok().as_deref() != Some(packed.as_slice()) {
+                if bless {
+                    fs::write(&committed, &packed).unwrap();
+                } else {
+                    stale.push(committed.display().to_string());
+                }
+            }
+            ids.push(id);
+        }
+        for entry in fs::read_dir(&builtin).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "lumacoop") {
+                let id = path.file_stem().unwrap().to_str().unwrap();
+                assert!(ids.iter().any(|i| i == id), "{} has no builtin/{id} folder", path.display());
+            }
+        }
+        assert!(stale.is_empty(), "stale built-in packages {stale:?}: run LUMALINK_BLESS=1 cargo test every_builtin_mod_is_packed and commit them");
     }
 
     #[test]
@@ -2242,6 +2314,24 @@ mod tests {
         assert_eq!(check(json!({ "path": "layers/base", "characters": { "id": "w" } })).0, 1);
         assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "wario": { "mJumpHeight": 20 } } })).0, 0);
         assert_eq!(check(json!({ "path": "layers/base", "player_constants": { "Wario Bros": { "mJumpHeight": 20 } } })).0, 1);
+    }
+
+    #[test]
+    fn chat_commands_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let check = |layer: Value| {
+            let mut found = Findings::default();
+            check_rows(dir.path(), &layer, "base", None, &mut found);
+            found.0.iter().filter(|f| f.serious).count()
+        };
+        let row = |row: Value| check(json!({ "path": "layers/base", "commands": [row] }));
+        assert_eq!(row(json!({ "name": "psc", "description": "CoopCmdPscHelp", "options": ["on", "off"] })), 0);
+        assert_eq!(row(json!({ "name": "psc", "description": "On or off" })), 0, "options may be left out");
+        assert_eq!(row(json!({ "name": "psc" })), 1, "no description");
+        assert_eq!(row(json!({ "name": "help", "description": "x" })), 1);
+        assert_eq!(row(json!({ "name": "/psc", "description": "x" })), 1);
+        assert_eq!(row(json!({ "name": "psc", "description": "x", "options": ["on off"] })), 1);
+        assert_eq!(check(json!({ "path": "layers/base", "commands": { "name": "psc" } })), 1);
     }
 
     #[test]
