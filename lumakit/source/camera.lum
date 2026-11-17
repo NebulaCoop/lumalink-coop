@@ -1,0 +1,470 @@
+// kit.camera: the main camera taken for a time, camera rigs for views (follow, eye, side, above), mirror, field of
+// view, shake. A rig is a svc.draw.view Camera, so the same rig drives the main camera (take) or a mod's draw.view
+// (view.rig).
+// The main camera: after CameraDirector::calcPose each frame, the newest live control's eye replaces the game's pose
+// (its place, the point it looks at, its up), through walls, and the game's interpolation is cut while it holds; the
+// field of view replaces the camera man's while createViewMtx reads it. When the last control ends, the game's own camera
+// is back at once (its own pose was computed all along). The newest control holds; ending it gives the one before.
+// Every control, the mirror, the field of view and a shake are recorded under caller(); `on mods.stopped` takes a
+// stopped mod's away.
+// The main camera is also held through draw.view's main_eye (the same eye each frame, and at once on take, aim and
+// end), so it holds while the world is held (kit.cutscene's aim each frame of a hold).
+// Mirror: the stick's x flipped (MR::getPlayerStickX), and the 3-D picture flipped by LumaKit's post program kit_mirror
+// at draw.post's WORLD stage (the HUD stays readable).
+// `mirror`'s parameter is `enabled` (`on` is a keyword). The handle's functions are also module functions (`end`,
+// `alive`). The free camera turns with the stick, not the pointer:
+// scripts cannot read the game's pointer position (MR::getPointerPos).
+
+use svc.draw.view
+use svc.draw.post
+
+pub struct Control {
+    n: u64
+    fn end(self) { end(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+
+let to_degrees: f32 = 57.29578
+let to_radians: f32 = 0.017453292
+
+// The controls in force, oldest first: their numbers, owners, rigs (none: a free camera) and free cameras' speeds.
+var controls: list<u64> = []
+var control_owners: list<u64> = []
+var control_rigs: list<view.Camera?> = []
+var control_speeds: list<f32> = []
+// Each rig's actor kept as a handle (a view is never kept past its frame): the rig is made again with it each frame,
+// and an empty handle (the actor gone) keeps the last eye.
+var control_actors: list<ref<LiveActor>?> = []
+var next_control: u64 = 1
+// The last eye the main camera was given (a rig whose actor died keeps it); whether draw.view's main_eye holds one.
+var last_eye: view.Eye? = none
+var main_held: bool = false
+// The free camera: where it is and where it looks (yaw and pitch, degrees), set from the game's camera when it starts.
+var free_eye: vec3 = vec3(0.0, 0.0, 0.0)
+var free_yaw: f32 = 0.0
+var free_pitch: f32 = 0.0
+var free_started: bool = false
+// The near plane the game had before a first-person control took it (below 0: not taken), the player hidden by one.
+var near_before: f32 = -1.0
+var player_hidden: bool = false
+// The field of view (degrees; below 0: the game's) and who set it; the camera man's own while createViewMtx reads ours.
+var fov_degrees: f32 = -1.0
+var fov_owner: u64 = 0
+var fov_kept: f32 = -1.0
+// Mirror: on, and who turned it on; LumaKit's post program for the picture while it is on.
+var mirrored: bool = false
+var mirror_owner: u64 = 0
+var mirror_program: post.Program? = none
+// A shake: its strength (game units), frames left, frames in all, who started it; the camera's frames for its wave.
+var shake_strength: f32 = 0.0
+var shake_left: u32 = 0
+var shake_frames: u32 = 0
+var shake_owner: u64 = 0
+var frame: u64 = 0
+
+fn index_of(n: u64) -> int? {
+    for i in 0..controls.len() {
+        if controls[i] == n {
+            return i
+        }
+    }
+    return none
+}
+
+// A unit vector (side's parameter `normal` hides the standard name there).
+fn unit(v: vec3) -> vec3 {
+    return normal(v)
+}
+
+fn player() -> LiveActor? {
+    if let p = MarioAccess::getPlayerActor() {
+        return p
+    }
+    return none
+}
+
+// A rig of every field (a service struct has no defaults): what a kind does not read is zero.
+fn rig_of(k: view.Rig, fov_y: f32, actor: LiveActor, offset: vec3, joint: text, near_z: f32) -> view.Camera {
+    let zero = vec3(0.0, 0.0, 0.0)
+    return view.Camera { rig: k, eye: zero, at: zero, up: zero, fov_y: fov_y, actor: actor, offset: offset, joint: joint,
+                         near_z: near_z }
+}
+
+// The rig made again on the actor `a` (the stored rig's actor is a view of a frame gone).
+fn rig_on(r: view.Camera, a: LiveActor) -> view.Camera {
+    return view.Camera { rig: r.rig, eye: r.eye, at: r.at, up: r.up, fov_y: r.fov_y, actor: a, offset: r.offset,
+                         joint: r.joint, near_z: r.near_z }
+}
+
+// A rig on the player's joint: the player hidden and the near plane set while it holds.
+fn first_person(i: int) -> bool {
+    guard let r = control_rigs[i] else { return false }
+    if r.rig != view.Rig.Joint {
+        return false
+    }
+    guard let h = control_actors[i] else { return false }
+    guard let a = h.get() else { return false }
+    guard let p = player() else { return false }
+    return same(a, p)
+}
+
+// The control on top changed: the player shown or hidden and the near plane set or given back to match it, and the main
+// camera at its rig's eye (or the game's again with none).
+fn settle() {
+    var wants_first = false
+    var near: f32 = 0.0
+    if controls.len() > 0 {
+        let top = controls.len() - 1
+        if first_person(top) {
+            wants_first = true
+            if let r = control_rigs[top] {
+                near = r.near_z
+            }
+        }
+    }
+    if wants_first {
+        if near_before < 0.0 {
+            near_before = MR::getNearZ()
+        }
+        MR::setNearZ(near)
+        if not player_hidden {
+            MR::hidePlayer()
+            player_hidden = true
+        }
+    } else {
+        if near_before >= 0.0 {
+            MR::setNearZ(near_before)
+            near_before = -1.0
+        }
+        if player_hidden {
+            MR::showPlayer()
+            player_hidden = false
+        }
+    }
+    if controls.len() == 0 {
+        last_eye = none
+        free_started = false
+        if main_held {
+            view.main_eye(none)
+            main_held = false
+        }
+    } else if control_rigs[controls.len() - 1] != none {
+        // The rig on top now, at once (the world may be held; a free camera starts at the next pose).
+        if let e = given_eye() {
+            last_eye = e
+            show(e)
+        }
+    }
+}
+
+// The main camera at `e` through draw.view (fov() over the eye's own), so it holds while the world is held.
+fn show(e: view.Eye) {
+    var fy = e.fov_y
+    if fov_degrees >= 0.0 {
+        fy = fov_degrees
+    }
+    view.main_eye(view.Eye { eye: e.eye, at: e.at, up: e.up, fov_y: fy })
+    main_held = true
+}
+
+fn add_control(rig: view.Camera?, speed: f32) -> Control {
+    let n = next_control
+    next_control += 1
+    var held: ref<LiveActor>? = none
+    if let r = rig {
+        if r.rig != view.Rig.Fixed {
+            held = ref(r.actor)
+        }
+    }
+    controls.push(n)
+    control_owners.push(caller())
+    control_rigs.push(rig)
+    control_speeds.push(speed)
+    control_actors.push(held)
+    if rig == none {
+        free_started = false
+    }
+    settle()
+    return Control { n: n }
+}
+
+fn remove_at(i: int) {
+    controls.remove(i)
+    control_owners.remove(i)
+    control_rigs.remove(i)
+    control_speeds.remove(i)
+    control_actors.remove(i)
+}
+
+// The main camera follows the rig until end(); the newest control holds.
+pub fn take(rig: view.Camera) -> Control {
+    return add_control(rig, 0.0)
+}
+
+// A free camera from where the game's camera is: the move stick moves it along its look (up and down) and turns it
+// (left and right), buttons 1 and 2 raise and lower it; `speed` units a frame at a full stick.
+pub fn free(speed: f32 = 40.0) -> Control {
+    return add_control(none, speed)
+}
+
+// The control re-set as a fixed rig at `e` (kit.cutscene calls it each frame); the main camera is there at once when
+// the control holds, the world held or not (settle).
+pub fn aim(c: Control, e: view.Eye) {
+    guard let i = index_of(c.n) else { return }
+    var filler = player()
+    if let r = control_rigs[i] {
+        filler = r.actor
+    }
+    guard let a = filler else { return }  // a fixed rig reads no actor, but a service struct's field cannot be none
+    control_rigs[i] = view.Camera { rig: view.Rig.Fixed, eye: e.eye, at: e.at, up: e.up, fov_y: e.fov_y, actor: a,
+                                    offset: vec3(0.0, 0.0, 0.0), joint: "", near_z: 0.0 }
+    control_actors[i] = none
+    settle()
+}
+
+pub fn end(c: Control) {
+    if let i = index_of(c.n) {
+        remove_at(i)
+        settle()
+    }
+}
+
+pub fn alive(c: Control) -> bool {
+    return index_of(c.n) != none
+}
+
+// A camera `distance` behind the target and `height` above it, looking at it, turning with it.
+pub fn follow(target: LiveActor, distance: f32, height: f32 = 300.0) -> view.Camera {
+    return rig_of(view.Rig.Follow, 45.0, target, vec3(0.0, height, -distance), "", 0.0)
+}
+
+// First person: the eye at the actor's joint, looking along its front, the near plane `near` (the player's own model
+// hidden while the main camera holds it).
+pub fn eye(of: LiveActor, joint: text = "Head", near: f32 = 5.0) -> view.Camera {
+    return rig_of(view.Rig.Joint, 60.0, of, vec3(0.0, 0.0, 0.0), joint, near)
+}
+
+// A side camera for 2D sections: `distance` from the player along `normal` (world axes), looking at the player. Called
+// while a scene has a player (a rig's actor cannot be empty: a service struct's field cannot be none).
+pub fn side(normal: vec3, distance: f32) -> view.Camera {
+    var n = normal
+    if length(n) < 0.001 {
+        n = vec3(0.0, 0.0, 1.0)
+    }
+    return rig_of(view.Rig.World, 45.0, player()!, unit(n) * distance, "", 0.0)
+}
+
+// Two rigs `eye_distance` apart across the rig's look (left, right), for a pair of views (VR). A fixed rig moves its eye
+// and the point it looks at; a follow or world rig its offset (a follow rig's x is the actor's side). A joint rig's
+// pair is the joint's one eye (draw.view has no side offset for a joint).
+pub fn stereo(rig: view.Camera, eye_distance: f32) -> (view.Camera, view.Camera) {
+    let half = eye_distance * 0.5
+    if rig.rig == view.Rig.Fixed {
+        let across = unit(cross(rig.at - rig.eye, rig.up)) * half
+        let left = view.Camera { rig: rig.rig, eye: rig.eye - across, at: rig.at - across, up: rig.up, fov_y: rig.fov_y,
+                                 actor: rig.actor, offset: rig.offset, joint: rig.joint, near_z: rig.near_z }
+        let right = view.Camera { rig: rig.rig, eye: rig.eye + across, at: rig.at + across, up: rig.up, fov_y: rig.fov_y,
+                                  actor: rig.actor, offset: rig.offset, joint: rig.joint, near_z: rig.near_z }
+        return (left, right)
+    }
+    var side_axis = vec3(half, 0.0, 0.0)
+    if rig.rig == view.Rig.World {
+        // World axes: across the look from the offset toward the actor, about the world's up.
+        let flat = vec3(rig.offset.x, 0.0, rig.offset.z)
+        if length(flat) > 0.001 {
+            side_axis = unit(cross(flat, vec3(0.0, 1.0, 0.0))) * half
+        }
+    }
+    let left = rig_of(rig.rig, rig.fov_y, rig.actor, rig.offset - side_axis, rig.joint, rig.near_z)
+    let right = rig_of(rig.rig, rig.fov_y, rig.actor, rig.offset + side_axis, rig.joint, rig.near_z)
+    return (left, right)
+}
+
+// The picture and the stick's x flipped, or not.
+pub fn mirror(enabled: bool) {
+    mirrored = enabled
+    mirror_owner = caller()
+    set_mirror_picture(enabled)
+}
+
+// LumaKit's program in its WORLD slot while the mirror is on; freed (the slot empty) when it goes off.
+fn set_mirror_picture(enabled: bool) {
+    if enabled {
+        if mirror_program == none {
+            mirror_program = post.program("kit_mirror")
+        }
+        if let p = mirror_program {
+            post.set(post.Stage.World, p)
+        }
+    } else if let p = mirror_program {
+        post.program_free(p)
+        mirror_program = none
+    }
+}
+
+// The main camera's vertical field of view in degrees (1 to 179); none: the game's own (or a control's rig's).
+pub fn fov(degrees: f32?) {
+    if let d = degrees {
+        fov_degrees = clamp(d, 1.5, 178.5)
+        fov_owner = caller()
+    } else {
+        fov_degrees = -1.0
+    }
+}
+
+// The main camera shaken `strength` game units, fading out over `frames`.
+pub fn shake(strength: f32, frames: u32) {
+    shake_strength = strength
+    shake_left = frames
+    shake_frames = frames
+    shake_owner = caller()
+}
+
+// Where the main camera is this frame.
+pub fn now() -> view.Eye {
+    var fy: f32 = 45.0
+    if let d = MR::getCameraDirector() {
+        if let man = d.getCurrentCameraMan() {
+            fy = CameraLocalUtil::getFovy(man)
+        }
+    }
+    return view.Eye { eye: MR::getCamPos(), at: MR::getCameraWatchPos(), up: MR::getCamYdir(), fov_y: fy }
+}
+
+// The free camera's eye this frame, moved by the stick.
+fn free_step(speed: f32) -> view.Eye {
+    if not free_started {
+        let e = MR::getCamPos()
+        let look = MR::getCameraWatchPos() - e
+        free_eye = e
+        free_yaw = atan2(look.x, look.z) * to_degrees
+        free_pitch = atan2(look.y, length(vec3(look.x, 0.0, look.z))) * to_degrees
+        free_started = true
+    }
+    let across = MR::getMoveStickX(0)
+    let ahead = MR::getMoveStickY(0)
+    if abs(across) > 0.1 {
+        free_yaw -= across * 2.5  // degrees a frame at a full stick
+    }
+    let yaw = free_yaw * to_radians
+    let pitch = free_pitch * to_radians
+    let front = vec3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+    if abs(ahead) > 0.1 {
+        free_eye = free_eye + front * (ahead * speed)
+    }
+    if MR::testCorePadButton1(0) {
+        free_eye = free_eye + vec3(0.0, speed, 0.0)
+    }
+    if MR::testCorePadButton2(0) {
+        free_eye = free_eye - vec3(0.0, speed, 0.0)
+    }
+    return view.Eye { eye: free_eye, at: free_eye + front * 100.0, up: vec3(0.0, 1.0, 0.0), fov_y: 45.0 }
+}
+
+// The shake's offset this frame (a fading wave on three axes), zero with none.
+fn shake_now() -> vec3 {
+    if shake_left == 0 or shake_frames == 0 {
+        return vec3(0.0, 0.0, 0.0)
+    }
+    let t = frame as f32
+    let s = shake_strength * (shake_left as f32 / shake_frames as f32)
+    return vec3(sin(t * 1.7) * s, cos(t * 2.3) * s, sin(t * 3.1) * s)
+}
+
+// The top control's eye this frame; none: no control (or a rig whose actor is gone before it ever gave one).
+fn given_eye() -> view.Eye? {
+    if controls.len() == 0 {
+        return none
+    }
+    let top = controls.len() - 1
+    guard let r = control_rigs[top] else { return free_step(control_speeds[top]) }
+    if r.rig == view.Rig.Fixed {
+        return view.eye_of(r) ?? last_eye
+    }
+    guard let h = control_actors[top] else { return last_eye }
+    guard let a = h.get() else { return last_eye }
+    return view.eye_of(rig_on(r, a)) ?? last_eye
+}
+
+// After the game worked out its own pose (once a frame): the top control's in its place, and the shake on whichever
+// holds.
+hook after CameraDirector::calcPose() {
+    frame += 1
+    let shaking = shake_now()
+    if shake_left > 0 {
+        shake_left -= 1
+    }
+    let given = given_eye()
+    guard let pose = self.mPoseParam1 else { return }
+    if let e = given {
+        last_eye = e
+        show(view.Eye { eye: e.eye + shaking, at: e.at + shaking, up: e.up, fov_y: e.fov_y })
+        pose.mPos = e.eye + shaking
+        pose.mWatchPos = e.at + shaking
+        pose.mUpVec = e.up
+        if let vi = self.mViewInterpolator {
+            vi.mIsCollisionOff = true
+            vi.mIsForceCameraChange = true
+        }
+    } else if length(shaking) > 0.0 {
+        pose.mPos = pose.mPos + shaking
+        pose.mWatchPos = pose.mWatchPos + shaking
+    }
+}
+
+// The field of view: ours in the camera man's place while createViewMtx reads it, the man's own put back after. A
+// control's rig gives its own when no fov() is set.
+hook before CameraDirector::createViewMtx() {
+    var want = fov_degrees
+    if want < 0.0 and controls.len() > 0 {
+        if let r = control_rigs[controls.len() - 1] {
+            want = r.fov_y
+        }
+    }
+    if want < 0.0 {
+        return
+    }
+    guard let man = self.getCurrentCameraMan() else { return }
+    fov_kept = CameraLocalUtil::getFovy(man)
+    CameraLocalUtil::setFovy(man, want)
+}
+
+hook after CameraDirector::createViewMtx() {
+    if fov_kept < 0.0 {
+        return
+    }
+    if let man = self.getCurrentCameraMan() {
+        CameraLocalUtil::setFovy(man, fov_kept)
+    }
+    fov_kept = -1.0
+}
+
+// Mirror: the stick's x as the picture shows it.
+hook after MR::getPlayerStickX() -> x {
+    if mirrored {
+        result = -x
+    }
+}
+
+// A mod that took the camera was taken out: its controls end (newest first), its mirror, field of view and
+// shake are undone; the others' stay.
+on mods.stopped(gone) {
+    var i = controls.len()
+    while i > 0 {
+        i -= 1
+        if control_owners[i] == gone {
+            remove_at(i)
+        }
+    }
+    settle()
+    if mirrored and mirror_owner == gone {
+        mirrored = false
+        set_mirror_picture(false)
+    }
+    if fov_degrees >= 0.0 and fov_owner == gone {
+        fov_degrees = -1.0
+    }
+    if shake_left > 0 and shake_owner == gone {
+        shake_left = 0
+    }
+}

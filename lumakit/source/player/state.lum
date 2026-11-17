@@ -1,0 +1,656 @@
+// kit.player.state: a mod's own move for the player (what starts it, its animation, its physics each
+// frame, how it ends, whether it attacks) and the player's constants changed by name. Built on the game's player by
+// name (MarioActor, Mario, MarioConst's setMarioConstant/getMarioConstant) and svc.input for a move's action.
+// The move runs inside the game's own player step: after MarioActor::movement each frame the module writes the move's
+// velocity where the game keeps it for the next step (in the air Mario::mJumpVec, which the jump adds its gravity to
+// and moves the player by; on the ground Mario::mVelocity) and keeps its animation, so the game's collision, gravity
+// and camera act on it.
+// Every move and tuning is recorded under caller(); `on mods.stopped` takes a stopped mod's away (its move in
+// progress ends without calling its closures; its tunings are undone exactly).
+// `from` is a list; `motion` returns the Motion it changed and is `keep` when not given; `effect_start` and
+// `sound_start` are content names.
+
+use svc.input
+use svc.mods
+use ./actor
+
+pub struct State {
+    id: text
+    starts: Start
+    from: list<From> = [From.Air]
+    once_per_air: bool = false                // double jump
+    action: text                              // the player's animation (C.anim, bound to the skeleton by LumaLink)
+    motion: fn(MarioActor, Motion) -> Motion = keep   // each frame while in the state; keep: the game's own motion
+    ends: list<End> = [End.Ground]
+    attack: actor.Attack? = none              // hurts what it touches as this attack while it lasts
+    effect_start: text? = none                // an effect of the player's (MR::emitEffect by name)
+    sound_start: text? = none                 // a sound of the player's (MR::startSoundPlayer by name)
+    on_start: fn(MarioActor)? = none
+    on_end: fn(MarioActor)? = none
+}
+pub enum Start { Action(a: input.Action), Code }
+pub enum From { Ground, Air, Water, Any }
+pub enum End { Ground, Wall, Water, Frames(n: u32), ActionEnd, Released(a: input.Action), Code }
+pub struct Motion { velocity: vec3, gravity_scale: f32 = 1.0, friction: f32 = 1.0, turn: f32 = 1.0 }
+// A move's motion when it gives none: the player's own, unchanged.
+pub fn keep(p: MarioActor, m: Motion) -> Motion {
+    return m
+}
+// The player's constants by name (MarioConst's fields, "mJumpHeight"), each multiplied by its value.
+pub struct Tuning { values: map<text, f32> }
+
+// A defined move: its slot + 1 (0: none). Its functions are module functions too (`enter_state`), until struct
+// functions cross between mods.
+pub struct StateId {
+    n: int
+    fn enter(self) -> bool { return enter_state(self) }
+    fn is_current(self) -> bool { return is_current_state(self) }
+}
+// A tuning in force: its number (0: none).
+pub struct Tuned {
+    n: u64
+    fn end(self) { end_tuned(self) }
+    fn alive(self) -> bool { return tuned_alive(self) }
+}
+
+// kit/player.state/<id>.json: the State's fields but the `fn` ones, `motion` as fixed
+// numbers. Words for the enums: from "ground" "air" "water" "any"; ends "ground" "wall" "water" "frames" (with
+// `frames`) "action_end" "code"; attack "spin" "trample" "hip_drop" "star_bit" "fire"; starts "code" or one of the
+// mod's actions (a `key` option's id).
+struct MotionData {
+    velocity_up: f32? = none                  // the speed against gravity set at the move's start
+    velocity_forward: f32? = none             // the speed along the player's heading set at the start
+    gravity_scale: f32 = 1.0
+    friction: f32 = 1.0
+    turn: f32 = 1.0
+}
+struct StateData {
+    id: text
+    starts: text = "code"
+    from: list<text> = ["air"]
+    once_per_air: bool = false
+    action: text = ""
+    motion: MotionData? = none
+    ends: list<text> = ["ground"]
+    frames: u32 = 0
+    attack: text? = none
+    effect_start: text? = none
+    sound_start: text? = none
+}
+// A move's fixed motion (from data): `given` false for a move whose motion is its closure.
+struct Fixed { given: bool = false, up: f32? = none, forward: f32? = none, gravity_scale: f32 = 1.0, friction: f32 = 1.0,
+    turn: f32 = 1.0 }
+
+// The defined moves (a slot is never reused in a session, so an old StateId never names another mod's move).
+var moves: list<State> = []
+var fixed: list<Fixed> = []
+var owners: list<u64> = []
+var live: list<bool> = []
+// Whether each may start (allow; kit.ride's mounts allow their moves while ridden).
+var allowed: list<bool> = []
+// The move in progress: its slot + 1 (0: none), its frames, the player's horizontal heading the frame before (`turn`).
+var running: int = 0
+var frames_in: u32 = 0
+var heading: vec3 = vec3(0.0, 0.0, 0.0)
+// The velocity the move wrote last frame (none: its first frame) and whether it was the air's: what the game's step
+// added along its gravity since is the gravity it applied (its jump kind's, a spin's, the drop cap's), the share
+// gravity_scale takes back.
+var written: vec3? = none
+var written_air = false
+// Moves made in this air (once_per_air), by slot; cleared on the ground.
+var used_in_air: list<int> = []
+// The tunings: their numbers, owners and values; the constants' own values before the first tuning touched them,
+// for Mario (character 0) and Luigi (1).
+var tunings: list<u64> = []
+var tuning_owners: list<u64> = []
+var tuning_values: list<map<text, f32>> = []
+var next_tuning: u64 = 1
+var base_mario: map<text, f32> = {}
+var base_luigi: map<text, f32> = {}
+
+fn slot_of(id: StateId) -> int? {
+    if id.n <= 0 or id.n > moves.len() or not live[id.n - 1] {
+        return none
+    }
+    return id.n - 1
+}
+
+fn player() -> MarioActor? {
+    return MarioAccess::getPlayerActor()
+}
+
+// Whether the player is where `from` allows.
+fn place_ok(from: list<From>) -> bool {
+    if from.contains(From.Any) {
+        return true
+    }
+    if MR::isPlayerInWaterMode() {
+        return from.contains(From.Water)
+    }
+    if MR::isOnGroundPlayer() {
+        return from.contains(From.Ground)
+    }
+    return from.contains(From.Air)
+}
+
+// A move's action this frame: the action is its mod's, which needs the kit, so the kit reads it (svc.input: a library
+// reads the actions of the mods that need it).
+fn action_pressed(a: input.Action) -> bool {
+    return input.read(a).pressed != 0
+}
+
+fn action_down(a: input.Action) -> bool {
+    return input.read(a).down != 0
+}
+
+fn air_used(i: int) -> bool {
+    return used_in_air.contains(i)
+}
+
+// Starts move `i` on the player `p` (the caller checked it may); a move in progress ends first.
+fn begin(i: int, p: MarioActor) {
+    if running != 0 {
+        finish(p, true)
+    }
+    let s = moves[i]
+    running = i + 1
+    frames_in = 0
+    written = none
+    if s.once_per_air and not MR::isOnGroundPlayer() and not air_used(i) {
+        used_in_air.push(i)
+    }
+    if s.action != "" {
+        p.changeAnimation(s.action, none)
+    }
+    if let e = s.effect_start {
+        MR::emitEffect(p, e)
+    }
+    if let snd = s.sound_start {
+        MR::startSoundPlayer(snd, -1)
+    }
+    if let m = p.mMario {
+        let down = MR::getPlayerGravity() ?? vec3(0.0, -1.0, 0.0)
+        var v = m.mVelocity
+        var flat = v - down * dot(v, down)
+        heading = flat
+        let fx = fixed[i]
+        if fx.given {
+            if let u = fx.up {
+                v = flat - down * u
+            }
+            if let f = fx.forward {
+                if length(flat) > 0.001 {
+                    flat = normal(flat) * f
+                    heading = flat
+                }
+                v = flat + down * dot(v, down)
+            }
+            m.mVelocity = v
+        }
+    }
+    if let f = s.on_start {
+        f(p)
+    }
+}
+
+// Ends the move in progress; `call` false when its mod stopped (its closures are not called then).
+fn finish(p: MarioActor?, call: bool) {
+    if running == 0 {
+        return
+    }
+    let s = moves[running - 1]
+    running = 0
+    frames_in = 0
+    written = none
+    if call {
+        if let f = s.on_end {
+            if let q = p {
+                f(q)
+            }
+        }
+    }
+}
+
+// Whether one of the move's ends holds this frame.
+fn ended(s: State, p: MarioActor) -> bool {
+    for e in s.ends {
+        match e {
+            End.Ground => {
+                if frames_in > 1 and MR::isOnGroundPlayer() {
+                    return true
+                }
+            }
+            End.Wall => {
+                if let m = p.mMario {
+                    if m.getWallPolygon() != none {
+                        return true
+                    }
+                }
+            }
+            End.Water => {
+                if MR::isPlayerInWaterMode() {
+                    return true
+                }
+            }
+            End.Frames(n) => {
+                if frames_in >= n {
+                    return true
+                }
+            }
+            End.ActionEnd => {
+                if s.action != "" and not p.isAnimationRun(s.action) {
+                    return true
+                }
+            }
+            End.Released(a) => {
+                if not action_down(a) {
+                    return true
+                }
+            }
+            End.Code => {}
+        }
+    }
+    return false
+}
+
+// One frame of the move in progress: its motion written into the player's velocity.
+fn step(i: int, p: MarioActor) {
+    guard let m = p.mMario else { return }
+    // In the air the jump's vector carries the motion from step to step (Mario::mVelocity is made again each step).
+    let air = not MR::isOnGroundPlayer()
+    var now = m.mVelocity
+    if air {
+        now = m.mJumpVec
+    }
+    if air != written_air {
+        written = none
+    }
+    var motion = Motion { velocity: now }
+    let fx = fixed[i]
+    if fx.given {
+        motion.gravity_scale = fx.gravity_scale
+        motion.friction = fx.friction
+        motion.turn = fx.turn
+    } else {
+        let f = moves[i].motion
+        motion = f(p, motion)
+    }
+    var v = motion.velocity
+    let down = MR::getPlayerGravity() ?? vec3(0.0, -1.0, 0.0)
+    // gravity_scale: the game adds its gravity each step (no one constant: it depends on the jump, a spin, the drop
+    // cap); what it added along its gravity since the move's last write is taken back by the share not wanted.
+    if motion.gravity_scale != 1.0 {
+        if let w = written {
+            let added = dot(now - w, down)
+            if added > 0.0 {
+                v = v - down * (added * (1.0 - motion.gravity_scale))
+            }
+        }
+    }
+    // friction and turn act on the part across the gravity.
+    let rise = down * dot(v, down)
+    var flat = v - rise
+    if motion.friction != 1.0 {
+        flat = flat * motion.friction
+    }
+    if motion.turn != 1.0 and length(heading) > 0.001 and length(flat) > 0.001 {
+        let speed = length(flat)
+        let t = clamp(motion.turn, 0.0, 1.0)
+        flat = normal(normal(heading) * (1.0 - t) + normal(flat) * t) * speed
+    }
+    heading = flat
+    let out = flat + rise
+    if air {
+        m.mJumpVec = out
+    } else {
+        m.mVelocity = out
+    }
+    written = out
+    written_air = air
+}
+
+// Whether `m` is the game's own player (player 1): an extra player (svc.player) runs none of these moves.
+fn is_player_one(m: MarioActor) -> bool {
+    if let p = player() {
+        return same(p, m)
+    }
+    return false
+}
+
+// Each frame after the game's own player step: start, run and end the moves.
+hook after MarioActor::movement() {
+    if not is_player_one(self) {
+        return
+    }
+    if MR::isOnGroundPlayer() {
+        used_in_air = []
+    }
+    if running != 0 {
+        let s = moves[running - 1]
+        frames_in += 1
+        if ended(s, self) {
+            finish(self, true)
+        } else {
+            step(running - 1, self)
+            return
+        }
+    }
+    // A move started by its action: the newest defined first (the newest holds).
+    var i = moves.len()
+    while i > 0 {
+        i -= 1
+        if not live[i] or not allowed[i] {
+            continue
+        }
+        let s = moves[i]
+        match s.starts {
+            Start.Action(a) => {
+                if action_pressed(a) and place_ok(s.from) and not (s.once_per_air and air_used(i)) {
+                    begin(i, self)
+                    return
+                }
+            }
+            Start.Code => {}
+        }
+    }
+}
+
+// While a move with an attack runs, an enemy the player's body touches is hit as that attack.
+hook after MarioActor::attackSensor(mine, other) {
+    if running == 0 or not is_player_one(self) {
+        return
+    }
+    guard let a = moves[running - 1].attack else { return }
+    guard let me = mine, let it = other else { return }
+    if not MR::isSensorEnemy(it) {
+        return
+    }
+    match a {
+        actor.Attack.Spin => MR::sendArbitraryMsg(ACTMES_PLAYER_PUNCH as u32, it, me)
+        actor.Attack.Trample => MR::sendArbitraryMsg(ACTMES_PLAYER_TRAMPLE as u32, it, me)
+        actor.Attack.HipDrop => MR::sendArbitraryMsg(ACTMES_PLAYER_HIP_DROP as u32, it, me)
+        actor.Attack.StarBit => MR::sendArbitraryMsg(ACTMES_STAR_PIECE_ATTACK as u32, it, me)
+        actor.Attack.Fire => MR::sendArbitraryMsg(ACTMES_FIREBALL_ATTACK as u32, it, me)
+        // Any: the player's plain attack, the spin's.
+        actor.Attack.Any => MR::sendArbitraryMsg(ACTMES_PLAYER_PUNCH as u32, it, me)
+    }
+}
+
+// A new move for the player; its id names it in the calling mod.
+pub fn define(s: State) -> StateId {
+    return define_for(caller(), s, Fixed {})
+}
+
+fn define_for(owner: u64, s: State, fx: Fixed) -> StateId {
+    moves.push(s)
+    fixed.push(fx)
+    owners.push(owner)
+    live.push(true)
+    allowed.push(true)
+    return StateId { n: moves.len() }
+}
+
+fn from_word(w: text) -> From? {
+    if w == "ground" { return From.Ground }
+    if w == "air" { return From.Air }
+    if w == "water" { return From.Water }
+    if w == "any" { return From.Any }
+    return none
+}
+
+fn end_word(w: text, frames: u32) -> End? {
+    if w == "ground" { return End.Ground }
+    if w == "wall" { return End.Wall }
+    if w == "water" { return End.Water }
+    if w == "frames" { return End.Frames(frames) }
+    if w == "action_end" { return End.ActionEnd }
+    if w == "code" { return End.Code }
+    return none
+}
+
+fn attack_word(w: text) -> actor.Attack? {
+    if w == "spin" { return actor.Attack.Spin }
+    if w == "trample" { return actor.Attack.Trample }
+    if w == "hip_drop" { return actor.Attack.HipDrop }
+    if w == "star_bit" { return actor.Attack.StarBit }
+    if w == "fire" { return actor.Attack.Fire }
+    return none
+}
+
+// One kit/player.state file of `owner`'s, read: its move defined under that mod (find gives it to the mod's code).
+// A word outside the schema leaves the move out, named in the log (the validator refuses such a file first).
+fn define_data(owner: u64, file: text, bytes_of: bytes) {
+    guard let d = json.decode<StateData>(bytes_of) else {
+        log "kit.player.state: {file} is not a move (json)"
+        return
+    }
+    var from: list<From> = []
+    for w in d.from {
+        guard let f = from_word(w) else {
+            log "kit.player.state: {file}: from \"{w}\" is none of ground, air, water, any; left out"
+            return
+        }
+        from.push(f)
+    }
+    var ends: list<End> = []
+    for w in d.ends {
+        guard let e = end_word(w, d.frames) else {
+            log "kit.player.state: {file}: end \"{w}\" is none of ground, wall, water, frames, action_end, code; left out"
+            return
+        }
+        ends.push(e)
+    }
+    var attack: actor.Attack? = none
+    if let w = d.attack {
+        guard let a = attack_word(w) else {
+            log "kit.player.state: {file}: attack \"{w}\" is none of spin, trample, hip_drop, star_bit, fire; left out"
+            return
+        }
+        attack = a
+    }
+    // "code": started by the mod's code (`find` + `enter`); any other word is one of the data mod's own actions (a
+    // `key` option's key), found for it by input.user_action.
+    var starts = Start.Code
+    if d.starts != "code" {
+        guard let a = input.user_action(owner, d.starts) else {
+            log "kit.player.state: {file}: starts \"{d.starts}\" is not one of the mod's actions (a key option's key); left out"
+            return
+        }
+        starts = Start.Action(a)
+    }
+    var fx = Fixed {}
+    if let m = d.motion {
+        fx = Fixed { given: true, up: m.velocity_up, forward: m.velocity_forward, gravity_scale: m.gravity_scale,
+            friction: m.friction, turn: m.turn }
+    }
+    define_for(owner, State { id: d.id, starts: starts, from: from, once_per_air: d.once_per_air, action: d.action,
+        ends: ends, attack: attack, effect_start: d.effect_start, sound_start: d.sound_start }, fx)
+}
+
+// Each enabled mod's kit/player.state files, at LumaKit's start: mods.needing gives the mods that need
+// LumaKit, kit_names and kit_read their files.
+on start {
+    for m in mods.needing() {
+        for name in mods.kit_names(m, "player.state") ?? [] {
+            if let b = mods.kit_read(m, "player.state", name) {
+                define_data(m, "kit/player.state/{name}", b)
+            }
+        }
+    }
+}
+
+// A move of the calling mod by its id (one defined by code or by kit/player.state data).
+pub fn find(id: text) -> StateId? {
+    return find_for(caller(), id)
+}
+
+// A move of mod `owner` (as caller() gives it) by its id: for a module reading that mod's data (kit.ride's mounts).
+pub fn find_for(owner: u64, id: text) -> StateId? {
+    let me = owner
+    var i = moves.len()
+    while i > 0 {
+        i -= 1
+        if live[i] and owners[i] == me and moves[i].id == id {
+            return StateId { n: i + 1 }
+        }
+    }
+    return none
+}
+
+// The move in progress, of any mod; none while the game's own moves run.
+pub fn current() -> StateId? {
+    if running == 0 {
+        return none
+    }
+    return StateId { n: running }
+}
+
+// Starts the move now if the player is where its `from` allows (and once_per_air allows); false if not.
+pub fn enter_state(id: StateId) -> bool {
+    guard let i = slot_of(id) else { return false }
+    guard let p = player() else { return false }
+    let s = moves[i]
+    if not allowed[i] or not place_ok(s.from) or (s.once_per_air and air_used(i)) {
+        return false
+    }
+    begin(i, p)
+    return true
+}
+
+// Whether move `id` may start, by its action or enter_state (every move may until a call says otherwise); one not
+// allowed while it runs ends (its on_end called). kit.ride allows a mount's moves while the player rides it.
+pub fn allow(id: StateId, may: bool) {
+    guard let i = slot_of(id) else { return }
+    allowed[i] = may
+    if not may and running == i + 1 {
+        finish(player(), true)
+    }
+}
+
+pub fn is_current_state(id: StateId) -> bool {
+    return id.n != 0 and running == id.n
+}
+
+// Ends the move in progress if it is `id` (End.Code's way out); its on_end is called.
+pub fn exit_state(id: StateId) {
+    if is_current_state(id) {
+        finish(player(), true)
+    }
+}
+
+// Puts every tuned constant at its own value times the product of the tunings in force; a constant no tuning holds
+// goes back to its own value and is forgotten.
+fn apply() {
+    var unheld: list<text> = []
+    for name in base_mario.keys() {
+        var product: f32 = 1.0
+        var held = false
+        for t in tuning_values {
+            if let k = t.get(name) {
+                product = product * k
+                held = true
+            }
+        }
+        let own_m = base_mario.get(name) ?? 0.0
+        let own_l = base_luigi.get(name) ?? own_m
+        setMarioConstant(0, name, 0, own_m * product)
+        setMarioConstant(1, name, 0, own_l * product)
+        if not held {
+            unheld.push(name)
+        }
+    }
+    // Forgotten after the walk, not during it (the map is not changed under its own keys).
+    for name in unheld {
+        base_mario.remove(name)
+        base_luigi.remove(name)
+    }
+}
+
+// Whether the player has a constant named `name` (one of MarioConst's fields, "mJumpHeight").
+pub fn is_constant(name: text) -> bool {
+    if base_mario.contains(name) {
+        return true
+    }
+    let m = getMarioConstant(0, name, 0)
+    if not setMarioConstant(0, name, 0, m) {
+        return false
+    }
+    base_mario[name] = m
+    base_luigi[name] = getMarioConstant(1, name, 0)
+    return true
+}
+
+// The tuning with only the constants the player has; each other name is named in the log (`what` says whose
+// tuning it was) and left out. For a tuning read from a data file.
+pub fn known(t: Tuning, what: text) -> Tuning {
+    var values: map<text, f32> = {}
+    for name in t.values.keys() {
+        if is_constant(name) {
+            values[name] = t.values[name]
+        } else {
+            log "{what}: the player has no constant named {name}; left out"
+        }
+    }
+    return Tuning { values: values }
+}
+
+// The player's constants multiplied by name while the handle holds; `end` puts them back exactly. Two tunings of
+// one constant multiply. A name MarioConst does not have is a script error (`is_constant` asks; `known` leaves such
+// names out).
+pub fn tune(t: Tuning) -> Tuned {
+    for name in t.values.keys() {
+        if not is_constant(name) {
+            fail "kit.player.state.tune: the player has no constant named {name}"
+        }
+    }
+    let n = next_tuning
+    next_tuning += 1
+    tunings.push(n)
+    tuning_owners.push(caller())
+    tuning_values.push(t.values)
+    apply()
+    return Tuned { n: n }
+}
+
+pub fn end_tuned(t: Tuned) {
+    for i in 0..tunings.len() {
+        if tunings[i] == t.n {
+            tunings.remove(i)
+            tuning_owners.remove(i)
+            tuning_values.remove(i)
+            apply()
+            return
+        }
+    }
+}
+
+pub fn tuned_alive(t: Tuned) -> bool {
+    return t.n != 0 and tunings.contains(t.n)
+}
+
+// A mod that defined moves or tunings was taken out: its move in progress ends (its closures not called),
+// its moves are gone, its tunings undone, newest first.
+on mods.stopped(gone) {
+    if running != 0 and owners[running - 1] == gone {
+        finish(none, false)
+    }
+    for i in 0..moves.len() {
+        if owners[i] == gone {
+            live[i] = false
+        }
+    }
+    var i = tunings.len()
+    var changed = false
+    while i > 0 {
+        i -= 1
+        if tuning_owners[i] == gone {
+            tunings.remove(i)
+            tuning_owners.remove(i)
+            tuning_values.remove(i)
+            changed = true
+        }
+    }
+    if changed {
+        apply()
+    }
+}

@@ -1,6 +1,7 @@
 //! The player's imported game (`game.pak`, Nebula's asset store): what paths exist, for a mod that names a file by name
 //! alone, and which game it is. Only read; nothing of it goes into a package.
 
+use crate::say;
 use anyhow::{bail, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
@@ -31,13 +32,41 @@ fn is_archive_name(name: &str) -> bool {
     lower.len() > 4 && (lower.ends_with(".arc") || lower.ends_with(".szs"))
 }
 
+/// A store's header: the magic, then the version Nebula's importer writes (nebula_import::cook::store::VERSION, the
+/// game's store_version.inc). A store of another version holds its files in another form, or lacks some: the game
+/// refuses it, and so does LumaLink, by its version, rather than failing later on a file the old form does not have.
+pub fn header(pak: &mut impl Read, path: &Path) -> Result<[u8; 64]> {
+    use nebula_import::cook::store::{MAGIC, VERSION};
+    let mut header = [0u8; 64];
+    pak.read_exact(&mut header).with_context(|| say!("LumaLink.Store.TooShort", path = path.display()))?;
+    if &header[..8] != MAGIC {
+        bail!(say!("LumaLink.Store.Not", path = path.display()));
+    }
+    let found = u32::from_le_bytes(header[8..12].try_into().unwrap());
+    if found != VERSION {
+        bail!(say!("LumaLink.Store.Version", path = path.display(), found = found, wanted = VERSION));
+    }
+    Ok(header)
+}
+
 /// The sizes of a store's index and names, when the file can hold them: a damaged header may say any size, and the
 /// room is only made for what is there.
 fn parts_fit(pak: &File, count: usize, names_size: u64) -> Result<(usize, usize)> {
     let length = pak.metadata()?.len();
-    let nodes_size = count.checked_mul(NODE).filter(|&size| size as u64 <= length).context("the store's index is larger than the store")?;
-    let names_size = usize::try_from(names_size).ok().filter(|&size| size as u64 <= length).context("the store's names are larger than the store")?;
+    let nodes_size = count.checked_mul(NODE).filter(|&size| size as u64 <= length).with_context(|| say!("LumaLink.Store.IndexLarge"))?;
+    let names_size = usize::try_from(names_size).ok().filter(|&size| size as u64 <= length).with_context(|| say!("LumaLink.Store.NamesLarge"))?;
     Ok((nodes_size, names_size))
+}
+
+/// The longest path a store holds: far past any disc path. A damaged index whose folders nest without end would
+/// otherwise make paths that fill the memory.
+const MAX_PATH: usize = 1024;
+
+fn path_fits(path: &str) -> Result<()> {
+    if path.len() > MAX_PATH {
+        bail!(say!("LumaLink.Store.Damaged"));
+    }
+    Ok(())
 }
 
 impl GameStore {
@@ -53,22 +82,18 @@ impl GameStore {
     }
 
     fn walk(path: &Path, disc: bool) -> Result<Vec<(String, u64, u64)>> {
-        let mut pak = File::open(path).with_context(|| format!("{} cannot be read", path.display()))?;
-        let mut header = [0u8; 64];
-        pak.read_exact(&mut header).with_context(|| format!("{} is too short to be a game store", path.display()))?;
-        if &header[..8] != b"NBSTORE\0" {
-            bail!("{} is not a Nebula game store", path.display());
-        }
+        let mut pak = File::open(path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?;
+        let header = header(&mut pak, path)?;
         let word = |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap());
         let count = u32::from_le_bytes(header[12..16].try_into().unwrap()) as usize;
         let (nodes_at, names_at, names_size) = (word(16), word(32), word(40));
         let (nodes_size, names_size) = parts_fit(&pak, count, names_size)?;
         let mut nodes = vec![0u8; nodes_size];
         pak.seek(SeekFrom::Start(nodes_at))?;
-        pak.read_exact(&mut nodes).context("the store's index is cut short")?;
+        pak.read_exact(&mut nodes).with_context(|| say!("LumaLink.Store.IndexCut"))?;
         let mut names = vec![0u8; names_size];
         pak.seek(SeekFrom::Start(names_at))?;
-        pak.read_exact(&mut names).context("the store's names are cut short")?;
+        pak.read_exact(&mut names).with_context(|| say!("LumaLink.Store.NamesCut"))?;
         let mut full: Vec<String> = Vec::with_capacity(count);
         let mut files = Vec::new();
         for i in 0..count {
@@ -90,6 +115,7 @@ impl GameStore {
                 Some("") | None => name,
                 Some(parent) => format!("{parent}/{name}"),
             };
+            path_fits(&path)?;
             if i != 0 && !folder {
                 files.push((path.clone(), position, size));
             }
@@ -99,12 +125,8 @@ impl GameStore {
     }
 
     pub fn open(path: &Path) -> Result<Self> {
-        let mut pak = File::open(path).with_context(|| format!("{} cannot be read", path.display()))?;
-        let mut header = [0u8; 64];
-        pak.read_exact(&mut header).with_context(|| format!("{} is too short to be a game store", path.display()))?;
-        if &header[..8] != b"NBSTORE\0" {
-            bail!("{} is not a Nebula game store", path.display());
-        }
+        let mut pak = File::open(path).with_context(|| say!("LumaLink.CannotRead", path = path.display()))?;
+        let header = header(&mut pak, path)?;
         let word = |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap());
         let count = u32::from_le_bytes(header[12..16].try_into().unwrap()) as usize;
         let (nodes_at, names_at, names_size) = (word(16), word(32), word(40));
@@ -113,10 +135,10 @@ impl GameStore {
         let (nodes_size, names_size) = parts_fit(&pak, count, names_size)?;
         let mut nodes = vec![0u8; nodes_size];
         pak.seek(SeekFrom::Start(nodes_at))?;
-        pak.read_exact(&mut nodes).context("the store's index is cut short")?;
+        pak.read_exact(&mut nodes).with_context(|| say!("LumaLink.Store.IndexCut"))?;
         let mut names = vec![0u8; names_size];
         pak.seek(SeekFrom::Start(names_at))?;
-        pak.read_exact(&mut names).context("the store's names are cut short")?;
+        pak.read_exact(&mut names).with_context(|| say!("LumaLink.Store.NamesCut"))?;
 
         let mut full: Vec<String> = Vec::with_capacity(count);
         // Whether a node is an archive, or inside one.
@@ -140,6 +162,7 @@ impl GameStore {
                 Some("") | None => name.clone(),
                 Some(parent) => format!("{parent}/{name}"),
             };
+            path_fits(&path)?;
             let inside = in_archive.get(parent).copied().unwrap_or(false);
             paths.insert(path.to_ascii_lowercase());
             if !inside {
@@ -206,6 +229,7 @@ mod tests {
         for (count, names) in [(u32::MAX, 0u64), (1, u64::MAX), (1, 1 << 40)] {
             let mut header = [0u8; 64];
             header[..8].copy_from_slice(b"NBSTORE\0");
+            header[8..12].copy_from_slice(&nebula_import::cook::store::VERSION.to_le_bytes());
             header[12..16].copy_from_slice(&count.to_le_bytes());
             header[16..24].copy_from_slice(&64u64.to_le_bytes());
             header[32..40].copy_from_slice(&64u64.to_le_bytes());

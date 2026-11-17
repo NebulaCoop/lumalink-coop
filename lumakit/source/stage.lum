@@ -1,0 +1,646 @@
+// kit.stage: galaxies a mod adds, found by name, and warping to a galaxy's scenario. A galaxy a mod defines is
+// recorded under the mod (caller()) and leaves with it.
+// The data (Dome, Unlock, Comet, Star, Galaxy, DomeDef), define_galaxy, define_dome, find, find_dome, go_to, warp
+// (GalaxyId.go), name and hub (its hook on NebulaMods::hubStage); below them, a galaxy listed in its dome with its
+// stars counted (the game's questions answered from the definitions and kit.progress), comet stars (comets_of),
+// music for a galaxy (music), a star appearing (appear_star) and stages built in code (build).
+
+use svc.draw
+use svc.mods
+use svc.audio
+use svc.time
+use ./progress
+use ./gravity
+use ./item
+
+pub enum Dome { Terrace, Fountain, Kitchen, Bedroom, Engine, Garden, Mod(name: text) }
+pub enum Unlock { Always, Stars(count: u32), Star(galaxy: text, scenario: u32), Code(check: fn() -> bool) }
+pub enum Comet { Speedy, Daredevil, Cosmic, FastFoe, Purple }
+pub struct Star { scenario: u32, title: text, comet: Comet? = none, hidden: bool = false }
+pub struct Galaxy { name: text, title: text, dome: Dome, unlock: Unlock = Unlock.Always, stars: list<Star>,
+                    music: sound? = none, icon: draw.Texture? = none }
+pub struct DomeDef { name: text, title: text, unlock: Unlock = Unlock.Always }
+// A galaxy by its stage name. Its functions are also module functions (`stage.warp(g, scenario)`).
+pub struct GalaxyId {
+    name: text
+    fn warp(self, scenario: u32) { warp(self, scenario) }
+}
+
+var galaxies: list<Galaxy> = []
+var owners: list<u64> = []
+var domes: list<DomeDef> = []
+var dome_owners: list<u64> = []
+// The hubs asked for, newest last (the newest holds it, the one before again when it ends), and who asked.
+var hubs: list<text> = []
+var hub_owners: list<u64> = []
+
+// The galaxy recorded for the calling mod (a second of the same name replaces the first); its id.
+pub fn define_galaxy(g: Galaxy) -> GalaxyId {
+    return galaxy_for(caller(), g)
+}
+
+fn galaxy_for(owner: u64, g: Galaxy) -> GalaxyId {
+    for i in 0..galaxies.len() {
+        if galaxies[i].name == g.name {
+            galaxies[i] = g
+            owners[i] = owner
+            return GalaxyId { name: g.name }
+        }
+    }
+    galaxies.push(g)
+    owners.push(owner)
+    return GalaxyId { name: g.name }
+}
+
+// A dome recorded for the calling mod (a second of the same name replaces the first).
+pub fn define_dome(d: DomeDef) {
+    dome_for(caller(), d)
+}
+
+fn dome_for(owner: u64, d: DomeDef) {
+    for i in 0..domes.len() {
+        if domes[i].name == d.name {
+            domes[i] = d
+            dome_owners[i] = owner
+            return
+        }
+    }
+    domes.push(d)
+    dome_owners.push(owner)
+}
+
+// kit/stage/<name>.json (code/lumakit.kit/stage): galaxies and domes as data. Unlock by Code is for code
+// only; a galaxy's music and icon are given by their names in the stores.
+enum UnlockData { Always, Stars(count: u32), Star(galaxy: text, scenario: u32) }
+
+struct GalaxyData {
+    name: text
+    title: text
+    dome: Dome
+    unlock: UnlockData = UnlockData.Always
+    stars: list<Star>
+    music: text? = none
+    icon: text? = none
+}
+
+struct DomeData {
+    name: text
+    title: text
+    unlock: UnlockData = UnlockData.Always
+}
+
+struct StageData {
+    version: u32 = 1
+    galaxies: list<GalaxyData> = []
+    domes: list<DomeData> = []
+}
+
+fn unlock_of(u: UnlockData) -> Unlock {
+    match u {
+        UnlockData.Always => return Unlock.Always
+        UnlockData.Stars(count) => return Unlock.Stars(count)
+        UnlockData.Star(galaxy, scenario) => return Unlock.Star(galaxy, scenario)
+    }
+}
+
+// One kit/stage file of `owner`'s, read: its galaxies and domes defined under that mod (find gives them to its code).
+fn define_data(owner: u64, file: text, bytes_of: bytes) {
+    guard let d = json.decode<StageData>(bytes_of) else {
+        log "kit.stage: kit/stage/{file} is not stage data (json)"
+        return
+    }
+    for dd in d.domes {
+        dome_for(owner, DomeDef { name: dd.name, title: dd.title, unlock: unlock_of(dd.unlock) })
+    }
+    for g in d.galaxies {
+        var icon: draw.Texture? = none
+        if let n = g.icon {
+            icon = draw.texture(n)
+        }
+        galaxy_for(owner, Galaxy { name: g.name, title: g.title, dome: g.dome, unlock: unlock_of(g.unlock), stars: g.stars,
+            icon: icon })
+        // g.music is read but not played: a galaxy's music is given in code with music().
+    }
+}
+
+// Each running mod's kit/stage files, read on first use: the mods needing LumaKit
+// begin after LumaKit's start, so none is running then. A look at most once a frame (find, find_dome, the game's
+// galaxy questions below, every frame); a mod's files are read once while it runs.
+var data_read: list<u64> = []
+var data_frame: u64 = 0
+var data_looked: bool = false
+
+fn read_data() {
+    let f = time.now().frame
+    if data_looked and f == data_frame {
+        return
+    }
+    data_looked = true
+    data_frame = f
+    for m in mods.needing() {
+        if data_read.contains(m) {
+            continue
+        }
+        data_read.push(m)
+        for file in mods.kit_names(m, "stage") ?? [] {
+            if let b = mods.kit_read(m, "stage", file) {
+                define_data(m, file, b)
+            }
+        }
+    }
+}
+
+on frame {
+    read_data()
+}
+
+// A dome a mod defined, by its name; none for any other.
+pub fn find_dome(name: text) -> DomeDef? {
+    read_data()
+    for d in domes {
+        if d.name == name {
+            return d
+        }
+    }
+    return none
+}
+
+// The hub the game returns to: `stage` for the calling mod until it asks for another or ends; the newest
+// caller's holds it. An empty name gives the hub back.
+pub fn hub(stage: text) {
+    let me = caller()
+    var i = hubs.len()
+    while i > 0 {
+        i -= 1
+        if hub_owners[i] == me {
+            hubs.remove(i)
+            hub_owners.remove(i)
+        }
+    }
+    if stage != "" {
+        hubs.push(stage)
+        hub_owners.push(me)
+    }
+}
+
+// The hub a mod named last (the newest stands): the game's hub question answered with its galaxy's name.
+hook after NebulaMods::hubStage() -> h {
+    if hubs.len() > 0 {
+        result = hubs[hubs.len() - 1]
+    }
+}
+
+// A galaxy a mod defined, by its stage name; none for any other.
+pub fn find(name: text) -> GalaxyId? {
+    read_data()
+    for g in galaxies {
+        if g.name == name {
+            return GalaxyId { name: name }
+        }
+    }
+    return none
+}
+
+// The game moves to `galaxy`'s scenario `scenario` as it does through a launch star (MR::requestChangeStageInGameMoving).
+pub fn go_to(galaxy: text, scenario: u32) {
+    MR::requestChangeStageInGameMoving(galaxy, scenario as i32)
+}
+
+// The game moves to the galaxy's scenario `scenario` as it does through a launch star.
+pub fn warp(g: GalaxyId, scenario: u32) {
+    go_to(g.name, scenario)
+}
+
+pub fn name(g: GalaxyId) -> text {
+    return g.name
+}
+
+on mods.stopped(gone) {
+    more_stopped(gone)
+    var r = data_read.len()
+    while r > 0 {
+        r -= 1
+        if data_read[r] == gone {
+            data_read.remove(r)
+        }
+    }
+    var i = galaxies.len()
+    while i > 0 {
+        i -= 1
+        if owners[i] == gone {
+            galaxies.remove(i)
+            owners.remove(i)
+        }
+    }
+    i = domes.len()
+    while i > 0 {
+        i -= 1
+        if dome_owners[i] == gone {
+            domes.remove(i)
+            dome_owners.remove(i)
+        }
+    }
+    i = hubs.len()
+    while i > 0 {
+        i -= 1
+        if hub_owners[i] == gone {
+            hubs.remove(i)
+            hub_owners.remove(i)
+        }
+    }
+}
+
+// =====================================================================================================================
+// A galaxy listed in its dome and its stars counted, comet stars, music per galaxy, a star appearing, stages built in
+// code.
+// =====================================================================================================================
+
+// A galaxy a mod defined, by its stage name: its place in the lists.
+fn galaxy_at(name: text) -> int? {
+    read_data()
+    for i in 0..galaxies.len() {
+        if galaxies[i].name == name {
+            return i
+        }
+    }
+    return none
+}
+
+// Whether a galaxy's unlock rule holds on this file.
+fn unlocked(g: Galaxy) -> bool {
+    match g.unlock {
+        Unlock.Always => return true
+        Unlock.Stars(count) => return progress.stars() >= count
+        Unlock.Star(galaxy, scenario) => return progress.has_star(galaxy, scenario)
+        Unlock.Code(check) => return check()
+    }
+}
+
+// ---- listed in its dome, its stars counted --------------------------------------------------------------------------
+// The dome shows a galaxy the game says has appeared (its miniature is the mod's own stage content; the
+// names of its stars are the mod's scenario data). For a galaxy a mod defined the game's four questions are answered
+// from the definition and from kit.progress, which keeps a mod galaxy's stars on the save file.
+
+hook after GameDataFunction::isAppearGalaxy(galaxy) -> shown {
+    if let name = galaxy {
+        if let i = galaxy_at(name) {
+            result = unlocked(galaxies[i])
+        }
+    }
+}
+
+hook after GameDataConst::getPowerStarNumToOpenGalaxy(galaxy) -> n {
+    if let name = galaxy {
+        if let i = galaxy_at(name) {
+            match galaxies[i].unlock {
+                Unlock.Stars(count) => result = count as i32
+                else => result = 0
+            }
+        }
+    }
+}
+
+hook after GameDataFunction::getPowerStarNumOwned(galaxy) -> n {
+    if let name = galaxy {
+        if let i = galaxy_at(name) {
+            var owned: i32 = 0
+            for s in galaxies[i].stars {
+                if progress.has_star(name, s.scenario) {
+                    owned += 1
+                }
+            }
+            result = owned
+        }
+    }
+}
+
+hook after GameDataFunction::hasPowerStar(galaxy, scenario) -> has {
+    if let name = galaxy {
+        if galaxy_at(name) != none and scenario >= 0 {
+            result = progress.has_star(name, scenario as u32)
+        }
+    }
+}
+
+// A star's comet (Star.comet) is the comet over its galaxy for that scenario while the mod is on (kit.progress, the
+// game's comet schedule). Called for the calling mod after it defines or redefines a galaxy.
+pub fn comets_of(g: GalaxyId) {
+    guard let i = galaxy_at(g.name) else {
+        return
+    }
+    for s in galaxies[i].stars {
+        if let c = s.comet {
+            progress.add_comet(g.name, s.scenario, c)
+        }
+    }
+}
+
+// ---- music ----------------------------------------------------------------------------------------------------------
+
+// The music of a galaxy's scenario (none: every scenario of it), who gave it, newest last.
+var music_galaxy: list<text> = []
+var music_scenario: list<u32?> = []
+var music_sound: list<sound> = []
+var music_owner: list<u64> = []
+var music_playing: bool = false
+
+// A sound as svc.audio names it for the kit, which plays the sounds other mods give it: "<id>:<path>", the mod
+// `owner` gave it (a caller() number); its path alone when that mod is gone.
+pub fn sound_path(owner: u64, s: sound) -> text {
+    if let info = mods.of_mod(owner) {
+        return "{info.id}:{s.name()}"
+    }
+    return s.name()
+}
+
+// `s` is the music of `galaxy` (of its scenario `scenario`, or of all with none) while the calling mod is on: it
+// plays over the game's own when that stage's music starts, and the game's is back in any other stage.
+pub fn music(galaxy: text, scenario: u32?, s: sound) {
+    music_galaxy.push(galaxy)
+    music_scenario.push(scenario)
+    music_sound.push(s)
+    music_owner.push(caller())
+}
+
+// The music given for the stage and scenario playing now, as svc.audio names it: the newest that names the scenario,
+// else the newest for the whole galaxy.
+fn music_now() -> text? {
+    let name = MR::getCurrentStageName() ?? ""
+    let scenario = MR::getCurrentScenarioNo()
+    var whole: text? = none
+    var i = music_galaxy.len()
+    while i > 0 {
+        i -= 1
+        if music_galaxy[i] != name {
+            continue
+        }
+        if let sc = music_scenario[i] {
+            if sc as i32 == scenario {
+                return sound_path(music_owner[i], music_sound[i])
+            }
+        } else if whole == none {
+            whole = sound_path(music_owner[i], music_sound[i])
+        }
+    }
+    return whole
+}
+
+// The game starts a stage's music (MR::startStageBGMFromStageName, the stage's start and its scenario's): a mod's
+// music for that stage plays over it (svc.audio's one music for every mod; the game's fades out under it); in a
+// stage without one the game's own is given back.
+hook after MR::startStageBGMFromStageName(scene, stage_name, scenario) {
+    if let s = music_now() {
+        audio.music(s, 500)
+        log "kit.stage: music {s} over {stage_name ?? ""}"
+        music_playing = true
+    } else if music_playing {
+        audio.music_restore(500)
+        music_playing = false
+    }
+}
+
+// ---- a star appearing -----------------------------------------------------------------------------------------------
+
+// The object a star appears from: the game asks its star keeper (PowerStarEventKeeper) by the requester, and a
+// galaxy defined through kit.stage names "KitStarHolder" as each of its stars' appear object (in its placement).
+// Its first placement argument is the scenario.
+class KitStarHolder : LiveActor made by LumaObj {
+    var scenario: i32 = 0
+
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        MR::getPlacementArg0NoInit(rIter, var scenario)
+        MR::connectToSceneMapObjMovement(self)
+        MR::invalidateClipping(self)
+        MR::declarePowerStar(self)
+        self.makeActorAppeared()
+    }
+}
+
+// The holders made in this stage, by scenario (a second appear_star for a scenario moves its holder).
+var holders: list<ref<LiveActor>> = []
+var holder_scenarios: list<u32> = []
+
+// The star of `scenario` appears at `at` in the stage playing now, with the game's own appearing scene.
+pub fn appear_star(at: vec3, scenario: u32) {
+    var holder: LiveActor? = none
+    for i in 0..holders.len() {
+        if holder_scenarios[i] == scenario {
+            holder = holders[i].get()
+        }
+    }
+    if holder == none {
+        let made = make("KitStarHolder", MakePlace { at: at, args: [scenario as i32, 0, 0, 0, 0, 0, 0, 0] }, 1)
+        if let h = made.first() {
+            holders.push(ref(h))
+            holder_scenarios.push(scenario)
+            holder = h
+        }
+    }
+    if let h = holder {
+        h.mPosition = at
+        MR::requestAppearPowerStar(h)
+    }
+}
+
+// The holder the star of `scenario` appears from in the stage playing now (appear_star made it); none before.
+pub fn star_holder(scenario: u32) -> LiveActor? {
+    for i in 0..holders.len() {
+        if holder_scenarios[i] == scenario {
+            return holders[i].get()
+        }
+    }
+    return none
+}
+
+// ---- stages built in code -------------------------------------------------------------------------------------------
+
+// What a builder function asks for: objects by their game or mod name, planets of a model and its collision, and
+// gravity fields; made when the stage has loaded.
+struct Placed { kind: text, at: vec3, rotation: vec3, args: list<int> }
+struct Planet { look: model, collision: model, at: vec3 }
+
+// A builder is a handle: its number while its stage is being built, 0 after. What it is asked for is kept
+// here until the builder function returns. Its functions are also module functions (`stage.place(b, ...)`).
+pub struct Builder {
+    id: u32
+    fn place(self, kind: text, at: vec3, rotation: vec3 = vec3(0.0, 0.0, 0.0), args: list<int> = []) {
+        place(self, kind, at, rotation, args)
+    }
+    fn planet(self, look: model, collision: model, at: vec3) { planet(self, look, collision, at) }
+    fn field(self, f: gravity.Field) { field(self, f) }
+}
+
+var building: u32 = 0
+var next_builder: u32 = 0
+var b_placed: list<Placed> = []
+var b_planets: list<Planet> = []
+var b_fields: list<gravity.Field> = []
+
+// An object of the game or of a mod by its name, placed at `at` (rotation in degrees, up to eight arguments).
+pub fn place(b: Builder, kind: text, at: vec3, rotation: vec3 = vec3(0.0, 0.0, 0.0), args: list<int> = []) {
+    if b.id != 0 and b.id == building {
+        b_placed.push(Placed { kind: kind, at: at, rotation: rotation, args: args })
+    }
+}
+
+// A planet: a model and the collision the player walks on.
+pub fn planet(b: Builder, look: model, collision: model, at: vec3) {
+    if b.id != 0 and b.id == building {
+        b_planets.push(Planet { look: look, collision: collision, at: at })
+    }
+}
+
+// A gravity field of the stage (kit.gravity's Field).
+pub fn field(b: Builder, f: gravity.Field) {
+    if b.id != 0 and b.id == building {
+        b_fields.push(f)
+    }
+}
+
+// A planet of a code-built stage: its model and the collision the player walks on.
+var planet_look: model? = none
+var planet_collision: model? = none
+
+class KitPlanet : LiveActor made by LumaObj {
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        for m in [planet_look, planet_collision] {
+            if let one = m {
+                if not item.has_model(one) {
+                    log "kit.stage: the planet's model {one.name()} is not in the game's files; not made"
+                    self.makeActorDead()
+                    return
+                }
+            }
+        }
+        if let look = planet_look {
+            self.initModelManagerWithAnm(look.name(), none, false)
+        }
+        MR::connectToSceneMapObj(self)
+        self.initHitSensor(1)
+        let body = MR::addHitSensorMapObj(self, "body", 0, 0.0, vec3(0.0, 0.0, 0.0))
+        if let c = planet_collision {
+            // The collision is <name>.kcl in the planet's own archive, the look's (the importer puts a mod's
+            // Name.kcl.glb there beside Name.glb). Without it the planet is not made, said by name.
+            if planet_look == none or not MR::isExistKcl(self, c.name()) {
+                log "kit.stage: the planet's collision {c.name()}.kcl is not in the archive of its model; not made"
+                self.makeActorDead()
+                return
+            }
+            MR::initCollisionParts(self, c.name(), body!, none)
+        }
+        MR::invalidateClipping(self)
+        self.makeActorAppeared()
+    }
+}
+
+// The builders: the stage each builds, its function, its mod.
+var build_stage: list<text> = []
+var build_fn: list<fn(Builder)> = []
+var build_owner: list<u64> = []
+// The gravity shapes the stage playing now was given (ended at the next stage).
+var built_shapes: u32 = 0
+
+// The stage `name` is built by `make_stage` each time it loads, for the calling mod: its objects,
+// planets and gravity are made when the stage starts, on top of whatever the stage's own files hold.
+pub fn build(name: text, make_stage: fn(Builder)) {
+    for i in 0..build_stage.len() {
+        if build_stage[i] == name and build_owner[i] == caller() {
+            build_fn[i] = make_stage
+            return
+        }
+    }
+    build_stage.push(name)
+    build_fn.push(make_stage)
+    build_owner.push(caller())
+}
+
+fn args_of(a: list<int>) -> list<i32> {
+    var out: list<i32> = []
+    for k in 0..8 {
+        if k < a.len() {
+            out.push(a[k] as i32)
+        } else {
+            out.push(0)
+        }
+    }
+    return out
+}
+
+// A field as a gravity shape of the kit: the vector at a point, everywhere (priority under the stage's own).
+fn shape_of(f: gravity.Field, n: u32) -> gravity.Shape {
+    match f {
+        gravity.Field.Parallel { direction } => {
+            let d = normal(direction)
+            return gravity.Shape { name: "kit.stage.build.{n}", vector: fn(p: vec3) -> vec3? { return d }, range: 1000000.0, priority: -1 }
+        }
+        gravity.Field.Point { at } => {
+            return gravity.Shape { name: "kit.stage.build.{n}", vector: fn(p: vec3) -> vec3? { return normal(at - p) }, range: 1000000.0, priority: -1 }
+        }
+        gravity.Field.Away { at } => {
+            return gravity.Shape { name: "kit.stage.build.{n}", vector: fn(p: vec3) -> vec3? { return normal(p - at) }, range: 1000000.0, priority: -1 }
+        }
+    }
+}
+
+// The stage starts: every builder of this stage runs and what it asked for is made.
+hook after GameScene::startStagePlayFirst() {
+    holders = []
+    holder_scenarios = []
+    let name = MR::getCurrentStageName() ?? ""
+    for i in 0..build_stage.len() {
+        if build_stage[i] != name {
+            continue
+        }
+        next_builder += 1
+        building = next_builder
+        b_placed = []
+        b_planets = []
+        b_fields = []
+        build_fn[i](Builder { id: building })
+        building = 0
+        for pl in b_planets {
+            planet_look = pl.look
+            planet_collision = pl.collision
+            make("KitPlanet", MakePlace { at: pl.at }, 1)
+        }
+        planet_look = none
+        planet_collision = none
+        for p in b_placed {
+            make(p.kind, MakePlace { at: p.at, rotation: p.rotation, args: args_of(p.args) }, 1)
+        }
+        for f in b_fields {
+            built_shapes += 1
+            gravity.define_shape(shape_of(f, built_shapes))
+        }
+    }
+}
+
+// The stopped mod's music and builders go with it (its galaxies, domes and hub go in the handler above; one
+// `on mods.stopped` a module: this runs from it).
+fn more_stopped(gone: u64) {
+    var i = music_galaxy.len()
+    while i > 0 {
+        i -= 1
+        if music_owner[i] == gone {
+            music_galaxy.remove(i)
+            music_scenario.remove(i)
+            music_sound.remove(i)
+            music_owner.remove(i)
+        }
+    }
+    i = build_stage.len()
+    while i > 0 {
+        i -= 1
+        if build_owner[i] == gone {
+            build_stage.remove(i)
+            build_fn.remove(i)
+            build_owner.remove(i)
+        }
+    }
+    if music_playing and music_now() == none {
+        audio.music_restore(500)
+        music_playing = false
+    }
+}

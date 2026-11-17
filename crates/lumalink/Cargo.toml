@@ -1,6 +1,6 @@
 [package]
 name = "lumalink"
-description = "Converts Super Mario Galaxy mods and texture packs so Nebula runs them natively."
+description = "Makes, checks and packs Nebula mods (.luma)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,5 +13,12 @@ keywords.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 lumalink-core = { path = "../lumalink-core" }
+lumascript.workspace = true
+luma-validate.workspace = true
+nebula-import.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+
+[build-dependencies]
+crc32fast = "1.5"
+miniz_oxide = "0.8"

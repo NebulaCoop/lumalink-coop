@@ -1,0 +1,336 @@
+// kit.projectile: things thrown or shot, with bounces, life, trail, burst and a hit callback.
+// A shot is an object of the kit's class KitShot: made by std make the first time, and a dead one of a stage made again
+// for the next throw (the game's actors stay for their stage, so the pool is the most shots ever alive at once). Each
+// frame, before the game moves it (base.movement: its sensors, then position += velocity): gravity added when it
+// `falls` (the game's gravity at its place, MR::calcGravity through onCalcGravity), then the map along this frame's
+// step asked (MR::getFirstPolyNormalOnLineToMap) when `hits_map`: a hit there is the callback's. A sensor touching the
+// shot's (the game's sensor contact, attackSensor) is the callback's too, but for the thrower's group: every actor the
+// shot touches in its first two steps (the one throwing it, standing where it starts) is passed for the shot's life
+// without a call, as the game's FireMarioBall passes the player. The callback's answer: Bounce (velocity
+// mirrored on the map's normal, or away from the touched sensor's centre; the bounces left counted down, none left is
+// a Burst), Burst (the burst effect and the hit sound, then gone), Pass (on through), Stick (stops there, still
+// living until its life ends). A life's end: gone without a burst. Damage is the callback's to send (its two
+// HitSensor arguments, the shot's and the touched one, are the game's, for MR::sendMsg*; views, valid in the call, so
+// not fields of Hit: language).
+// Every shot belongs to the mod that threw it: when it stops, its shots are killed and its callbacks
+// never run again.
+// throw gives `ref<LiveActor>?`, none when the stage cannot make a shot (as item.spawn). on_hit is
+// fn(Hit, HitSensor, HitSensor) -> Then and Hit is { at, map }, since a struct holds no view; a HitSensor written in
+// a type is its view.
+
+use ./item
+
+pub struct Shot {
+    look: model? = none                       // none: only its trail
+    from: vec3
+    velocity: vec3                            // game units per frame
+    falls: bool = false                       // pulled by gravity
+    bounces: u32 = 0
+    life_frames: u32 = 180
+    radius: f32 = 30.0
+    trail: effect? = none
+    burst: effect? = none
+    sound_throw: sound? = none
+    sound_hit: sound? = none
+    hits_map: bool = true
+    on_hit: fn(Hit, HitSensor, HitSensor) -> Then = burst_always
+}
+// Where a shot touched: the place, and whether it was the map (the callback's sensors are the shot's own then).
+pub struct Hit { at: vec3, map: bool }
+pub enum Then { Bounce, Burst, Pass, Stick }
+
+// The default answer: every hit bursts.
+pub fn burst_always(h: Hit, mine: HitSensor, other: HitSensor) -> Then {
+    return Then.Burst
+}
+
+let fall_strength: f32 = 1.0
+let burst_frames: u32 = 30
+
+// The shots of this session: each slot's shot, owner, the object (made once, made again for the next shot of a stage),
+// whether it flies, frames left, bounces left, whether it stuck, frames left of its burst.
+var shots: list<Shot> = []
+var shot_owner: list<u64> = []
+var shot_obj: list<ref<LiveActor>?> = []
+var shot_live: list<bool> = []
+var shot_life: list<u32> = []
+var shot_bounces: list<u32> = []
+var shot_stuck: list<bool> = []
+var shot_bursting: list<u32> = []
+// Each slot's steps since its throw, and the thrower's group: every actor whose sensors the shot touched in its first
+// two steps (the thrower it leaves, and what stands at the place it is thrown from). The shot passes them for its
+// whole life without asking on_hit, as the game's FireMarioBall passes the player.
+var shot_age: list<u32> = []
+var shot_passed: list<list<ref<LiveActor>>> = []
+let thrower_steps: u32 = 2
+// The slot the object being made is for (make runs init at once).
+var making: int = -1
+
+// Throws `s` now: its object at `from`, flying at `velocity`; its handle (empty once it is gone), none when the stage
+// cannot make one.
+pub fn throw(s: Shot) -> ref<LiveActor>? {
+    let owner = caller()
+    // A slot whose object is dead (a shot of this stage gone) takes it; else a new slot and object.
+    var slot = -1
+    for i in 0..shots.len() {
+        if not shot_live[i] and shot_bursting[i] == 0 {
+            if let h = shot_obj[i] {
+                if let o = h.get() {
+                    if MR::isDead(o) {
+                        slot = i
+                        break
+                    }
+                }
+            }
+        }
+    }
+    if slot < 0 {
+        shots.push(s)
+        shot_owner.push(owner)
+        shot_obj.push(none)
+        shot_live.push(false)
+        shot_life.push(0)
+        shot_bounces.push(0)
+        shot_stuck.push(false)
+        shot_bursting.push(0)
+        shot_age.push(0)
+        shot_passed.push([])
+        slot = shots.len() - 1
+        making = slot
+        let made = make("KitShot", MakePlace { at: s.from, args: [slot + 1, 0, 0, 0, 0, 0, 0, 0] }, 1)
+        making = -1
+        guard let o = made.first() else { return none }
+        shot_obj[slot] = ref(o)
+    }
+    shots[slot] = s
+    shot_owner[slot] = owner
+    guard let h = shot_obj[slot] else { return none }
+    guard let o = h.get() else { return none }
+    begin(slot, o)
+    return h
+}
+
+// Slot `i`'s shot starts on its object: placed, its look, its trail and sound, flying.
+fn begin(i: int, o: LiveActor) {
+    let s = shots[i]
+    o.mPosition = s.from
+    o.mVelocity = s.velocity
+    shot_live[i] = true
+    shot_life[i] = s.life_frames
+    shot_bounces[i] = s.bounces
+    shot_stuck[i] = false
+    shot_bursting[i] = 0
+    shot_age[i] = 0
+    shot_passed[i] = []
+    if s.falls {
+        MR::onCalcGravity(o)
+    } else {
+        MR::offCalcGravity(o)
+    }
+    if s.look != none {
+        MR::showModel(o)
+    } else {
+        MR::hideModel(o)
+    }
+    MR::validateHitSensors(o)
+    o.makeActorAppeared()
+    if let t = s.trail {
+        MR::emitEffect(o, t.name())
+    }
+    if let snd = s.sound_throw {
+        `MR::startSound(const LiveActor *, const char *, s32, s32)`(o, snd.name(), -1, -1)
+    }
+}
+
+// Slot `i`'s shot gone: with its burst (effect, sound, then killed after burst_frames) or at once.
+fn finish(i: int, o: LiveActor, burst: bool) {
+    shot_live[i] = false
+    o.mVelocity = vec3(0.0, 0.0, 0.0)
+    MR::invalidateHitSensors(o)
+    MR::deleteEffectAll(o)
+    let s = shots[i]
+    if burst {
+        if let e = s.burst {
+            MR::emitEffect(o, e.name())
+        }
+        if let snd = s.sound_hit {
+            `MR::startSound(const LiveActor *, const char *, s32, s32)`(o, snd.name(), -1, -1)
+        }
+        MR::hideModel(o)
+        shot_bursting[i] = burst_frames
+        return
+    }
+    o.kill()
+}
+
+// What a hit does to slot `i`'s shot: the callback's answer, `normal` the surface's (map) or the way back from the
+// touched sensor.
+fn answer(i: int, o: LiveActor, h: Hit, mine: HitSensor, other: HitSensor, normal_at: vec3) {
+    let s = shots[i]
+    let f = s.on_hit
+    match f(h, mine, other) {
+        Then.Bounce => {
+            if shot_bounces[i] == 0 {
+                finish(i, o, true)
+                return
+            }
+            shot_bounces[i] -= 1
+            let n = normal(normal_at)
+            o.mVelocity = o.mVelocity - n * (2.0 * dot(o.mVelocity, n))
+        }
+        Then.Burst => { finish(i, o, true) }
+        Then.Pass => {}
+        Then.Stick => {
+            shot_stuck[i] = true
+            o.mVelocity = vec3(0.0, 0.0, 0.0)
+            MR::offCalcGravity(o)
+        }
+    }
+}
+
+// A shot in flight. Its first placement argument is its slot + 1 (make's). Made by the game's plain model object's
+// maker; a shot without a look has its model hidden.
+class KitShot : LiveActor made by LumaObj {
+    var slot: int = -1
+
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        var n: i32 = making + 1
+        MR::getPlacementArg0NoInit(rIter, var n)
+        if n <= 0 or n > shots.len() as i32 {
+            log "kit.projectile: a shot of slot {n} is made with no shot thrown for it; not made"
+            self.makeActorDead()
+            return
+        }
+        slot = (n - 1) as int
+        let s = shots[slot]
+        if let m = s.look {
+            if not item.has_model(m) {
+                log "kit.projectile: the shot's model {m.name()} is not in the game's files; not made"
+                self.makeActorDead()
+                return
+            }
+            self.initModelManagerWithAnm(m.name(), none, false)
+            MR::connectToSceneMapObj(self)
+        } else {
+            MR::connectToSceneMapObjMovement(self)
+        }
+        self.initHitSensor(1)
+        MR::addHitSensorEnemyAttack(self, "body", 8, s.radius, vec3(0.0, 0.0, 0.0))
+        self.initEffectKeeper(2, none)
+        self.initSound(2, false)
+        MR::invalidateClipping(self)
+    }
+
+    // Any kill ends the slot's shot: the kit's own (a burst's end, a stopped mod), a mod's, the game's. A dead actor
+    // has no movement, so without this a shot killed elsewhere stayed live: its slot never taken again, and killed
+    // and counted again when its mod stopped.
+    override fn kill() {
+        if slot >= 0 and slot < shots.len() {
+            shot_live[slot] = false
+            shot_bursting[slot] = 0
+        }
+        base.kill()
+    }
+
+    override fn movement() {
+        if slot < 0 or slot >= shots.len() {
+            base.movement()
+            return
+        }
+        let i = slot
+        if shot_bursting[i] > 0 {
+            shot_bursting[i] -= 1
+            if shot_bursting[i] == 0 {
+                // The game's virtual kill: the override above runs and frees the slot.
+                self.kill()
+            }
+            return
+        }
+        if not shot_live[i] {
+            base.movement()
+            return
+        }
+        if shot_age[i] < 1000000 {
+            shot_age[i] += 1
+        }
+        if shot_life[i] > 0 {
+            shot_life[i] -= 1
+            if shot_life[i] == 0 {
+                finish(i, self, false)
+                return
+            }
+        }
+        let s = shots[i]
+        if not shot_stuck[i] {
+            if s.falls {
+                self.mVelocity = self.mVelocity + self.mGravity * fall_strength
+            }
+            if s.hits_map and length(self.mVelocity) > 0.0001 {
+                var n = vec3(0.0, 0.0, 0.0)
+                var at = vec3(0.0, 0.0, 0.0)
+                if MR::getFirstPolyNormalOnLineToMap(var n, self.mPosition, self.mVelocity, var at, none) {
+                    guard let mine = MR::getSensor(self, 0) else { return }
+                    self.mPosition = at + n * s.radius
+                    answer(i, self, Hit { at: at, map: true }, mine, mine, n)
+                    if not shot_live[i] {
+                        return
+                    }
+                    if shot_stuck[i] {
+                        return
+                    }
+                }
+            }
+        }
+        base.movement()
+    }
+
+    override fn attackSensor(pSender, pReceiver) {
+        if slot < 0 or slot >= shots.len() or not shot_live[slot] or shot_stuck[slot] {
+            return
+        }
+        guard let mine = pSender else { return }
+        guard let other = pReceiver else { return }
+        guard let host = other.mHost else { return }
+        // The thrower's group passes: an actor touched in the shot's first steps is the thrower's (it leaves it), and
+        // any sensor of an actor of that group, then or later, never reaches on_hit.
+        for r in shot_passed[slot] {
+            if let a = r.get() {
+                if same(a, host) {
+                    return
+                }
+            }
+        }
+        if shot_age[slot] <= thrower_steps {
+            var group = shot_passed[slot]
+            group.push(ref(host))
+            shot_passed[slot] = group
+            return
+        }
+        answer(slot, self, Hit { at: self.mPosition, map: false }, mine, other, self.mPosition - other.mPosition)
+    }
+}
+
+// A mod that threw shots was taken out: its shots in flight or bursting are killed, their callbacks never
+// run again (their slots wait for another shot of this stage).
+on mods.stopped(gone) {
+    var killed: u32 = 0
+    for i in 0..shots.len() {
+        if shot_owner[i] == gone and (shot_live[i] or shot_bursting[i] > 0) {
+            shot_live[i] = false
+            shot_bursting[i] = 0
+            if let h = shot_obj[i] {
+                if let o = h.get() {
+                    // One killed elsewhere is not counted or killed again.
+                    if not MR::isDead(o) {
+                        o.kill()
+                        killed += 1
+                    }
+                }
+            }
+        }
+    }
+    if killed > 0 {
+        log "kit.projectile: {killed} shots of a stopped mod killed"
+    }
+}

@@ -7,6 +7,7 @@
 //! One implementation, the cook's (nebula-import cook/message_merge.rs): [`decode`] gives a message's text in those
 //! words; [`encode`] is Nebula's reading of them, so a message read out and put back is the game's own, unit for unit.
 
+use crate::say;
 use anyhow::{Context, Result};
 use nebula_import::cook::message::Nmsg;
 use nebula_import::cook::message_merge;
@@ -25,9 +26,9 @@ pub fn encode(text: &str) -> Vec<u16> {
 /// A language's messages, cooked (`<Language>/MessageData/Message`: message.bmg and messageid.tbl): (id, text) in the id
 /// table's order. A message ends at its first 0 outside a tag (tags hold 0s).
 pub fn read(message_file: &[u8], id_table: &[u8]) -> Result<Vec<(String, Vec<u16>)>> {
-    let messages = Nmsg::from_nmsg(message_file).context("the message file")?;
-    let ids = TableIr::from_ntbl(id_table).context("the message id table")?;
-    let column = |name: &str| ids.columns.iter().position(|c| c.hash == column_hash(name)).with_context(|| format!("the id table has no {name}"));
+    let messages = Nmsg::from_nmsg(message_file).with_context(|| say!("LumaLink.Messages.File"))?;
+    let ids = TableIr::from_ntbl(id_table).with_context(|| say!("LumaLink.Messages.IdTable"))?;
+    let column = |name: &str| ids.columns.iter().position(|c| c.hash == column_hash(name)).with_context(|| say!("LumaLink.Messages.NoColumn", name = name));
     let (id_at, index_at) = (column("MessageId")?, column("Index")?);
     let mut out = Vec::with_capacity(ids.rows.len());
     for row in &ids.rows {

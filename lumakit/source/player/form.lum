@@ -1,0 +1,595 @@
+// kit.player.form: a power-up: its look, aura, timer, music,
+// what the player's actions do while it lasts, its physics and scale, and the game's own forms by name.
+// One form holds the player at a time: giving a form puts it on top; when it ends the one under it holds
+// again with the time it had left; under them all is the game's own form.
+// What a form is, while it holds:
+//   base        the game's form under it (MarioActor::setPlayerMode with the game's own number), so Bee's flight or
+//               Boo's float stay under a new look; Normal for none
+//   look        its model drawn with the player's skeleton (content.model attach), the game's own body not drawn
+//               (MarioActor::drawMarioModel skipped); look_luigi when the player is Luigi
+//   aura        its effect kept on the player
+//   music       over the stage's music (the game's sub music, as its own forms)
+//   timer       timer_frames world steps; with `meter` the time left on the game's own form meter (MarioSubMeter)
+//   scale       the player's model, sensors and the camera's distance (draw.inst scale and the player's constants)
+//   opacity     draw.inst on the player
+//   physics     kit.player.state's tuning, ended exactly with the form
+//   callbacks   on_start, on_spin (once a spin), on_jump (once a jump), on_act (its bindable action, once a press),
+//               on_end with why
+// A form ends by its timer (Ended.Timer), by damage when ends_on_damage (Ended.Damage; the game's own reset of the
+// form on damage is held back otherwise), by another form given over it for good (Ended.Replaced), by end()
+// (Ended.Ended), or with its mod (Ended.ModStopped: its closures are not called).
+// The game's own forms are given like a mod's: game(GameForm) is a FormId.
+// Data: kit/player.form/<id>.json of the calling mod, read by find(): the fields but the `fn` ones,
+// content by name, physics as a map of the player's constants by name.
+
+use ./player/state as pst
+use ./item
+use svc.input
+use svc.mods
+use svc.audio
+use svc.content.model as cm
+use svc.draw.inst as inst
+
+pub enum GameForm { Normal, Bee, Boo, Spring, Fire, Ice, Flying, Rainbow }   // the game's own (setPlayerMode)
+pub enum Ended { Timer, Damage, Replaced, Ended, ModStopped }
+
+pub struct Form {
+    id: text                                  // unique in the mod; "<mod id>/<id>" to the game
+    look: model? = none
+    look_luigi: model? = none
+    aura: effect? = none
+    timer_frames: u32? = none                 // none: lasts until damage or end()
+    ends_on_damage: bool = true
+    music: sound? = none
+    meter: bool = false
+    scale: f32 = 1.0
+    opacity: f32 = 1.0
+    hurts_on_touch: bool = false
+    physics: pst.Tuning? = none
+    base: GameForm = GameForm.Normal
+    item: item.ItemId? = none
+    on_spin: fn(MarioActor)? = none
+    on_action: input.Action? = none
+    on_act: fn(MarioActor)? = none
+    on_jump: fn(MarioActor)? = none
+    on_start: fn(MarioActor)? = none
+    on_end: fn(MarioActor, Ended)? = none
+}
+
+// A form's handle: a mod's form is its place + 1; the game's own are 1000 + the game's number; 0 none.
+pub struct FormId {
+    n: u32
+    fn give(self) { set(self) }
+    fn is_current(self) -> bool { return is_current_form(self) }
+    fn id(self) -> text { return id_of(self) }
+}
+
+// A form as its data file writes it.
+struct FormData { look: text = "", look_luigi: text = "", aura: text = "", timer_frames: u32? = none, ends_on_damage: bool = true,
+                  music: text = "", meter: bool = false, scale: f32 = 1.0, opacity: f32 = 1.0, hurts_on_touch: bool = false,
+                  physics: map<text, f32> = {}, base: GameForm = GameForm.Normal }
+
+let game_first: u32 = 1000
+
+// The definitions and their mods.
+var defs: list<Form> = []
+var def_owner: list<u64> = []
+var def_live: list<bool> = []
+// The forms on the player, the holder last: each one's handle number, the steps it has left (0: no timer) and the
+// steps it began with.
+var held: list<u32> = []
+var left: list<u32> = []
+var whole: list<u32> = []
+// What the holder has put on the player.
+var applied: u32 = 0
+var look_model: cm.Model? = none
+var look_shown: bool = false
+var aura_on: bool = false
+var music_on: bool = false
+var tuned: pst.Tuned? = none
+// The scale's sizes, a tuning of their own (a form may tune its physics too).
+var sized: pst.Tuned? = none
+var meter_on: bool = false
+var sub_meter: ref<MarioSubMeter>? = none
+// Edges: the spin, the jump and the damage seen last step.
+var was_spinning: bool = false
+var was_rising: bool = false
+var was_damaging: bool = false
+// The kit's own change of the game's form is not a form given by the game.
+var setting: bool = false
+// The holder is ending because the game changed its form: the game's form is left as it is.
+var game_changed: bool = false
+// The aura the holder put on the player, by name (taken off by name: its form may be gone with its mod).
+var aura_name: text = ""
+
+// The game's own number of each of its forms (MarioActor's player mode).
+fn mode_of(f: GameForm) -> u16 {
+    match f {
+        GameForm.Normal => return 0
+        GameForm.Rainbow => return 1
+        GameForm.Fire => return 2
+        GameForm.Ice => return 3
+        GameForm.Bee => return 4
+        GameForm.Spring => return 5
+        GameForm.Boo => return 6
+        GameForm.Flying => return 7
+    }
+}
+
+fn game_form_of(n: u32) -> GameForm {
+    match n {
+        1 => return GameForm.Rainbow
+        2 => return GameForm.Fire
+        3 => return GameForm.Ice
+        4 => return GameForm.Bee
+        5 => return GameForm.Spring
+        6 => return GameForm.Boo
+        7 => return GameForm.Flying
+        else => return GameForm.Normal
+    }
+}
+
+fn player() -> MarioActor? {
+    return MarioAccess::getPlayerActor()
+}
+
+// A mod's form by its handle number, none for the game's own, an empty handle or a form whose mod stopped.
+fn def_of(n: u32) -> int? {
+    if n == 0 or n >= game_first or n > def_live.len() as u32 {
+        return none
+    }
+    let k = (n - 1) as int
+    if not def_live[k] {
+        return none
+    }
+    return k
+}
+
+// ---- defining -------------------------------------------------------------------------------------------------------
+
+// The form defined for the calling mod (a second of the same id replaces the first).
+pub fn define(f: Form) -> FormId {
+    if let t = f.physics {
+        for name in t.values.keys() {
+            if not pst.is_constant(name) {
+                fail "kit.player.form.define: physics: the player has no constant named {name}"
+            }
+        }
+    }
+    return define_for(caller(), f)
+}
+
+// The form defined for mod `owner` (a caller() number), as define.
+fn define_for(owner: u64, f: Form) -> FormId {
+    for k in 0..defs.len() {
+        if def_live[k] and def_owner[k] == owner and defs[k].id == f.id {
+            defs[k] = f
+            return FormId { n: (k + 1) as u32 }
+        }
+    }
+    defs.push(f)
+    def_owner.push(owner)
+    def_live.push(true)
+    return FormId { n: defs.len() as u32 }
+}
+
+// The calling mod's form `id`: one it defined, else the one of its kit/player.form/<id>.json, defined now; none when
+// there is neither, the file does not read as a form, or it names content the mod does not have.
+pub fn find(id: text) -> FormId? {
+    return find_for(caller(), id)
+}
+
+// Mod `owner`'s form `id` (a caller() number), as find: for the kit's own reading of a mod's data (kit.item's data
+// items, defined on the mod's first frame).
+pub fn find_for(owner: u64, id: text) -> FormId? {
+    for k in 0..defs.len() {
+        if def_live[k] and def_owner[k] == owner and defs[k].id == id {
+            return FormId { n: (k + 1) as u32 }
+        }
+    }
+    guard let data = mods.kit_read(owner, "player.form", id) else {
+        return none
+    }
+    guard let d = json.decode<FormData>(data) else {
+        return none
+    }
+    var f = Form { id: id, timer_frames: d.timer_frames, ends_on_damage: d.ends_on_damage, meter: d.meter, scale: d.scale,
+                   opacity: d.opacity, hurts_on_touch: d.hurts_on_touch, base: d.base }
+    if d.look != "" {
+        guard let m = item.model_of(owner, d.look) else {
+            return none
+        }
+        f.look = m
+    }
+    if d.look_luigi != "" {
+        guard let m = item.model_of(owner, d.look_luigi) else {
+            return none
+        }
+        f.look_luigi = m
+    }
+    if d.aura != "" {
+        guard let e = effect_named(d.aura) else {
+            return none
+        }
+        f.aura = e
+    }
+    if d.music != "" {
+        guard let s = sound_named(d.music) else {
+            return none
+        }
+        f.music = s
+    }
+    if d.physics.len() > 0 {
+        f.physics = pst.known(pst.Tuning { values: d.physics }, "kit.player.form: kit/player.form/{id}")
+    }
+    return define_for(owner, f)
+}
+
+// The game's own forms, given like a mod's.
+pub fn game(f: GameForm) -> FormId {
+    return FormId { n: game_first + mode_of(f) as u32 }
+}
+
+// ---- what the holder puts on the player, and takes off --------------------------------------------------------------
+
+fn take_off(p: MarioActor) {
+    if let h = look_model {
+        cm.detach(h)
+    }
+    look_model = none
+    look_shown = false
+    if aura_on {
+        MR::deleteEffect(p, aura_name)
+        aura_on = false
+        aura_name = ""
+    }
+    if music_on {
+        MR::stopSubBGM(30)
+        music_on = false
+    }
+    if let t = tuned {
+        pst.end_tuned(t)
+    }
+    tuned = none
+    if let s = sized {
+        pst.end_tuned(s)
+    }
+    sized = none
+    if meter_on {
+        if let r = sub_meter {
+            if let m = r.get() {
+                m.frameOutSubMeter()
+            }
+        }
+        meter_on = false
+    }
+    let i = inst.of(p)
+    inst.set_scale(i, vec3(1.0, 1.0, 1.0))
+    inst.set_colour(i, color(1.0, 1.0, 1.0, 1.0))
+    inst.release(i)
+    applied = 0
+}
+
+// The game's form set by the kit (not a form the game gave).
+fn set_mode(p: MarioActor, mode: u16) {
+    setting = true
+    p.setPlayerMode(mode, true)
+    setting = false
+}
+
+fn put_on(p: MarioActor, n: u32) {
+    applied = n
+    guard let k = def_of(n) else {
+        // One of the game's own: its number alone.
+        if n >= game_first {
+            set_mode(p, (n - game_first) as u16)
+        }
+        return
+    }
+    let f = defs[k]
+    set_mode(p, mode_of(f.base))
+    var look = f.look
+    if MR::isPlayerLuigi() {
+        if let l = f.look_luigi {
+            look = l
+        }
+    }
+    if let m = look {
+        look_model = cm.attach(p, m, cm.Follow.Skeleton, none, none)
+        look_shown = look_model != none
+    }
+    if let e = f.aura {
+        MR::emitEffect(p, e.name())
+        aura_on = true
+        aura_name = e.name()
+    }
+    if let s = f.music {
+        MR::startSubBGM(s.name(), false)
+        music_on = true
+    }
+    if let t = f.physics {
+        tuned = pst.tune(t)
+    }
+    if f.scale != 1.0 or f.opacity != 1.0 {
+        let i = inst.of(p)
+        inst.set_scale(i, vec3(f.scale, f.scale, f.scale))
+        inst.set_colour(i, color(1.0, 1.0, 1.0, f.opacity))
+        if f.scale != 1.0 {
+            // Ground collision and the body's hit sensor follow the model: the player's sizes by name (MarioConst
+            // mBinderRadius, mSensorRadius). The camera is the game's; a mod moves it with kit.camera.
+            var sizes: map<text, f32> = {}
+            sizes["mBinderRadius"] = f.scale
+            sizes["mSensorRadius"] = f.scale
+            sized = pst.tune(pst.Tuning { values: sizes })
+        }
+    }
+    if f.meter and f.timer_frames != none {
+        if let r = sub_meter {
+            if let m = r.get() {
+                m.activeSubMeterBee()
+                m.setBeeLifeRatio(1.0)
+                meter_on = true
+            }
+        }
+    }
+}
+
+// The holder changed: what the one before put on comes off, the new holder's goes on (the game's own form when none
+// is held).
+fn settle() {
+    guard let p = player() else {
+        return
+    }
+    var top: u32 = 0
+    if held.len() > 0 {
+        top = held[held.len() - 1]
+    }
+    if top == applied {
+        return
+    }
+    take_off(p)
+    if top == 0 {
+        if not game_changed {
+            set_mode(p, 0)
+        }
+        return
+    }
+    put_on(p, top)
+}
+
+// The holder ends for `why`: its on_end is called (not when its mod stopped), and the one under it holds again.
+fn end_top(why: Ended) {
+    if held.len() == 0 {
+        return
+    }
+    let n = held[held.len() - 1]
+    held.pop()
+    left.pop()
+    whole.pop()
+    if let k = def_of(n) {
+        if let f = defs[k].on_end {
+            if let p = player() {
+                f(p, why)
+            }
+        }
+    }
+    settle()
+}
+
+// ---- giving and asking ----------------------------------------------------------------------------------------------
+
+// The form given to the player now: it holds; the one that held waits under it with the time it has left. The same
+// form given again starts its time anew.
+pub fn set(f: FormId) {
+    if f.n == 0 {
+        return
+    }
+    if f.n < game_first and def_of(f.n) == none {
+        return
+    }
+    if held.len() > 0 and held[held.len() - 1] == f.n {
+        left[left.len() - 1] = whole[whole.len() - 1]
+        return
+    }
+    var steps: u32 = 0
+    if let k = def_of(f.n) {
+        steps = defs[k].timer_frames ?? 0
+    }
+    held.push(f.n)
+    left.push(steps)
+    whole.push(steps)
+    settle()
+    if let k = def_of(f.n) {
+        if let g = defs[k].on_start {
+            if let p = player() {
+                g(p)
+            }
+        }
+    }
+}
+
+pub fn is_current_form(f: FormId) -> bool {
+    return f.n != 0 and held.len() > 0 and held[held.len() - 1] == f.n
+}
+
+// A form's id: a mod's as it named it, the game's by the game's names; empty for none.
+pub fn id_of(f: FormId) -> text {
+    if let k = def_of(f.n) {
+        return defs[k].id
+    }
+    if f.n >= game_first {
+        match game_form_of(f.n - game_first) {
+            GameForm.Normal => return "normal"
+            GameForm.Bee => return "bee"
+            GameForm.Boo => return "boo"
+            GameForm.Spring => return "spring"
+            GameForm.Fire => return "fire"
+            GameForm.Ice => return "ice"
+            GameForm.Flying => return "flying"
+            GameForm.Rainbow => return "rainbow"
+        }
+    }
+    return ""
+}
+
+// The form holding the player; none for the game's plain form.
+pub fn current() -> FormId? {
+    if held.len() == 0 {
+        return none
+    }
+    return FormId { n: held[held.len() - 1] }
+}
+
+// The steps the holder has left; none without a timer or a holder.
+pub fn frames_left() -> u32? {
+    if held.len() == 0 or whole[whole.len() - 1] == 0 {
+        return none
+    }
+    return left[left.len() - 1]
+}
+
+// The holder ends (Ended.Ended); with none under it the player is Normal again.
+pub fn end() {
+    end_top(Ended.Ended)
+}
+
+// ---- the game's side ------------------------------------------------------------------------------------------------
+
+// The game's meter, kept when the game makes it (a scene has one).
+hook after MarioSubMeter::init(rIter) {
+    sub_meter = ref(self)
+}
+
+// A new scene builds the player anew: what the holder puts on is put on the new player.
+hook after MarioActor::initDrawAndModel() {
+    applied = 0
+    look_model = none
+    look_shown = false
+    aura_on = false
+    aura_name = ""
+    meter_on = false
+    settle()
+}
+
+// The game's own body is not drawn while a form's look shows.
+hook before MarioActor::drawMarioModel() {
+    if look_shown { skip }
+}
+
+// The game takes its form away on damage: held back while a form that does not end on damage holds.
+hook before MarioActor::resetPlayerModeOnDamage() {
+    if let k = def_of(applied) {
+        if not defs[k].ends_on_damage { skip }
+    }
+}
+
+// The game changes its form itself (a pickup, its own timer, damage): the holder, a mod's form or a game form given
+// by the kit, is replaced for good when the game's form is no longer the one the holder put on.
+hook after MarioActor::setPlayerMode(mode, change) {
+    if setting or held.len() == 0 {
+        return
+    }
+    var put: u16 = 0
+    if let k = def_of(applied) {
+        put = mode_of(defs[k].base)
+    } else if applied >= game_first {
+        put = (applied - game_first) as u16
+    } else {
+        return
+    }
+    if mode != put {
+        // With no form under it the game's new form stays (a Fire Flower taken while a mod's form holds).
+        game_changed = true
+        end_top(Ended.Replaced)
+        game_changed = false
+    }
+}
+
+// The held form's step: LumaKit's one `on step` (kit.replay's) calls it first each world step.
+pub fn kit_step() {
+    if held.len() == 0 {
+        return
+    }
+    guard let p = player() else {
+        return
+    }
+    let n = held[held.len() - 1]
+    guard let k = def_of(n) else {
+        // A form whose mod stopped is dropped; a game form has nothing to run.
+        if n < game_first {
+            held.pop()
+            left.pop()
+            whole.pop()
+            settle()
+        }
+        return
+    }
+    let f = defs[k]
+    // Its callbacks, each once at its edge.
+    let spinning = MR::isPlayerSwingAction()
+    if spinning and not was_spinning {
+        if let g = f.on_spin {
+            g(p)
+        }
+    }
+    was_spinning = spinning
+    let rising = MR::isPlayerJumpRising()
+    if rising and not was_rising {
+        if let g = f.on_jump {
+            g(p)
+        }
+    }
+    was_rising = rising
+    if let a = f.on_action {
+        if input.read(a).pressed != 0 {
+            if let g = f.on_act {
+                g(p)
+            }
+        }
+    }
+    // Damage.
+    let damaging = MR::isPlayerDamaging()
+    if damaging and not was_damaging and f.ends_on_damage {
+        was_damaging = damaging
+        end_top(Ended.Damage)
+        return
+    }
+    was_damaging = damaging
+    // Its time.
+    let i = left.len() - 1
+    if whole[i] > 0 {
+        if left[i] > 0 {
+            left[i] -= 1
+        }
+        if meter_on {
+            if let r = sub_meter {
+                if let m = r.get() {
+                    m.setBeeLifeRatio((left[i] as f32) / (whole[i] as f32))
+                }
+            }
+        }
+        if left[i] == 0 {
+            end_top(Ended.Timer)
+        }
+    }
+}
+
+on mods.stopped(gone) {
+    // The stopped mod's forms: taken off the player wherever they are held, its closures not called; the
+    // holder under them holds again; its definitions are off.
+    for k in 0..defs.len() {
+        if def_owner[k] == gone {
+            def_live[k] = false
+        }
+    }
+    var i = held.len()
+    while i > 0 {
+        i -= 1
+        if held[i] < game_first and def_of(held[i]) == none {
+            held.remove(i)
+            left.remove(i)
+            whole.remove(i)
+        }
+    }
+    settle()
+}

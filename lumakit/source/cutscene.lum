@@ -1,0 +1,363 @@
+// kit.cutscene: scripted scenes of shots and lines, waited on, skippable.
+// A scene is a task: it takes the main camera (kit.camera take: the newest holds it), turns the player's
+// control off, shows the game's own letterbox (CinemaFrame, as the game's demos do), and runs its shots in order.
+// The eye is placed each frame through kit.camera's aim (a FIXED rig of svc.draw.view), which the frame draws even
+// while the world is held, so camera shots move over a held world.
+//   Look    the camera `frames` long at `from_offset` from the actor in world axes, looking at it; the shot ends early
+//           when the actor is gone or killed (the scene goes on)
+//   Move    the eye from one place to another over `frames`, eased at both ends (eye, aim, up and field of view)
+//   Line    the speaker says the line in the game's balloon (kit.talk); with no speaker, or a speaker gone, a message
+//           screen (kit.screen)
+//   Action  the actor starts the named action of its own (MR::tryStartAction) and the shot lasts until it ends
+//   Wait    frames
+//   Call    the mod's function, once
+// The world: with holds_world the world is held (svc.time) during Look, Move, Wait and Call; it runs during a Line
+// (the balloon is the scene's own layout) and an Action (an animation needs the world's steps), and until the
+// letterbox's bars stand (they are a layout of the scene too). The player's control is off for the whole scene either
+// way.
+// Skipping: the game's pause button (MR::isPressedPause), read every frame of a skippable scene; a skipped scene ends
+// at once and play gives false. The game's pause menu does not open while a scene plays. Every way out (its end, a
+// skip, a newer scene, its mod stopping) puts everything back: the camera, the letterbox, the world, the player's
+// control, the music.
+// One scene plays at a time for all mods: a newer one ends the one before (false to its waiter).
+// Data: kit/cutscene/<id>.json of the calling mod, read by find(); actors by placement name
+// (the first live object of that name), eyes as numbers.
+
+use ./camera
+use ./talk
+use ./screen
+use svc.time
+use svc.draw.view
+use svc.mods
+use svc.audio
+use ./stage
+
+pub enum Shot { Look(at: ref<LiveActor>, from_offset: vec3, frames: u32), Move(from: view.Eye, to: view.Eye, frames: u32),
+                Line(speaker: ref<LiveActor>?, line: text), Action(who: ref<LiveActor>, action: text),
+                Wait(frames: u32), Call(f: fn()) }
+pub struct Scene { shots: list<Shot>, letterbox: bool = true, skippable: bool = true, holds_world: bool = true,
+                   music: sound? = none }
+
+// A scene as its data file writes it.
+struct EyeData { eye: vec3, at: vec3, up: vec3 = vec3(0.0, 1.0, 0.0), fov: f32 = 45.0 }
+struct LookData { at: text, from_offset: vec3, frames: u32 }
+struct MoveData { from: EyeData, to: EyeData, frames: u32 }
+struct LineData { line: text, speaker: text? = none }
+struct ActionData { who: text, action: text }
+struct WaitData { frames: u32 }
+// A shot as its data file writes it: an object with one key, the shot's kind (a struct, not an enum, so a Line's
+// speaker may be left out: a case's fields have no defaults).
+struct ShotData { Look: LookData? = none, Move: MoveData? = none, Line: LineData? = none, Action: ActionData? = none,
+                  Wait: WaitData? = none }
+struct SceneData { shots: list<ShotData>, letterbox: bool = true, skippable: bool = true, holds_world: bool = true,
+                   music: text = "" }
+
+// The scene playing: its number (0: none), the mod it plays for, what it holds.
+var playing: u32 = 0
+var next_scene: u32 = 0
+var scene_owner: u64 = 0
+var control: camera.Control? = none
+var holding: bool = false
+var letterboxed: bool = false
+var music_on: bool = false
+// The pause button that skipped a scene is still held: the game's pause menu waits for it to be let go.
+var skip_held: bool = false
+
+// The world held or let go. The bars are a layout of the scene and move only with its steps, so while they are coming
+// in (MR::isStopCinemaFrame false) the world is not held yet: a held shot asks again each frame and holds once they
+// stand.
+fn hold_world(asked: bool) {
+    let held = asked and (not letterboxed or MR::isStopCinemaFrame())
+    if held and not holding {
+        time.hold()
+        holding = true
+    }
+    if not held and holding {
+        time.release()
+        holding = false
+    }
+}
+
+// Everything the scene numbered `mine` holds is put back; nothing when a newer scene took over (it holds them now).
+fn put_back(mine: u32) {
+    if playing != mine {
+        return
+    }
+    playing = 0
+    scene_owner = 0
+    hold_world(false)
+    if let c = control {
+        camera.end(c)
+    }
+    control = none
+    if letterboxed {
+        MR::tryFrameToScreenCinemaFrame()
+        letterboxed = false
+    }
+    if music_on {
+        audio.music_restore(500)
+        music_on = false
+    }
+    MR::onPlayerControl(true)
+}
+
+// The scene numbered `mine` still plays and was not skipped this frame.
+fn goes_on(mine: u32, skippable: bool) -> bool {
+    if playing != mine {
+        return false
+    }
+    if skippable and MR::isPressedPause(0) {
+        // The press is the skip's: the game's pause does not take it once the scene has ended (until it is let go).
+        skip_held = true
+        return false
+    }
+    return true
+}
+
+fn ease(t: f32) -> f32 {
+    // Slow at both ends: 3t^2 - 2t^3.
+    return t * t * (3.0 - 2.0 * t)
+}
+
+fn between(a: view.Eye, b: view.Eye, t: f32) -> view.Eye {
+    let s = ease(t)
+    return view.Eye { eye: a.eye + (b.eye - a.eye) * s, at: a.at + (b.at - a.at) * s, up: a.up + (b.up - a.up) * s,
+                      fov_y: a.fov_y + (b.fov_y - a.fov_y) * s }
+}
+
+fn aim(e: view.Eye) {
+    if let c = control {
+        camera.aim(c, e)
+    }
+}
+
+// The scene played for the calling mod. true: it ran to its end; false: it was skipped, a newer scene began, or its
+// mod stopped.
+pub task play(s: Scene) -> bool {
+    next_scene += 1
+    let mine = next_scene
+    // A scene playing before ends: what it holds passes to this one, put back once at this one's end.
+    let was_playing = playing != 0
+    playing = mine
+    scene_owner = caller()
+    defer put_back(mine)
+    if not was_playing {
+        MR::offPlayerControl()
+    }
+    let start_eye = camera.now()
+    if control == none {
+        // A fixed rig reads no actor: the player fills the field (as camera.aim).
+        if let pl = MarioAccess::getPlayerActor() {
+            control = camera.take(view.Camera { rig: view.Rig.Fixed, eye: start_eye.eye, at: start_eye.at, up: start_eye.up,
+                                                fov_y: start_eye.fov_y, actor: pl, offset: vec3(0.0, 0.0, 0.0), joint: "",
+                                                near_z: 0.0 })
+        }
+    }
+    if s.letterbox and not letterboxed {
+        MR::tryScreenToFrameCinemaFrame()
+        letterboxed = true
+    }
+    if not s.letterbox and letterboxed {
+        MR::tryFrameToScreenCinemaFrame()
+        letterboxed = false
+    }
+    if let m = s.music {
+        // The scene's music over the game's (svc.audio music: one for every mod); the game's comes back at the end.
+        audio.music(stage.sound_path(scene_owner, m), 500)
+        music_on = true
+    }
+    var now_eye = start_eye
+    for shot in s.shots {
+        if not goes_on(mine, s.skippable) {
+            return false
+        }
+        match shot {
+            Shot.Look(at, from_offset, frames) => {
+                var f: u32 = 0
+                while f < frames {
+                    hold_world(s.holds_world)
+                    // Gone: no longer there, or killed (a killed actor stays in the scene, dead).
+                    guard let a = at.get() else {
+                        break
+                    }
+                    if MR::isDead(a) {
+                        break
+                    }
+                    let up = MR::getPlayerGravity() ?? vec3(0.0, -1.0, 0.0)
+                    now_eye = view.Eye { eye: a.mPosition + from_offset, at: a.mPosition, up: up * -1.0, fov_y: now_eye.fov_y }
+                    aim(now_eye)
+                    wait 1 frames
+                    if not goes_on(mine, s.skippable) {
+                        return false
+                    }
+                    f += 1
+                }
+            }
+            Shot.Move(from, to, frames) => {
+                var f: u32 = 0
+                while f < frames {
+                    hold_world(s.holds_world)
+                    now_eye = between(from, to, (f as f32 + 1.0) / (frames as f32))
+                    aim(now_eye)
+                    wait 1 frames
+                    if not goes_on(mine, s.skippable) {
+                        return false
+                    }
+                    f += 1
+                }
+                if frames == 0 {
+                    now_eye = to
+                    aim(now_eye)
+                }
+            }
+            Shot.Line(speaker, line) => {
+                hold_world(false)
+                var said = false
+                if let who = speaker {
+                    if let a = who.get() {
+                        if not MR::isDead(a) {
+                            wait start talk.say(who, line)
+                            said = true
+                        }
+                    }
+                }
+                if not said {
+                    wait start screen.message(line)
+                }
+            }
+            Shot.Action(who, action) => {
+                hold_world(false)
+                if let a = who.get() {
+                    if MR::tryStartAction(a, action) {
+                        wait 1 frames
+                        // Until the action ends, the actor is gone, or the scene is skipped (at most ten seconds: an
+                        // action that loops never ends by itself).
+                        var f: u32 = 0
+                        while f < 600 {
+                            guard let live = who.get() else {
+                                break
+                            }
+                            if MR::isDead(live) or MR::isActionEnd(live) {
+                                break
+                            }
+                            if not goes_on(mine, s.skippable) {
+                                return false
+                            }
+                            wait 1 frames
+                            f += 1
+                        }
+                    }
+                }
+            }
+            Shot.Wait(frames) => {
+                var f: u32 = 0
+                while f < frames {
+                    hold_world(s.holds_world)
+                    wait 1 frames
+                    if not goes_on(mine, s.skippable) {
+                        return false
+                    }
+                    f += 1
+                }
+            }
+            Shot.Call(f) => {
+                hold_world(s.holds_world)
+                f()
+            }
+        }
+    }
+    return playing == mine
+}
+
+// The first live object placed under `name` in the stage, none when there is none.
+fn placed(name: text) -> ref<LiveActor>? {
+    if name == "" {
+        return none
+    }
+    // The game's own finder of an object by its name (NameObjFinder); only a live actor counts.
+    if let o = NameObjFinder::find(name) {
+        if let a = as_class<LiveActor>(o) {
+            if not MR::isDead(a) {
+                return ref(a)
+            }
+        }
+    }
+    return none
+}
+
+fn eye_of(d: EyeData) -> view.Eye {
+    return view.Eye { eye: d.eye, at: d.at, up: d.up, fov_y: d.fov }
+}
+
+// The scene of the calling mod's kit/cutscene/<id>.json, its actors found now by their placement names;
+// none when the mod has no such file, it does not read as a scene, or an actor a Look or an Action names is not in
+// the stage. (A Line's speaker that is not there is said as a message.) Call it in the stage the scene plays in.
+pub fn find(id: text) -> Scene? {
+    guard let data = mods.kit_read(caller(), "cutscene", id) else {
+        return none
+    }
+    guard let d = json.decode<SceneData>(data) else {
+        return none
+    }
+    var shots: list<Shot> = []
+    for sd in d.shots {
+        // Exactly one kind per shot.
+        let before = shots.len()
+        if let l = sd.Look {
+            guard let a = placed(l.at) else {
+                return none
+            }
+            shots.push(Shot.Look(a, l.from_offset, l.frames))
+        }
+        if let m = sd.Move {
+            shots.push(Shot.Move(eye_of(m.from), eye_of(m.to), m.frames))
+        }
+        if let l = sd.Line {
+            shots.push(Shot.Line(placed(l.speaker ?? ""), l.line))
+        }
+        if let c = sd.Action {
+            guard let a = placed(c.who) else {
+                return none
+            }
+            shots.push(Shot.Action(a, c.action))
+        }
+        if let w = sd.Wait {
+            shots.push(Shot.Wait(w.frames))
+        }
+        if shots.len() != before + 1 {
+            return none
+        }
+    }
+    var music: sound? = none
+    if d.music != "" {
+        // A content name made while running, inside an export: the calling mod's content.
+        music = sound_named(d.music)
+    }
+    return Scene { shots: shots, letterbox: d.letterbox, skippable: d.skippable, holds_world: d.holds_world, music: music }
+}
+
+// A scene owns the pause button (its skip): the game's pause menu does not open while one plays, held world or not,
+// as during the game's own demos (isPermitToPauseMenu refuses while MR::isDemoActive).
+hook after GameScene::isPermitToPauseMenu() -> permitted {
+    if permitted and (playing != 0 or skip_held) {
+        result = false
+    }
+}
+
+on frame {
+    if skip_held and not MR::isHeldPause(0) {
+        skip_held = false
+    }
+}
+
+// Whether a scene plays now (for a mod that holds its own HUD or input back while one does).
+pub fn active() -> bool {
+    return playing != 0
+}
+
+on mods.stopped(gone) {
+    // The stopped mod's scene ends: everything it holds is put back now; its task ends with the mod.
+    if playing != 0 and scene_owner == gone {
+        put_back(playing)
+    }
+}

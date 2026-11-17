@@ -1,0 +1,347 @@
+// kit.area: new kinds of area, placed like the game's, with what happens inside.
+// A kind is defined once by a mod (define, or its kit/area/<name>.json, read for every mod needing LumaKit
+// at its start). Its areas are placed as the game's
+// are, the shape by the name's end as the game names its own: "<name>Cube" (a box from its base), "<name>Sphere",
+// "<name>Cylinder" (in other mods' stages "<mod id>/<name>Cube" ...): the kernel's run-time alias rows make each an
+// object of the kit's class for that shape (KitAreaCube, KitAreaSphere, KitAreaCylinder, made by the factory rows
+// LumaAreaCube, LumaAreaSphere, LumaAreaCylinder), whose first argument is the kind. The objects are the game's
+// AreaObj: the placement's own form, switches and following; each joins the manager its row names, "LumaArea" (no
+// game code reads it, so no game query sees them).
+// Once a frame, before the player moves (MarioActor::movement), each kind finds whether the player is inside one of
+// its areas: enter, then inside each frame, then leave, each once in that order. Inside, the player's walking speed
+// is the game's own resist (MR::setPlayerWalkingResist, as SnowFloor; the player's movement clears it each frame),
+// the force moves the player through the game's own push (Mario::addTrans, its collision after; a box turns it to its
+// own axes), and the camera is taken through kit.camera (the area entered last holds; leaving gives the one
+// before). Overlapping kinds all act: speeds multiply, forces add.
+// Every kind is recorded under caller(); `on mods.stopped` ends a stopped mod's (the player leaves it without
+// its callback, its camera given back; its alias rows go with the mod, the kernel's).
+// KindId's functions are also module functions (`area.contains(id, at)`, `area.player_inside(id)`). `camera` is a
+// view.Camera; data cameras are rigs on the player made when the
+// player enters (a view is never kept).
+
+use svc.draw.view
+use svc.mods
+use ./camera
+
+pub struct Kind {
+    name: text
+    shape_from_placement: bool = true         // the placement's own shape (box, cylinder, sphere), as AreaObj
+    player_speed: f32 = 1.0                   // a zone that makes the player slow
+    player_force: vec3? = none                // wind, along the area's own axes
+    camera: view.Camera? = none               // the main camera while the player is inside
+    on_enter: fn(MarioActor)? = none
+    on_inside: fn(MarioActor)? = none          // each frame
+    on_leave: fn(MarioActor)? = none
+}
+
+// A kind's handle: its number, 0 for none.
+pub struct KindId {
+    n: u32
+    fn contains(self, at: vec3) -> bool { return contains(self, at) }
+    fn player_inside(self) -> bool { return player_inside(self) }
+}
+
+// A kind as its data file writes it (kit/area/<name>.json): the camera as a rig on the player.
+enum CameraData { Fixed { eye: vec3, at: vec3, up: vec3, fov_y: f32 }, Side { normal: vec3, distance: f32 },
+                  Follow { distance: f32, height: f32 } }
+struct KindData { player_speed: f32 = 1.0, player_force: vec3? = none, camera: CameraData? = none }
+
+// The shapes and their classes (the game's naming of its own areas).
+let shape_ends: list<text> = ["Cube", "Sphere", "Cylinder"]
+let shape_classes: list<text> = ["KitAreaCube", "KitAreaSphere", "KitAreaCylinder"]
+
+// The kinds (a slot is never reused in a session): definitions, owners, whether they hold, a data camera, the code
+// rig's actor kept as a handle, whether the player is inside, the camera control held while the player is inside.
+var kinds: list<Kind> = []
+var kind_owner: list<u64> = []
+var kind_live: list<bool> = []
+var kind_cam_data: list<CameraData?> = []
+var kind_rig_actor: list<ref<LiveActor>?> = []
+var kind_inside: list<bool> = []
+var kind_control: list<camera.Control?> = []
+// The areas standing in the stage: each one's kind and the object (an empty handle: gone with its stage).
+var area_kind: list<u32> = []
+var area_ref: list<ref<AreaObj>> = []
+
+fn kind_at(id: KindId) -> int? {
+    if id.n == 0 or id.n > kinds.len() as u32 {
+        return none
+    }
+    let k = (id.n - 1) as int
+    if not kind_live[k] {
+        return none
+    }
+    return k
+}
+
+fn add_kind(owner: u64, k: Kind, cam: CameraData?) -> KindId {
+    var held: ref<LiveActor>? = none
+    if let r = k.camera {
+        if r.rig != view.Rig.Fixed {
+            held = ref(r.actor)
+        }
+    }
+    // A second of the same name from the same mod replaces the first (areas standing keep their number).
+    for i in 0..kinds.len() {
+        if kind_live[i] and kind_owner[i] == owner and kinds[i].name == k.name {
+            kinds[i] = k
+            kind_cam_data[i] = cam
+            kind_rig_actor[i] = held
+            return KindId { n: (i + 1) as u32 }
+        }
+    }
+    kinds.push(k)
+    kind_owner.push(owner)
+    kind_live.push(true)
+    kind_cam_data.push(cam)
+    kind_rig_actor.push(held)
+    kind_inside.push(false)
+    kind_control.push(none)
+    let n = kinds.len() as u32
+    for s in 0..shape_ends.len() {
+        alias_class("{k.name}{shape_ends[s]}", shape_classes[s], [n as i32])
+    }
+    return KindId { n: n }
+}
+
+// A new kind of area for the calling mod: its areas placed as "<name>Cube", "<name>Sphere", "<name>Cylinder".
+pub fn define(k: Kind) -> KindId {
+    return add_kind(caller(), k, none)
+}
+
+fn from_data(owner: u64, name: text, data: bytes) -> KindId? {
+    guard let d = json.decode<KindData>(data) else {
+        log "kit.area: kit/area/{name}.json does not read as a kind; not defined"
+        return none
+    }
+    return add_kind(owner, Kind { name: name, player_speed: d.player_speed, player_force: d.player_force }, d.camera)
+}
+
+// Each enabled mod's kit/area files, at LumaKit's start, so a kind from data alone is placeable.
+on start {
+    for m in mods.needing() {
+        for name in mods.kit_names(m, "area") ?? [] {
+            if let b = mods.kit_read(m, "area", name) {
+                from_data(m, name, b)
+            }
+        }
+    }
+}
+
+// The calling mod's kind `name`: one it defined (or its data defined at LumaKit's start), else the one of its
+// kit/area/<name>.json, defined now; none when there is neither or the file does not read as a kind.
+pub fn find(name: text) -> KindId? {
+    let owner = caller()
+    for i in 0..kinds.len() {
+        if kind_live[i] and kind_owner[i] == owner and kinds[i].name == name {
+            return KindId { n: (i + 1) as u32 }
+        }
+    }
+    guard let data = mods.kit_read(owner, "area", name) else { return none }
+    return from_data(owner, name, data)
+}
+
+fn area_inside(i: int, at: vec3) -> bool {
+    for a in 0..area_ref.len() {
+        if area_kind[a] == (i + 1) as u32 {
+            if let o = area_ref[a].get() {
+                if o.isInVolume(at) {
+                    return true
+                }
+            }
+        }
+    }
+    return false
+}
+
+// The first of the kind's areas holding `at`, or none.
+fn area_holding(i: int, at: vec3) -> AreaObj? {
+    for a in 0..area_ref.len() {
+        if area_kind[a] == (i + 1) as u32 {
+            if let o = area_ref[a].get() {
+                if o.isInVolume(at) {
+                    return o
+                }
+            }
+        }
+    }
+    return none
+}
+
+// Whether `at` is inside one of the stage's areas of the kind.
+pub fn contains(id: KindId, at: vec3) -> bool {
+    guard let k = kind_at(id) else { return false }
+    return area_inside(k, at)
+}
+
+// Whether the player was inside one of the kind's areas at this frame's step.
+pub fn player_inside(id: KindId) -> bool {
+    guard let k = kind_at(id) else { return false }
+    return kind_inside[k]
+}
+
+// `v` turned by the game's Euler angles in degrees (MR::makeMtxRotate: about x, then y, then z).
+fn rotate(v: vec3, r: vec3) -> vec3 {
+    let d: f32 = 0.017453292
+    let sx = sin(r.x * d)
+    let cx = cos(r.x * d)
+    let sy = sin(r.y * d)
+    let cy = cos(r.y * d)
+    let sz = sin(r.z * d)
+    let cz = cos(r.z * d)
+    let a = vec3(v.x, v.y * cx - v.z * sx, v.y * sx + v.z * cx)
+    let b = vec3(a.x * cy + a.z * sy, a.y, -a.x * sy + a.z * cy)
+    return vec3(b.x * cz - b.y * sz, b.x * sz + b.y * cz, b.z)
+}
+
+// The force of kind `i` at `p` in world axes: a box turns it to its own axes; a sphere or cylinder has none.
+fn force_at(i: int, f: vec3, p: vec3) -> vec3 {
+    guard let area = area_holding(i, p) else { return f }
+    if area.mFormType > 1 {
+        return f
+    }
+    var turn = vec3(0.0, 0.0, 0.0)
+    MR::calcCubeRotate(area, var turn)
+    return rotate(f, turn)
+}
+
+// The kind's camera now: its code rig made again on its actor, or its data rig on the player; none: none, or its
+// actor is gone.
+fn rig_now(i: int, mario: MarioActor) -> view.Camera? {
+    let zero = vec3(0.0, 0.0, 0.0)
+    if let c = kind_cam_data[i] {
+        match c {
+            CameraData.Fixed(eye, at, up, fov_y) => {
+                return view.Camera { rig: view.Rig.Fixed, eye: eye, at: at, up: up, fov_y: fov_y, actor: mario,
+                                     offset: zero, joint: "", near_z: 0.0 }
+            }
+            CameraData.Side(normal, distance) => { return camera.side(normal, distance) }
+            CameraData.Follow(distance, height) => { return camera.follow(mario, distance, height) }
+        }
+    }
+    guard let r = kinds[i].camera else { return none }
+    if r.rig == view.Rig.Fixed {
+        return r
+    }
+    guard let h = kind_rig_actor[i] else { return none }
+    guard let a = h.get() else { return none }
+    return view.Camera { rig: r.rig, eye: r.eye, at: r.at, up: r.up, fov_y: r.fov_y, actor: a, offset: r.offset,
+                         joint: r.joint, near_z: r.near_z }
+}
+
+fn enter(i: int, mario: MarioActor) {
+    kind_inside[i] = true
+    if let r = rig_now(i, mario) {
+        kind_control[i] = camera.take(r)
+    }
+    if let f = kinds[i].on_enter {
+        f(mario)
+    }
+}
+
+// Out of kind `i` (the player left, or the kind ended): its camera given back; `mario` none: no leave call.
+fn leave(i: int, mario: MarioActor?) {
+    kind_inside[i] = false
+    if let c = kind_control[i] {
+        camera.end(c)
+        kind_control[i] = none
+    }
+    guard let m = mario else { return }
+    if let f = kinds[i].on_leave {
+        f(m)
+    }
+}
+
+// Before the player moves (once a frame): each kind entered, kept or left, and what it does inside.
+hook before MarioActor::movement() {
+    // Areas of a stage gone are forgotten.
+    var g = area_ref.len()
+    while g > 0 {
+        g -= 1
+        if area_ref[g].get() == none {
+            area_ref.remove(g)
+            area_kind.remove(g)
+        }
+    }
+    guard let p = MR::getPlayerPos() else { return }
+    var speed: f32 = 1.0
+    var push = vec3(0.0, 0.0, 0.0)
+    for i in 0..kinds.len() {
+        let now_in = kind_live[i] and area_inside(i, p)
+        if now_in and not kind_inside[i] {
+            enter(i, self)
+        } else if not now_in and kind_inside[i] {
+            leave(i, self)
+        }
+        if now_in {
+            let k = kinds[i]
+            speed *= clamp(k.player_speed, 0.0, 4.0)
+            if let f = k.player_force {
+                push = push + force_at(i, f, p)
+            }
+            if let f = k.on_inside {
+                f(self)
+            }
+        }
+    }
+    if speed != 1.0 {
+        MR::setPlayerWalkingResist(1.0 - speed)
+    }
+    if length(push) > 0.0 {
+        if let m = self.mMario {
+            m.addTrans(push)
+        }
+    }
+}
+
+// An area of a kind standing in the stage (the alias row's object, or a game row's of the same shape placed under
+// the class name): the game's AreaObj, recorded beside its kind.
+class KitAreaCube : AreaObj made by LumaAreaCube {
+    override fn init(rIter: TableIter) { base.init(rIter); stood(self) }
+}
+
+class KitAreaSphere : AreaObj made by LumaAreaSphere {
+    override fn init(rIter: TableIter) { base.init(rIter); stood(self) }
+}
+
+class KitAreaCylinder : AreaObj made by LumaAreaCylinder {
+    override fn init(rIter: TableIter) { base.init(rIter); stood(self) }
+}
+
+// An area made: its first argument is its kind (the alias row's); a kind no mod defines any more stands inert, the
+// log naming it.
+fn stood(o: AreaObj) {
+    let n = o.mObjArg0
+    if n <= 0 or n > kinds.len() as i32 or not kind_live[(n - 1) as int] {
+        log "kit.area: an area of kind {n} is placed and no mod defines it; it does nothing"
+        return
+    }
+    area_kind.push(n as u32)
+    area_ref.push(ref(o))
+}
+
+// A mod that defined kinds was taken out: its kinds end (newest first), each one the player is in left
+// without its callback (its mod is gone), its camera given back; its areas forgotten (they stand inert until the
+// stage goes: AreaObj has no kill).
+on mods.stopped(gone) {
+    var i = kinds.len()
+    while i > 0 {
+        i -= 1
+        if kind_owner[i] == gone and kind_live[i] {
+            if kind_inside[i] {
+                leave(i, none)
+            }
+            kind_live[i] = false
+            kind_rig_actor[i] = none
+        }
+    }
+    var a = area_ref.len()
+    while a > 0 {
+        a -= 1
+        let k = (area_kind[a] - 1) as int
+        if not kind_live[k] {
+            area_ref.remove(a)
+            area_kind.remove(a)
+        }
+    }
+}

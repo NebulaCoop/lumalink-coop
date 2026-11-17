@@ -1,0 +1,2500 @@
+{
+ "size": [
+  608,
+  456
+ ],
+ "panes": [
+  {
+   "name": "CTL",
+   "type": "pane",
+   "position": [
+    -284,
+    208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "TL0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL0K",
+     "type": "picture",
+     "position": [
+      0,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL0F",
+     "type": "picture",
+     "position": [
+      0,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TL1",
+     "type": "text",
+     "position": [
+      0,
+      -30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL1K",
+     "type": "picture",
+     "position": [
+      0,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL1F",
+     "type": "picture",
+     "position": [
+      0,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TL2",
+     "type": "text",
+     "position": [
+      0,
+      -60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL2K",
+     "type": "picture",
+     "position": [
+      0,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL2F",
+     "type": "picture",
+     "position": [
+      0,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TL3",
+     "type": "text",
+     "position": [
+      0,
+      -90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL3K",
+     "type": "picture",
+     "position": [
+      0,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL3F",
+     "type": "picture",
+     "position": [
+      0,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TL4",
+     "type": "text",
+     "position": [
+      0,
+      -120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL4K",
+     "type": "picture",
+     "position": [
+      0,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL4F",
+     "type": "picture",
+     "position": [
+      0,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TL5",
+     "type": "text",
+     "position": [
+      0,
+      -150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "TL5K",
+     "type": "picture",
+     "position": [
+      0,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TL5F",
+     "type": "picture",
+     "position": [
+      0,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CT",
+   "type": "pane",
+   "position": [
+    0,
+    208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "T0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T0K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T0F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "T1",
+     "type": "text",
+     "position": [
+      0,
+      -30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T1K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T1F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "T2",
+     "type": "text",
+     "position": [
+      0,
+      -60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T2K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T2F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "T3",
+     "type": "text",
+     "position": [
+      0,
+      -90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T3K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T3F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "T4",
+     "type": "text",
+     "position": [
+      0,
+      -120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T4K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T4F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "T5",
+     "type": "text",
+     "position": [
+      0,
+      -150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "T5K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "T5F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CTR",
+   "type": "pane",
+   "position": [
+    284,
+    208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "TR0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR0K",
+     "type": "picture",
+     "position": [
+      -200,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR0F",
+     "type": "picture",
+     "position": [
+      -200,
+      -14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TR1",
+     "type": "text",
+     "position": [
+      0,
+      -30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR1K",
+     "type": "picture",
+     "position": [
+      -200,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR1F",
+     "type": "picture",
+     "position": [
+      -200,
+      -44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TR2",
+     "type": "text",
+     "position": [
+      0,
+      -60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR2K",
+     "type": "picture",
+     "position": [
+      -200,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR2F",
+     "type": "picture",
+     "position": [
+      -200,
+      -74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TR3",
+     "type": "text",
+     "position": [
+      0,
+      -90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR3K",
+     "type": "picture",
+     "position": [
+      -200,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR3F",
+     "type": "picture",
+     "position": [
+      -200,
+      -104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TR4",
+     "type": "text",
+     "position": [
+      0,
+      -120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR4K",
+     "type": "picture",
+     "position": [
+      -200,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR4F",
+     "type": "picture",
+     "position": [
+      -200,
+      -134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "TR5",
+     "type": "text",
+     "position": [
+      0,
+      -150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "top_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "TR5K",
+     "type": "picture",
+     "position": [
+      -200,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "TR5F",
+     "type": "picture",
+     "position": [
+      -200,
+      -164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CL",
+   "type": "pane",
+   "position": [
+    -284,
+    0
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "L0",
+     "type": "text",
+     "position": [
+      0,
+      75.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L0K",
+     "type": "picture",
+     "position": [
+      0,
+      75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L0F",
+     "type": "picture",
+     "position": [
+      0,
+      75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "L1",
+     "type": "text",
+     "position": [
+      0,
+      45.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L1K",
+     "type": "picture",
+     "position": [
+      0,
+      45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L1F",
+     "type": "picture",
+     "position": [
+      0,
+      45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "L2",
+     "type": "text",
+     "position": [
+      0,
+      15.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L2K",
+     "type": "picture",
+     "position": [
+      0,
+      15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L2F",
+     "type": "picture",
+     "position": [
+      0,
+      15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "L3",
+     "type": "text",
+     "position": [
+      0,
+      -15.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L3K",
+     "type": "picture",
+     "position": [
+      0,
+      -15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L3F",
+     "type": "picture",
+     "position": [
+      0,
+      -15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "L4",
+     "type": "text",
+     "position": [
+      0,
+      -45.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L4K",
+     "type": "picture",
+     "position": [
+      0,
+      -45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L4F",
+     "type": "picture",
+     "position": [
+      0,
+      -45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "L5",
+     "type": "text",
+     "position": [
+      0,
+      -75.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "L5K",
+     "type": "picture",
+     "position": [
+      0,
+      -75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "L5F",
+     "type": "picture",
+     "position": [
+      0,
+      -75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CR",
+   "type": "pane",
+   "position": [
+    284,
+    0
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "R0",
+     "type": "text",
+     "position": [
+      0,
+      75.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R0K",
+     "type": "picture",
+     "position": [
+      -200,
+      75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R0F",
+     "type": "picture",
+     "position": [
+      -200,
+      75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "R1",
+     "type": "text",
+     "position": [
+      0,
+      45.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R1K",
+     "type": "picture",
+     "position": [
+      -200,
+      45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R1F",
+     "type": "picture",
+     "position": [
+      -200,
+      45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "R2",
+     "type": "text",
+     "position": [
+      0,
+      15.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R2K",
+     "type": "picture",
+     "position": [
+      -200,
+      15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R2F",
+     "type": "picture",
+     "position": [
+      -200,
+      15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "R3",
+     "type": "text",
+     "position": [
+      0,
+      -15.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R3K",
+     "type": "picture",
+     "position": [
+      -200,
+      -15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R3F",
+     "type": "picture",
+     "position": [
+      -200,
+      -15.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "R4",
+     "type": "text",
+     "position": [
+      0,
+      -45.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R4K",
+     "type": "picture",
+     "position": [
+      -200,
+      -45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R4F",
+     "type": "picture",
+     "position": [
+      -200,
+      -45.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "R5",
+     "type": "text",
+     "position": [
+      0,
+      -75.0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "R5K",
+     "type": "picture",
+     "position": [
+      -200,
+      -75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "R5F",
+     "type": "picture",
+     "position": [
+      -200,
+      -75.0
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CBL",
+   "type": "pane",
+   "position": [
+    -284,
+    -208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "BL0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL0K",
+     "type": "picture",
+     "position": [
+      0,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL0F",
+     "type": "picture",
+     "position": [
+      0,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BL1",
+     "type": "text",
+     "position": [
+      0,
+      30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL1K",
+     "type": "picture",
+     "position": [
+      0,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL1F",
+     "type": "picture",
+     "position": [
+      0,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BL2",
+     "type": "text",
+     "position": [
+      0,
+      60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL2K",
+     "type": "picture",
+     "position": [
+      0,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL2F",
+     "type": "picture",
+     "position": [
+      0,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BL3",
+     "type": "text",
+     "position": [
+      0,
+      90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL3K",
+     "type": "picture",
+     "position": [
+      0,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL3F",
+     "type": "picture",
+     "position": [
+      0,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BL4",
+     "type": "text",
+     "position": [
+      0,
+      120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL4K",
+     "type": "picture",
+     "position": [
+      0,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL4F",
+     "type": "picture",
+     "position": [
+      0,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BL5",
+     "type": "text",
+     "position": [
+      0,
+      150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_left",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "left",
+     "visible": false
+    },
+    {
+     "name": "BL5K",
+     "type": "picture",
+     "position": [
+      0,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BL5F",
+     "type": "picture",
+     "position": [
+      0,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CB",
+   "type": "pane",
+   "position": [
+    0,
+    -208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "B0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B0K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B0F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "B1",
+     "type": "text",
+     "position": [
+      0,
+      30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B1K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B1F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "B2",
+     "type": "text",
+     "position": [
+      0,
+      60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B2K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B2F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "B3",
+     "type": "text",
+     "position": [
+      0,
+      90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B3K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B3F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "B4",
+     "type": "text",
+     "position": [
+      0,
+      120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B4K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B4F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "B5",
+     "type": "text",
+     "position": [
+      0,
+      150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "center",
+     "visible": false
+    },
+    {
+     "name": "B5K",
+     "type": "picture",
+     "position": [
+      -100.0,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "B5F",
+     "type": "picture",
+     "position": [
+      -100.0,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "CBR",
+   "type": "pane",
+   "position": [
+    284,
+    -208
+   ],
+   "widen": true,
+   "children": [
+    {
+     "name": "BR0",
+     "type": "text",
+     "position": [
+      0,
+      0
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR0K",
+     "type": "picture",
+     "position": [
+      -200,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR0F",
+     "type": "picture",
+     "position": [
+      -200,
+      14
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BR1",
+     "type": "text",
+     "position": [
+      0,
+      30
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR1K",
+     "type": "picture",
+     "position": [
+      -200,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR1F",
+     "type": "picture",
+     "position": [
+      -200,
+      44
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BR2",
+     "type": "text",
+     "position": [
+      0,
+      60
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR2K",
+     "type": "picture",
+     "position": [
+      -200,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR2F",
+     "type": "picture",
+     "position": [
+      -200,
+      74
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BR3",
+     "type": "text",
+     "position": [
+      0,
+      90
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR3K",
+     "type": "picture",
+     "position": [
+      -200,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR3F",
+     "type": "picture",
+     "position": [
+      -200,
+      104
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BR4",
+     "type": "text",
+     "position": [
+      0,
+      120
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR4K",
+     "type": "picture",
+     "position": [
+      -200,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR4F",
+     "type": "picture",
+     "position": [
+      -200,
+      134
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    },
+    {
+     "name": "BR5",
+     "type": "text",
+     "position": [
+      0,
+      150
+     ],
+     "size": [
+      280,
+      28
+     ],
+     "anchor": "bottom_right",
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 22,
+     "place": "right",
+     "visible": false
+    },
+    {
+     "name": "BR5K",
+     "type": "picture",
+     "position": [
+      -200,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "00000090",
+     "visible": false
+    },
+    {
+     "name": "BR5F",
+     "type": "picture",
+     "position": [
+      -200,
+      164
+     ],
+     "size": [
+      200,
+      14
+     ],
+     "anchor": "left",
+     "colour": "f0c040ff",
+     "visible": false
+    }
+   ]
+  },
+  {
+   "name": "Popup",
+   "type": "pane",
+   "position": [
+    0,
+    120
+   ],
+   "visible": false,
+   "children": [
+    {
+     "name": "PopBack",
+     "type": "picture",
+     "size": [
+      380,
+      72
+     ],
+     "colour": "000000a0"
+    },
+    {
+     "name": "PopTitle",
+     "type": "text",
+     "position": [
+      0,
+      14
+     ],
+     "size": [
+      360,
+      30
+     ],
+     "text": " ",
+     "length": 64,
+     "font": "MessageFont26",
+     "font_size": 24
+    },
+    {
+     "name": "PopLine",
+     "type": "text",
+     "position": [
+      0,
+      -16
+     ],
+     "size": [
+      360,
+      26
+     ],
+     "text": " ",
+     "length": 96,
+     "font": "MessageFont26",
+     "font_size": 20
+    }
+   ]
+  }
+ ]
+}

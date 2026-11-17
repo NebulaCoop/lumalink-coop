@@ -1,0 +1,144 @@
+{
+  "$comment": "kit/area/<name>.json (lumakit data version 1; area.lum's KindData). A kind of area without code: its areas are placed as \"<name>Cube\", \"<name>Sphere\", \"<name>Cylinder\". player_speed multiplies the player's speed inside (0 to 4); player_force is added to the player each frame; camera is the view inside as json writes an enum's case. Its functions are code only.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "player_speed": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 4,
+      "default": 1
+    },
+    "player_force": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        }
+      ],
+      "default": null
+    },
+    "camera": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Fixed"
+          ],
+          "properties": {
+            "Fixed": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "eye",
+                "at",
+                "up",
+                "fov_y"
+              ],
+              "properties": {
+                "eye": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "at": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "up": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "fov_y": {
+                  "type": "number",
+                  "exclusiveMinimum": 1,
+                  "exclusiveMaximum": 179
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Side"
+          ],
+          "properties": {
+            "Side": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "normal",
+                "distance"
+              ],
+              "properties": {
+                "normal": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "distance": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Follow"
+          ],
+          "properties": {
+            "Follow": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "distance",
+                "height"
+              ],
+              "properties": {
+                "distance": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "height": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "default": null
+    }
+  }
+}

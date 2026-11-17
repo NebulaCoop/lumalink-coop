@@ -1,6 +1,6 @@
 [package]
 name = "lumalink-gui"
-description = "The LumaLink window: drop a mod, get a .luma."
+description = "The LumaLink window: every LumaLink job on mods dropped on it."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,6 +13,12 @@ keywords.workspace = true
 anyhow.workspace = true
 eframe.workspace = true
 lumalink-core = { path = "../lumalink-core" }
+luma-validate.workspace = true
+jiff = "0.2"
 rfd.workspace = true
 sys-locale = "0.3"
 tempfile.workspace = true
+
+[build-dependencies]
+crc32fast = "1.5"
+miniz_oxide = "0.8"

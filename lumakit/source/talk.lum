@@ -1,0 +1,285 @@
+// kit.talk: lines and choices from an actor in the game's own balloon, dialogue trees of kit/talk,
+// a voice for a line. A line is the game's talk: a TalkMessageCtrl made on the speaker (MR::createTalkCtrlDirect)
+// whose message id is the kit's own ("LumaKit_Talk<n>"), its words given to the game's message lookup by the hook on
+// NebulaMods::text below (the lookup every message goes through first), so the balloon, its sound, its camera and its
+// paging are the game's. The talk runs by MR::tryTalkForceAtEnd each frame (the game's own: it asks for the talk
+// and starts it, and is true once the talk can end; MR::tryTalkForce is true once it starts). A choice is the
+// line, then kit.screen's choose with the choices (the game's balloons choose between two at most).
+// Trees: kit/talk/<tree>.json of each enabled mod (mods.needing, mods.kit_names, mods.kit_read, json.decode), read at
+// LumaKit's start, held under that mod; schema code/lumakit.kit/talk. A choice's flag is set through kit.progress.
+
+use ./screen
+use ./progress
+use svc.mods
+use svc.audio
+use ./stage
+use ./item
+use svc.save
+
+// A choice's flag set for the mod whose tree it is (`owner`), under kit.progress's key for it. Here, not through
+// progress.flag_set: that one sets only its caller's own flags, and a tree runs on in the kit's task after waits.
+fn set_owner_flag(owner: u64, id: text) {
+    guard let key = item.save_key(owner, "progress", "flag", id) else {
+        return
+    }
+    save.set(key, json.encode(true).bytes())
+}
+
+// A line being said: the talk, its words and the id the game asks for, the caller.
+var ctrl: ref<TalkMessageCtrl>? = none
+var speaker: ref<LiveActor>? = none
+var words: text = ""
+var line_id: text = ""
+var next_line: u32 = 0
+var talk_owner: u64 = 0
+var talking: bool = false
+// Voices: a line's text and the sound played when it shows.
+var voice_lines: list<text> = []
+var voice_sounds: list<sound> = []
+var voice_owners: list<u64> = []
+
+// The message of a talkable object's prompt (kit.actor's on_talk): the game's A button by the object reads its
+// message's kind; the message itself is never shown (the talk the player starts there is the object's own lines).
+let prompt_id: text = "LumaKit_Prompt"
+
+// The prompt's message id (kit.actor makes the control with it).
+pub fn prompt_message() -> text {
+    return prompt_id
+}
+
+// The game asks for a message: the kit's line by its id.
+hook after NebulaMods::text(id, _) -> w {
+    if talking and id == line_id {
+        result = words
+    } else if id == prompt_id {
+        result = " "
+    }
+}
+
+// True while a line by `who` is being said.
+pub fn saying(who: LiveActor) -> bool {
+    if not talking {
+        return false
+    }
+    guard let s = speaker else {
+        return false
+    }
+    guard let a = s.get() else {
+        return false
+    }
+    return same(a, who)
+}
+
+fn start_line(who: ref<LiveActor>, line: text) -> bool {
+    let a = who.get()
+    if a == none {
+        return false
+    }
+    next_line += 1
+    line_id = "LumaKit_Talk{next_line}"
+    words = line
+    talking = true
+    speaker = who
+    talk_owner = caller()
+    // An empty placement (the game's TableIter(): no table, index -1): the line is a direct message, whose making
+    // reads no placement (TalkNodeCtrl::createFlowNodeDirect reads it for flow talk only); the balloon 150 above the
+    // speaker's base, no joint.
+    var empty: TableIter
+    empty.mIndex = -1
+    if let made = MR::createTalkCtrlDirect(a!, empty, line_id, vec3(0.0, 150.0, 0.0), none) {
+        ctrl = ref(made)
+    }
+    for i in 0..voice_lines.len() {
+        if voice_lines[i] == line {
+            audio.play(stage.sound_path(voice_owners[i], voice_sounds[i]), none, none)
+        }
+    }
+    return ctrl != none
+}
+
+fn end_line() {
+    talking = false
+    ctrl = none
+    speaker = none
+}
+
+// The line said by `who` in its balloon; ends when the player has read it (or the speaker is gone).
+pub task say(who: ref<LiveActor>, line: text) {
+    if not start_line(who, line) {
+        return
+    }
+    defer end_line()
+    wait until talk_done()
+}
+
+// The game's talk run a frame: true when it ended, or its speaker is gone.
+fn talk_done() -> bool {
+    if speaker == none or ctrl == none {
+        return true
+    }
+    // Gone, or killed (a killed actor stays reachable until the scene drops it).
+    guard let who = speaker!.get() else {
+        return true
+    }
+    if MR::isDead(who) {
+        return true
+    }
+    guard let c = ctrl!.get() else {
+        return true
+    }
+    return MR::tryTalkForceAtEnd(c)
+}
+
+// The line, then the choices: the one taken (0 for the first); the player backing out takes the last.
+pub task ask(who: ref<LiveActor>, line: text, choices: list<text>) -> int {
+    if start_line(who, line) {
+        wait until talk_done()
+        end_line()
+    }
+    let taken = wait screen.choose(line, choices)
+    if let i = taken {
+        return i
+    }
+    return choices.len() - 1
+}
+
+// kit/talk/<tree>.json: its nodes by name, "start" the first. A node with no choices is said and goes on to
+// `next` ("" or missing: the tree ends there); a node with choices is asked, and the choice taken goes on to its
+// `next`, setting its `flag` on this file first when it names one.
+struct ChoiceData {
+    line: text
+    next: text = ""
+    flag: text = ""
+}
+
+struct NodeData {
+    line: text
+    next: text = ""
+    choices: list<ChoiceData> = []
+}
+
+struct TreeData {
+    version: u32 = 1
+    nodes: map<text, NodeData>
+}
+
+var tree_owners: list<u64> = []
+var tree_names: list<text> = []
+var trees: list<TreeData> = []
+
+// One kit/talk file of `owner`'s, read: its tree held under that mod by its name (the file's name without .json).
+fn define_data(owner: u64, file: text, bytes_of: bytes) {
+    guard let d = json.decode<TreeData>(bytes_of) else {
+        log "kit.talk: kit/talk/{file} is not a tree (json)"
+        return
+    }
+    if not d.nodes.contains("start") {
+        log "kit.talk: kit/talk/{file} has no node \"start\""
+        return
+    }
+    var name = file
+    if name.ends_with(".json") {
+        name = name.slice(0, name.len() - 5)
+    }
+    tree_owners.push(owner)
+    tree_names.push(name)
+    trees.push(d)
+}
+
+on start {
+    for m in mods.needing() {
+        for file in mods.kit_names(m, "talk") ?? [] {
+            if let b = mods.kit_read(m, "talk", file) {
+                define_data(m, file, b)
+            }
+        }
+    }
+}
+
+fn tree_of(owner: u64, name: text) -> TreeData? {
+    for i in 0..trees.len() {
+        if tree_owners[i] == owner and tree_names[i] == name {
+            return trees[i]
+        }
+    }
+    // Not read at the kit's start (a mod that needs the kit starts after it): read now, once.
+    guard let b = mods.kit_read(owner, "talk", name) else { return none }
+    let before = trees.len()
+    define_data(owner, name, b)
+    if trees.len() > before {
+        return trees[before]
+    }
+    return none
+}
+
+// A tree of the calling mod's kit/talk: its nodes said from "start", each choice's next node followed, its
+// flag set through kit.progress; the name of the node it ended at, none when the mod has no such tree. A node named
+// that the tree lacks ends it there (its name given); a tree that loops runs until it reaches an end.
+pub task run(who: ref<LiveActor>, tree: text) -> text? {
+    // The tree's mod, kept: its flags are that mod's (a wait may end in another caller's call).
+    let owner = caller()
+    guard let d = tree_of(owner, tree) else {
+        return none
+    }
+    var at = "start"
+    while true {
+        guard let n = d.nodes.get(at) else {
+            return at
+        }
+        if n.choices.len() == 0 {
+            wait start say(who, n.line)
+            if n.next == "" {
+                return at
+            }
+            at = n.next
+        } else {
+            var lines: list<text> = []
+            for c in n.choices {
+                lines.push(c.line)
+            }
+            let i = wait ask(who, n.line, lines)
+            let c = n.choices[i]
+            if c.flag != "" {
+                set_owner_flag(owner, c.flag)
+            }
+            if c.next == "" {
+                return at
+            }
+            at = c.next
+        }
+    }
+}
+
+// The sound played when `line` shows, for the calling mod's lines.
+pub fn voice(line: text, s: sound) {
+    voice_lines.push(line)
+    voice_sounds.push(s)
+    voice_owners.push(caller())
+}
+
+on mods.stopped(gone) {
+    if talking and talk_owner == gone {
+        if let c = ctrl?.get() {
+            c.endTalk()
+        }
+        end_line()
+    }
+    var k = trees.len()
+    while k > 0 {
+        k -= 1
+        if tree_owners[k] == gone {
+            tree_owners.remove(k)
+            tree_names.remove(k)
+            trees.remove(k)
+        }
+    }
+    var i = voice_lines.len()
+    while i > 0 {
+        i -= 1
+        if voice_owners[i] == gone {
+            voice_lines.remove(i)
+            voice_sounds.remove(i)
+            voice_owners.remove(i)
+        }
+    }
+}

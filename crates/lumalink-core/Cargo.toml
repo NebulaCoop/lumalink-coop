@@ -12,6 +12,9 @@ keywords.workspace = true
 [dependencies]
 anyhow.workspace = true
 nebula-import.workspace = true
+luma-validate.workspace = true
+lumascript.workspace = true
+miniz_oxide.workspace = true
 encoding_rs = "0.8"
 roxmltree.workspace = true
 serde.workspace = true
@@ -22,4 +25,9 @@ sevenz-rust2.workspace = true
 lzma-rs.workspace = true
 crc32fast.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# run's game started hidden when LumaLink was (jobs::start): STARTUPINFO and CreateProcessW. Updates (update.rs):
+# WinHTTP for the requests, CNG for the Setup's signature.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Networking_WinHttp", "Win32_Security_Cryptography", "Win32_System_Registry"] }
 

@@ -1,0 +1,915 @@
+// kit.actor: new kinds of object in a few lines, and the helpers a
+// mod's own `class` uses for the usual parts of the game's enemies.
+// A kind is defined once by a mod (define, or its kit/actor/<name>.json) and is an object of the kit's class
+// KitActor wherever it stands: made by code (spawn: std make) or placed in a stage under "<mod id>/<name>" (the
+// kernel's run-time alias row; alias names are one space for every mod, so two mods' "walker" are "a/walker" and
+// "b/walker"). A mod's data kinds are defined on the first frame it runs, before any stage it is in loads, so its
+// stage patches can place them. KitActor shows the kind's model, starts its
+// idle action, has its sensors, stands on the ground under gravity with a shadow, runs the kind's callbacks, and is
+// defeated by the kind's attacks: its "Down" action, then its drops, then gone.
+// Everything belongs to the mod that defined it: when it stops, its objects are killed with the game's own
+// kill and its attached models taken away; its kinds stay in their places, off, so other mods' numbers hold.
+
+use ./item
+use ./talk
+use svc.mods
+
+// ---- the interface --------------------------------------------------------------------------------------------------
+
+pub struct Kind {
+    name: text                                // the class name stages place it by
+    base: text = "LiveActor"                  // a derivable game class; KitActor's is LiveActor
+    look: model? = none
+    idle_action: text? = none                 // started when it appears
+    sensors: list<Sensor> = []
+    on_ground: bool = true                    // stands on the ground as the game's walkers do: falls onto it, stays
+                                              // where it stands, upright to its gravity; false: stays as placed
+    shadow: bool = true
+    collision: text? = none                   // the model's collision mesh as a moving collision part
+    defeated_by: list<Attack> = []            // these attacks defeat it: its "Down" action, then drops
+    drops: item.Gives? = none                 // Coins, StarBits, Lives, Health or Carry
+    on_init: (fn(LiveActor))? = none
+    on_frame: (fn(LiveActor))? = none
+    on_touch_player: (fn(LiveActor))? = none
+    on_attacked: (fn(LiveActor, Attack) -> bool)? = none   // true: taken care of (not defeated)
+    on_talk: (fn(LiveActor))? = none          // makes it talkable: the game's A button prompt by it; A there stops the
+                                              // player and calls it, and the lines it starts with kit.talk are said
+}
+
+// The game's test for a talk the player starts (TalkSupportPlayerWatcher::isEnableTalkPlayerStateNormal): not in
+// water mode, in control, the stick at rest, not bound, not refusing talk, and on the ground (or a Boo, or in water).
+fn player_can_talk() -> bool {
+    if MR::isPlayerInWaterMode() or MR::isOffPlayerControl() {
+        return false
+    }
+    let x = MR::getMoveStickX(0)
+    let y = MR::getMoveStickY(0)
+    if x > 0.001 or x < -0.001 or y > 0.001 or y < -0.001 {
+        return false
+    }
+    if MR::isPlayerInBind() or MR::isPlayerRefuseTalk() {
+        return false
+    }
+    if MR::isPlayerElementModeTeresa() {
+        return true
+    }
+    if let p = MR::getPlayerDemoActor() {
+        if MR::isInWater(p, vec3(0.0, 0.0, 0.0)) {
+            return true
+        }
+    }
+    return MR::isOnGroundPlayer()
+}
+
+// The sensors a kind may have, each a sphere `radius` across centred `radius` above its feet. Body: what touches and
+// is touched; Attack: what hurts the player; Eye: what sees; Push: what pushes others away.
+pub enum Sensor { Body(radius: f32), Attack(radius: f32), Eye(radius: f32), Push(radius: f32) }
+
+// The player's attacks an object tells apart in its messages (MR::isMsgPlayerSpinAttack ... isMsgFireBallAttack).
+// Any: every one of them. An open enum: LumaKit 1.x only adds cases.
+pub enum Attack { Spin, Trample, HipDrop, StarBit, Fire, Any }
+
+// A kind's handle: its number, 0 for none. Its functions are also module functions (`actor.spawn(k, at)`).
+pub struct KindId {
+    n: u32
+    fn spawn(self, at: vec3) -> LiveActor? { return spawn(self, at) }
+    fn all(self) -> list<ref<LiveActor>> { return all(self) }
+    fn name(self) -> text { return name(self) }
+}
+
+// Where a placed object stands in its stage's data: the same on every machine with the same mods.
+pub struct PlacementKey { stage: text, zone: text, layer: text, index: u32 }
+
+// A model attached to a joint of an object (attach): its number, 0 for none.
+pub struct Attached {
+    n: u32
+    fn remove(self) { remove(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+
+// A kind as its data file writes it (code/lumakit.kit/actor/1.json): everything but the callbacks, content by name (the mod's
+// own), drops without code.
+struct SensorData { kind: text, radius: f32 }
+enum DropsData { Coins(n: u32), StarBits(n: u32), Lives(n: u32), Health(n: u32), Carry(n: u32) }
+struct KindData { base: text = "LiveActor", look: text = "", idle_action: text = "", sensors: list<SensorData> = [],
+                  on_ground: bool = true, shadow: bool = true, collision: text = "", defeated_by: list<text> = [],
+                  drops: DropsData? = none }
+
+let down_action: text = "Down"
+let down_frames_most: u32 = 180
+
+// ---- the kinds ------------------------------------------------------------------------------------------------------
+
+// The definitions: each kind, the mod it is counted for, whether it still holds.
+var kinds: list<Kind> = []
+var kind_owner: list<u64> = []
+var kind_live: list<bool> = []
+// The objects standing in the stage: each one's kind (its place in kinds, 0 for a game object spawn_game made), its
+// mod and the object, for all() and for removing a stopped mod's objects.
+var obj_kind: list<u32> = []
+var obj_owner: list<u64> = []
+var obj_ref: list<ref<LiveActor>> = []
+// The kind the object being made is for (make runs init at once).
+var making: u32 = 0
+// The attached models: each one's object, the object it rides on, the joint, the offset, the mod.
+var att_obj: list<ref<LiveActor>?> = []
+var att_on: list<ref<LiveActor>> = []
+var att_joint: list<text> = []
+var att_offset: list<mat34?> = []
+var att_owner: list<u64> = []
+// Hidden by the kit while its carrier is dead (shown again when the carrier appears).
+var att_hid: list<bool> = []
+
+// The kind `k` names, when it is the calling mod's and still holds.
+fn kind_at(k: KindId) -> int? {
+    if k.n == 0 or k.n > kinds.len() as u32 {
+        return none
+    }
+    let i = (k.n - 1) as int
+    if not kind_live[i] or kind_owner[i] != caller() {
+        return none
+    }
+    return i
+}
+
+// A kind of the calling mod (its `name` placeable as "<mod id>/<name>"). A second define of one name by one mod
+// replaces the first (its objects keep their number); two mods' kinds of one name are two kinds. A base
+// other than LiveActor and drops of Form or Call are the caller's script errors.
+pub fn define(k: Kind) -> KindId {
+    return define_for(caller(), k)
+}
+
+// A kind of mod `owner` (a caller() number), as define.
+fn define_for(owner: u64, k: Kind) -> KindId {
+    if k.base != "LiveActor" {
+        fail "kit.actor.define: base is {k.base}; a kind's base is LiveActor (a mod's own class derives other bases)"
+    }
+    if let d = k.drops {
+        match d {
+            item.Gives.Form(f) => fail "kit.actor.define: drops is Form; it must be Coins, StarBits, Lives, Health or Carry"
+            item.Gives.Call(f) => fail "kit.actor.define: drops is Call; it must be Coins, StarBits, Lives, Health or Carry"
+            else => {}
+        }
+    }
+    for i in 0..kinds.len() {
+        if kind_live[i] and kind_owner[i] == owner and kinds[i].name == k.name {
+            kinds[i] = k
+            return KindId { n: (i + 1) as u32 }
+        }
+    }
+    kinds.push(k)
+    kind_owner.push(owner)
+    kind_live.push(true)
+    let n = kinds.len() as u32
+    // The run-time alias (std alias_class): "<mod id>/<name>" makes a KitActor whose first argument
+    // is the kind, the others the placement's own. Defined from a mod's call it is that mod's, gone with it; from the
+    // kit's frame (data kinds) it is the kit's, and a placement of a stopped mod's kind is not made (KitActor.init).
+    guard let info = mods.of_mod(owner) else {
+        log "kit.actor: a kind \"{k.name}\" of a mod that is not running; not placeable"
+        return KindId { n: n }
+    }
+    if not alias_class("{info.id}/{k.name}", "KitActor", [n as i32]) {
+        log "kit.actor: \"{info.id}/{k.name}\" is taken; the kind is made by spawn only"
+    }
+    return KindId { n: n }
+}
+
+fn attack_named(name: text) -> Attack? {
+    match name {
+        "Spin" => return Attack.Spin
+        "Trample" => return Attack.Trample
+        "HipDrop" => return Attack.HipDrop
+        "StarBit" => return Attack.StarBit
+        "Fire" => return Attack.Fire
+        "Any" => return Attack.Any
+        else => return none
+    }
+}
+
+fn sensor_of(d: SensorData) -> Sensor? {
+    match d.kind {
+        "Body" => return Sensor.Body(d.radius)
+        "Attack" => return Sensor.Attack(d.radius)
+        "Eye" => return Sensor.Eye(d.radius)
+        "Push" => return Sensor.Push(d.radius)
+        else => return none
+    }
+}
+
+fn drops_of(d: DropsData) -> item.Gives {
+    match d {
+        DropsData.Coins(n) => return item.Gives.Coins(n)
+        DropsData.StarBits(n) => return item.Gives.StarBits(n)
+        DropsData.Lives(n) => return item.Gives.Lives(n)
+        DropsData.Health(n) => return item.Gives.Health(n)
+        DropsData.Carry(n) => return item.Gives.Carry(n)
+    }
+}
+
+// The calling mod's kind `name`: one it defined, else the one of its kit/actor/<name>.json, defined now (data and
+// code make the same thing; code finds a data kind to give it callbacks). none when there is neither, or
+// the file does not read as a kind (an unknown sensor, attack or content name).
+pub fn find(name: text) -> KindId? {
+    let owner = caller()
+    for i in 0..kinds.len() {
+        if kind_live[i] and kind_owner[i] == owner and kinds[i].name == name {
+            return KindId { n: (i + 1) as u32 }
+        }
+    }
+    return data_kind(owner, name)
+}
+
+// Mod `owner`'s kit/actor/<name>.json defined as its kind; none when there is no such file or it does not read as a
+// kind (an unknown sensor, attack or content name).
+fn data_kind(owner: u64, name: text) -> KindId? {
+    guard let data = mods.kit_read(owner, "actor", name) else {
+        return none
+    }
+    guard let d = json.decode<KindData>(data) else {
+        return none
+    }
+    var k = Kind { name: name, base: d.base, on_ground: d.on_ground, shadow: d.shadow }
+    if d.look != "" {
+        guard let look = item.model_of(owner, d.look) else {
+            return none
+        }
+        k.look = look
+    }
+    if d.idle_action != "" {
+        k.idle_action = d.idle_action
+    }
+    if d.collision != "" {
+        k.collision = d.collision
+    }
+    for s in d.sensors {
+        guard let one = sensor_of(s) else {
+            return none
+        }
+        k.sensors.push(one)
+    }
+    for a in d.defeated_by {
+        guard let one = attack_named(a) else {
+            return none
+        }
+        k.defeated_by.push(one)
+    }
+    if let g = d.drops {
+        k.drops = drops_of(g)
+    }
+    return define_for(owner, k)
+}
+
+// The kind made at `at` in the stage playing now, for the calling mod: its object, none for a handle that is not the
+// calling mod's or when no stage can make one now (no scene, or the scene is starting).
+pub fn spawn(k: KindId, at: vec3) -> LiveActor? {
+    guard let i = kind_at(k) else {
+        return none
+    }
+    making = k.n
+    let made = make("KitActor", MakePlace { at: at, args: [k.n as i32, 0, 0, 0, 0, 0, 0, 0] }, 1)
+    making = 0
+    return made.first()
+}
+
+// Every object of the kind standing now, in the order made. A defeated one is dead, not gone (the game keeps a
+// killed actor; a ref is none only once the object is destroyed), so liveness is the game's MR::isDead.
+pub fn all(k: KindId) -> list<ref<LiveActor>> {
+    var out: list<ref<LiveActor>> = []
+    if kind_at(k) == none {
+        return out
+    }
+    for j in 0..obj_ref.len() {
+        if obj_kind[j] != k.n {
+            continue
+        }
+        if let a = obj_ref[j].get() {
+            if not MR::isDead(a) {
+                out.push(obj_ref[j])
+            }
+        }
+    }
+    return out
+}
+
+// The kind's name ("" for a handle that is not the calling mod's).
+pub fn name(k: KindId) -> text {
+    guard let i = kind_at(k) else {
+        return ""
+    }
+    return kinds[i].name
+}
+
+// ---- the object -----------------------------------------------------------------------------------------------------
+
+// An on_ground kind's step after the binder has moved it, with the game's walkers' numbers
+// (WalkerStateFunction::calcPassiveMovement): in the air gravity adds 1.5 a frame and it keeps 0.99 of its speed; on
+// the ground friction leaves 0.93 of its speed along the ground. On the ground it is on the ground until the ground
+// under its feet is gone, not only while the binder's sphere strikes it: a sphere resting on a floor touches it
+// without a strike every other frame, and gravity given back on those frames is pushed out again along the floor's
+// normal, a step down the slope each time, which on a curved planet is a creep. Speed along gravity stops there (the
+// fall ends where it lands); a speed that friction has taken down to almost nothing is none, so it stands still as
+// the game's standing characters do (NPCActor: no gravity, no speed); moving over a floor that curves away under it,
+// it is kept down onto it.
+fn stand(a: KitActor) {
+    let g = a.mGravity
+    let binded = MR::isBindedGround(a)
+    // Ground within 10 units under its feet, along gravity.
+    let ground = binded or MR::isExistMapCollision(a.mPosition - g * 10.0, g * 20.0)
+    if not binded and not (a.grounded and ground) {
+        a.grounded = false
+        MR::addVelocityToGravity(a, 1.5)
+        MR::attenuateVelocity(a, 0.99)
+        return
+    }
+    a.grounded = true
+    var v = a.mVelocity
+    let down = dot(v, g)
+    if down > 0.0 {
+        v = v - g * down
+    }
+    v = v * 0.93
+    if length(v) < 0.1 {
+        v = vec3(0.0, 0.0, 0.0)
+    } else if not binded {
+        v = v + g * 1.5
+    }
+    a.mVelocity = v
+}
+
+// An object of a kind. Its first placement argument is its kind's number (the alias row's, or spawn's). Made by the
+// game's plain model object's maker.
+// The game's talk prompt while it says nothing: TalkDirector::request shows the A button by it when the player
+// is near; A there, when the player may talk (the game's own test), stops the player for a talk
+// (MarioAccess::startTalk, as the game's talks do) and calls on_talk. The first line it starts (kit.talk: a task,
+// from the next frame) takes the talk; with none within the next two steps the player goes on.
+fn talk_step(a: KitActor, f: fn(LiveActor)) {
+    guard let rc = a.talk_ctrl else {
+        return
+    }
+    guard let c = rc.get() else {
+        return
+    }
+    if a.talk_wait > 0 {
+        a.talk_wait -= 1
+        if talk.saying(a) {
+            a.talk_wait = 0
+        } else if a.talk_wait == 0 {
+            MarioAccess::endTalk()
+        }
+        return
+    }
+    if talk.saying(a) {
+        return
+    }
+    if c.requestTalk() and MR::isPressedJump(0) and player_can_talk() {
+        MarioAccess::startTalk(a)
+        a.talk_wait = 3
+        f(a)
+    }
+}
+
+class KitActor : LiveActor made by LumaObj {
+    var kind: u32 = 0
+    var down: bool = false
+    var down_for: u32 = 0
+    // A talkable kind's prompt (the game's talk control, asked each step) and the steps the player waits, stopped
+    // for a talk, for the first line on_talk starts.
+    var talk_ctrl: ref<TalkMessageCtrl>? = none
+    var talk_wait: u32 = 0
+    // An on_ground kind's binder touched the ground on its last step.
+    var grounded: bool = false
+
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+        var n: i32 = making as i32
+        MR::getPlacementArg0NoInit(rIter, var n)
+        if n <= 0 or n > kinds.len() as i32 {
+            log "kit.actor: an object of kind {n} is placed and no mod defines it; not made"
+            self.makeActorDead()
+            return
+        }
+        if not kind_live[(n - 1) as int] {
+            // A kind whose mod stopped: not made; the log names it.
+            log "kit.actor: an object of kind {n} is placed and its mod is off; not made"
+            self.makeActorDead()
+            return
+        }
+        kind = n as u32
+        let k = kinds[(kind - 1) as int]
+        if let look = k.look {
+            if not item.has_model(look) {
+                log "kit.actor: kind {k.name}'s model {look.name()} is not in the game's files; not made"
+                self.makeActorDead()
+                return
+            }
+            self.initModelManagerWithAnm(look.name(), none, false)
+        }
+        if k.on_talk != none {
+            // A talkable kind moves with the game's talking characters, before the player (SceneExecutor: NPC, then
+            // Player, then Enemy): A at its prompt starts the talk before the player reads A as a jump.
+            MR::connectToSceneNpc(self)
+        } else {
+            MR::connectToSceneEnemy(self)
+        }
+        self.initHitSensor(k.sensors.len() as i32 + 1)
+        var body = false
+        var body_r: f32 = 60.0
+        for s in k.sensors {
+            match s {
+                Sensor.Body(r) => {
+                    MR::addHitSensorEnemy(self, "body", 8, r, vec3(0.0, r, 0.0))
+                    body = true
+                    body_r = r
+                }
+                Sensor.Attack(r) => MR::addHitSensorEnemyAttack(self, "attack", 8, r, vec3(0.0, r, 0.0))
+                Sensor.Eye(r) => MR::addHitSensorEye(self, "eye", 8, r, vec3(0.0, r, 0.0))
+                Sensor.Push(r) => MR::addHitSensorPush(self, "push", 8, r, vec3(0.0, r, 0.0))
+            }
+        }
+        if not body {
+            // Every kind is touched and attacked through a body: one 60 units across when it names none.
+            MR::addHitSensorEnemy(self, "body", 8, 60.0, vec3(0.0, 60.0, 0.0))
+        }
+        if let c = k.collision {
+            MR::initCollisionParts(self, c, self.getSensor("body")!, none)
+        }
+        if k.shadow {
+            MR::initShadowVolumeSphere(self, 60.0)
+        }
+        if k.on_ground {
+            // Bound to the ground as the game's walkers are (Kuribo: a binder the body's size, centred as it): without
+            // one the gravity it is given carries it through the floor.
+            self.initBinder(body_r, body_r, 0)
+            MR::onCalcGravity(self)
+            MR::calcGravity(self)
+        }
+        self.initEffectKeeper(1, none)
+        self.initSound(4, false)
+        if k.on_talk != none {
+            // An empty placement (no table, index -1): a direct message, whose making reads no placement; the
+            // prompt 150 above its base, as kit.talk's balloons.
+            var empty: TableIter
+            empty.mIndex = -1
+            if let made = MR::createTalkCtrlDirect(self, empty, talk.prompt_message(), vec3(0.0, 150.0, 0.0), none) {
+                talk_ctrl = ref(made)
+            }
+        }
+        obj_kind.push(kind)
+        obj_owner.push(kind_owner[(kind - 1) as int])
+        obj_ref.push(ref(self))
+        self.makeActorAppeared()
+        if let a = k.idle_action {
+            MR::tryStartAction(self, a)
+        }
+        if let f = k.on_init {
+            f(self)
+        }
+    }
+
+    // Each step: the game's own movement (binder, sensors, nerve), gravity when it stands on the ground, then the
+    // kind's frame; defeated, its "Down" plays out.
+    override fn movement() {
+        base.movement()
+        if kind == 0 {
+            return
+        }
+        let k = kinds[(kind - 1) as int]
+        if down {
+            // At most three seconds, then its drops and gone.
+            down_for += 1
+            if MR::isActionEnd(self) or down_for >= down_frames_most {
+                if let g = k.drops {
+                    drop(self, g)
+                }
+                self.kill()
+            }
+            return
+        }
+        if k.on_ground {
+            stand(self)
+        }
+        if let f = k.on_frame {
+            f(self)
+        }
+        if let f = k.on_talk {
+            talk_step(self, f)
+        }
+    }
+
+    // Its pose. An on_ground kind stands upright to its gravity, its up against gravity as the game's walkers turn
+    // theirs (MR::turnQuatUpToGravity), facing where its rotation faces (mRotation, which a mod may turn); others are
+    // posed by their rotation as placed.
+    override fn calcAndSetBaseMtx() {
+        if kind == 0 or length(self.mGravity) < 0.0001 {
+            base.calcAndSetBaseMtx()
+            return
+        }
+        if not kinds[(kind - 1) as int].on_ground {
+            base.calcAndSetBaseMtx()
+            return
+        }
+        let up = normal(self.mGravity) * -1.0
+        var q = quat(0.0, 0.0, 0.0, 1.0)
+        MR::makeQuatRotateDegree(var q, self.mRotation)
+        // The rotation's front (its z axis); its up (y axis) when it faces along gravity.
+        var f = vec3(2.0 * (q.x * q.z + q.w * q.y), 2.0 * (q.y * q.z - q.w * q.x), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+        f = f - up * dot(f, up)
+        if length(f) < 0.001 {
+            f = vec3(2.0 * (q.x * q.y - q.w * q.z), 1.0 - 2.0 * (q.x * q.x + q.z * q.z), 2.0 * (q.y * q.z + q.w * q.x))
+            f = f - up * dot(f, up)
+        }
+        f = normal(f)
+        let s = normal(cross(up, f))
+        let p = self.mPosition
+        `MR::setBaseTRMtx(LiveActor *, MtxPtr)`(self, mat34(vec4(s.x, up.x, f.x, p.x), vec4(s.y, up.y, f.y, p.y), vec4(s.z, up.z, f.z, p.z)))
+    }
+
+    // Touches: the player touched by its body or attack sensor; the attack sensor hurts as the game's enemies do.
+    override fn attackSensor(pSender, pReceiver) {
+        if kind == 0 or down {
+            return
+        }
+        guard let other = pReceiver else {
+            return
+        }
+        if not MR::isSensorPlayer(other) {
+            return
+        }
+        let k = kinds[(kind - 1) as int]
+        if let mine = pSender {
+            if MR::isSensorEnemyAttack(mine) {
+                MR::sendMsgEnemyAttack(other, mine)
+            }
+        }
+        if let f = k.on_touch_player {
+            f(self)
+        }
+    }
+
+    // The player's attacks: told to the kind; one it is defeated by, not taken care of, defeats it. Other messages
+    // are the game's.
+    override fn receiveMessage(msg, sender, receiver) -> bool {
+        guard let at = attack_of(msg) else {
+            return base.receiveMessage(msg, sender, receiver)
+        }
+        if kind == 0 or down {
+            return false
+        }
+        let k = kinds[(kind - 1) as int]
+        if let f = k.on_attacked {
+            if f(self, at) {
+                return true
+            }
+        }
+        if not defeats(k, at) {
+            return false
+        }
+        down = true
+        down_for = 0
+        MR::invalidateHitSensors(self)
+        if not MR::tryStartAction(self, down_action) {
+            // No "Down" in its model: defeated at once.
+            down_for = down_frames_most
+        }
+        return true
+    }
+}
+
+fn defeats(k: Kind, at: Attack) -> bool {
+    for d in k.defeated_by {
+        if d == at or d == Attack.Any {
+            return true
+        }
+    }
+    return false
+}
+
+// ---- helpers for a mod's own class ----------------------------------------------------------------------------------
+
+// Which of the player's attacks the message `msg` is (an override of receiveMsgPlayerAttack is given it), or none.
+pub fn attack_of(msg: u32) -> Attack? {
+    if MR::isMsgPlayerSpinAttack(msg) {
+        return Attack.Spin
+    }
+    if MR::isMsgPlayerTrample(msg) {
+        return Attack.Trample
+    }
+    if MR::isMsgPlayerHipDrop(msg) {
+        return Attack.HipDrop
+    }
+    if MR::isMsgStarPieceAttack(msg) {
+        return Attack.StarBit
+    }
+    if MR::isMsgFireBallAttack(msg) {
+        return Attack.Fire
+    }
+    return none
+}
+
+// An enemy's body: a sensor named "body" of the enemy kind, `radius` across and centred `radius` above its feet; a
+// shadow of the same size; gravity worked out for it each frame. Called once, from its init (after initHitSensor).
+pub fn add_body(a: LiveActor, radius: f32) {
+    MR::addHitSensorEnemy(a, "body", 8, radius, vec3(0.0, radius, 0.0))
+    MR::initShadowVolumeSphere(a, radius)
+    MR::onCalcGravity(a)
+}
+
+// The model's collision mesh `name` as a moving collision part on its body sensor. Called once, from its init.
+pub fn add_collision(a: LiveActor, name: text) {
+    MR::initCollisionParts(a, name, a.getSensor("body")!, none)
+}
+
+// One frame's move along where it faces, `speed` a frame, along the ground under gravity (call from control).
+pub fn move_forward(a: LiveActor, speed: f32) {
+    var front = vec3(0.0, 0.0, 1.0)
+    MR::calcFrontVec(var front, a)
+    MR::addVelocityMoveToDirection(a, front, speed)
+}
+
+// One frame's move toward `at`, `speed` a frame, along the ground under gravity (call from control).
+pub fn move_toward(a: LiveActor, at: vec3, speed: f32) {
+    MR::addVelocityMoveToTarget(a, at, speed)
+}
+
+// One frame's move toward the player; nothing when there is no player.
+pub fn move_toward_player(a: LiveActor, speed: f32) {
+    if let p = MR::getPlayerPos() {
+        MR::addVelocityMoveToTarget(a, p, speed)
+    }
+}
+
+// One frame's turn of where it faces toward `at`, at most `degrees_per_frame`.
+pub fn turn_toward(a: LiveActor, at: vec3, degrees_per_frame: f32) {
+    var front = vec3(0.0, 0.0, 1.0)
+    MR::calcFrontVec(var front, a)
+    MR::turnDirectionToTargetDegree(a, var front, at, degrees_per_frame)
+    a.mRotation = vec3(a.mRotation.x, atan2(front.x, front.z) * 57.29578, a.mRotation.z)
+}
+
+// Whether the player stands within `distance` of it and inside the fan of `degrees` about where it faces.
+pub fn sees_player(a: LiveActor, distance: f32, degrees: f32) -> bool {
+    var front = vec3(0.0, 0.0, 1.0)
+    MR::calcFrontVec(var front, a)
+    return MR::isInSightFanPlayer(a, front, distance, degrees, degrees)
+}
+
+// Whether the player is within `distance` of the object.
+pub fn near_player(a: LiveActor, distance: f32) -> bool {
+    return MR::isNearPlayer(a, distance)
+}
+
+// Pulls the object toward the ground (`strength` a frame) while it is in the air, and keeps `keep` (0 to 1) of its
+// speed. On the ground the speed it has into the ground is taken away, as the ground stops it: left there, the binder
+// would turn it into a slide along a curved or sloped floor every frame.
+pub fn fall(a: LiveActor, strength: f32, keep: f32) {
+    if MR::isOnGround(a) {
+        let into = dot(a.mVelocity, a.mGravity)
+        if into > 0.0 {
+            a.mVelocity = a.mVelocity - a.mGravity * into
+        }
+    } else {
+        MR::addVelocityToGravity(a, strength)
+    }
+    MR::attenuateVelocity(a, keep)
+}
+
+// A ring that spreads from the object along the ground: `effect` played on it, and the player hurt as by an enemy's
+// attack when on the ground within `radius` and below `height` above its feet once the ring has reached it (`speed`
+// units a frame).
+pub fn shockwave(a: LiveActor, radius: f32, effect: effect, speed: f32 = 20.0, height: f32 = 60.0) {
+    MR::emitEffect(a, effect.name())
+    start shock_hurt(ref(a), radius, speed, height)
+}
+
+task shock_hurt(r: ref<LiveActor>, radius: f32, speed: f32, height: f32) {
+    var frames: u32 = 0
+    if speed > 0.0 {
+        frames = (radius / speed) as u32
+    }
+    wait frames as i32 frames
+    guard let a = r.get() else {
+        return
+    }
+    guard let p = MR::getPlayerPos() else {
+        return
+    }
+    let off = p - a.mPosition
+    let up = 0.0 - dot(off, a.mGravity)
+    let flat = length(off + a.mGravity * up)
+    if flat <= radius and up <= height {
+        // The player's body sensor, as the game's enemies reach it.
+        if let mine = a.getSensor("body") {
+            if let player = MR::getPlayerDemoActor() {
+                if let theirs = player.getSensor("body") {
+                    MR::sendMsgEnemyAttack(theirs, mine)
+                }
+            }
+        }
+    }
+}
+
+// What a defeated object leaves: coins pop out of it as from the game's own enemies; anything else is given to the
+// player.
+pub fn drop(a: LiveActor, gives: item.Gives) {
+    match gives {
+        item.Gives.Coins(n) => {
+            // The holder pops only coins the object declared (CoinHolder::appearCoin finds no host info for an
+            // undeclared one and makes none); each defeat declares its own n, so a kind that comes back drops again.
+            MR::declareCoin(a, n as i32)
+            MR::appearCoinPop(a, a.mPosition, n as i32)
+        }
+        else => item.give(gives)
+    }
+}
+
+// ---- attached models ------------------------------------------------------------------------------------------------
+
+// The model `look` riding on joint `joint` of `to` (offset from the joint, none for none), each frame after `to`
+// moved, until removed, `to` is gone or the mod stops. Its handle.
+pub fn attach(to: LiveActor, look: model, joint: text, offset: mat34? = none) -> Attached {
+    var obj: ref<LiveActor>? = none
+    if not item.has_model(look) {
+        log "kit.actor: attach: model {look.name()} is not in the game's files; nothing attached"
+    } else {
+        let made = make("KitAttached", MakePlace { at: to.mPosition }, 1)
+        if let o = made.first() {
+            o.initModelManagerWithAnm(look.name(), none, false)
+            MR::connectToSceneMapObj(o)
+            o.makeActorAppeared()
+            obj = ref(o)
+        }
+    }
+    att_obj.push(obj)
+    att_on.push(ref(to))
+    att_joint.push(joint)
+    att_offset.push(offset)
+    att_owner.push(caller())
+    att_hid.push(false)
+    return Attached { n: att_obj.len() as u32 }
+}
+
+// Takes the attached model away (nothing for one already gone or not the calling mod's).
+pub fn remove(h: Attached) {
+    if h.n == 0 or h.n > att_obj.len() as u32 {
+        return
+    }
+    let i = (h.n - 1) as int
+    if att_owner[i] != caller() {
+        return
+    }
+    detach(i)
+}
+
+// Whether the attached model still rides.
+pub fn alive(h: Attached) -> bool {
+    if h.n == 0 or h.n > att_obj.len() as u32 {
+        return false
+    }
+    let i = (h.n - 1) as int
+    if let o = att_obj[i] {
+        return o.get() != none and att_on[i].get() != none
+    }
+    return false
+}
+
+fn detach(i: int) {
+    if let o = att_obj[i] {
+        if let a = o.get() {
+            a.kill()
+        }
+    }
+    att_obj[i] = none
+}
+
+// The plain object an attached model is: made by the kit's own factory row (LumaObj), put where its joint is.
+class KitAttached : LiveActor made by LumaObj {
+    override fn init(rIter: TableIter) {
+        MR::initDefaultPos(self, rIter)
+    }
+}
+
+// The mods whose kit/actor files are defined: each running mod needing LumaKit, on the first frame it runs
+// (none runs at LumaKit's start), so a stage loaded after it starts can place its data kinds; again after a restart.
+var data_read: list<u64> = []
+
+fn read_data() {
+    for m in mods.needing() {
+        if data_read.contains(m) {
+            continue
+        }
+        data_read.push(m)
+        for file in mods.kit_names(m, "actor") ?? [] {
+            if data_kind(m, file) == none {
+                log "kit.actor: kit/actor/{file}.json is not a kind (an unknown sensor, attack or content name)"
+            }
+        }
+    }
+}
+
+on frame {
+    read_data()
+    // Each attached model to its joint; one whose object went is taken away.
+    for i in 0..att_obj.len() {
+        guard let o = att_obj[i] else {
+            continue
+        }
+        guard let a = o.get() else {
+            att_obj[i] = none
+            continue
+        }
+        guard let rider = att_on[i].get() else {
+            detach(i)
+            continue
+        }
+        // A killed carrier stays (the game keeps it, and may make it appear again): the model is hidden with it.
+        if MR::isDead(rider) {
+            if not att_hid[i] {
+                MR::hideModel(a)
+                att_hid[i] = true
+            }
+            continue
+        }
+        if att_hid[i] {
+            MR::showModel(a)
+            att_hid[i] = false
+        }
+        guard let j = MR::getJointMtx(rider, att_joint[i]) else {
+            continue
+        }
+        // The joint's place, moved by the offset's place along the joint's axes.
+        var at = j.column(3)
+        if let off = att_offset[i] {
+            let o = off.column(3)
+            at = at + j.column(0) * o.x + j.column(1) * o.y + j.column(2) * o.z
+        }
+        a.mPosition = at
+    }
+}
+
+// ---- placements -----------------------------------------------------------------------------------------------------
+
+// Where the placed object stands in its stage's data: stage, zone and layer by name, its index in that layer's
+// list. none for an object made by code (spawn, make) or not placed by a stage.
+pub fn placement(a: LiveActor) -> PlacementKey? {
+    guard let p = placement_of(a) else {
+        return none
+    }
+    return PlacementKey { stage: p.stage, zone: p.zone, layer: p.layer, index: p.index }
+}
+
+// The object standing at that placement now, none when nothing stands there.
+pub fn find_placed(key: PlacementKey) -> LiveActor? {
+    return placed_at(Placement { stage: key.stage, zone: key.zone, layer: key.layer, index: key.index })
+}
+
+// A game class made by its name at `at`, its files loaded first when its stage did not load them. none
+// when the game has no such class or it cannot be made now.
+pub fn spawn_game(name: text, at: vec3) -> LiveActor? {
+    let made = make(name, MakePlace { at: at }, 1)
+    guard let a = made.first() else {
+        return none
+    }
+    obj_kind.push(0)
+    obj_owner.push(caller())
+    obj_ref.push(ref(a))
+    return a
+}
+
+// ---- a stopped mod's objects ----------------------------------------------------------------------------------------
+
+on mods.stopped(gone) {
+    // The stopped mod's objects killed with the game's own kill, newest first; its attached models taken away; its
+    // kinds stay in their places, off, so other mods' numbers hold. Its alias rows go with the mod (the kernel's).
+    var j = obj_ref.len()
+    while j > 0 {
+        j -= 1
+        if obj_owner[j] == gone {
+            if let a = obj_ref[j].get() {
+                a.kill()
+            }
+            obj_ref.remove(j)
+            obj_kind.remove(j)
+            obj_owner.remove(j)
+        }
+    }
+    var i = att_obj.len()
+    while i > 0 {
+        i -= 1
+        if att_owner[i] == gone {
+            detach(i)
+        }
+    }
+    for k in 0..kinds.len() {
+        if kind_owner[k] == gone {
+            kind_live[k] = false
+        }
+    }
+    // Its data read again when it runs again.
+    var d = data_read.len()
+    while d > 0 {
+        d -= 1
+        if data_read[d] == gone {
+            data_read.remove(d)
+        }
+    }
+}

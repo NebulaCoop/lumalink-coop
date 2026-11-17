@@ -1,61 +1,154 @@
 name: Release
 
+# Pushing a tag v<version> (or running this workflow with one) makes the GitHub release "LumaLink <version>" and builds
+# the Setups into it: Windows x64 and ARM64 (installer/build-setup.ps1), Linux x64 and ARM64, and macOS on Apple
+# silicon and Intel (installer/build-setup.sh), each on its own system. The Setups built here are not signed: the release key stays on
+# the release PC, where installer/sign-release.ps1 signs them. Updates offer a release once its Setups' signatures are
+# there. A Setup the release already has with its signature is left as it is.
+# Run by hand with "dry run", it builds every Setup from the chosen branch and keeps them as the run's artifacts:
+# no tag, no release.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag (v1.2.3); not needed for a dry run
+        required: false
+      dry_run:
+        description: Build the Setups only (no release)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
-  build:
+  release:
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: The release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${TAG#v}
+          [ "$version" = "$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" ] ||
+            { echo "$TAG is not the version in Cargo.toml"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 && exit 0
+          # Each release's notes are written beforehand in .github/release-notes/<version>.md: no notes, no release.
+          notes=".github/release-notes/$version.md"
+          [ -s "$notes" ] || { echo "$notes is missing: write the release notes before tagging"; exit 1; }
+          prerelease=
+          case $version in *-*) prerelease=--prerelease ;; esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "LumaLink $version" $prerelease \
+            --notes-file "$notes"
+
+  setup:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || (inputs.dry_run && needs.release.result == 'skipped')) }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: windows-x64
-          - os: ubuntu-latest
-            name: linux-x64
-          - os: macos-latest
-            name: macos-arm64
+          - os: windows-2022
+            llvm: clang+llvm-{0}-x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            llvm: clang+llvm-{0}-aarch64-pc-windows-msvc
+          - os: ubuntu-22.04
+            llvm: LLVM-{0}-Linux-X64
+          - os: ubuntu-22.04-arm
+            llvm: LLVM-{0}-Linux-ARM64
+          - os: macos-15
+            llvm: LLVM-{0}-macOS-ARM64
+          # LLVM publishes no Intel Mac archive: this job builds clang and lld from LLVM's source release (cached).
           - os: macos-15-intel
-            name: macos-x64
+            llvm: source
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libarchive-tools
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace --locked
-      - run: cargo build --release --locked -p lumalink -p lumalink-gui
-      - name: Pack
+        with:
+          ref: ${{ inputs.dry_run && github.sha || env.TAG }}
+      - name: Nebula at the pinned commit
         shell: bash
         run: |
-          out="lumalink-${GITHUB_REF_NAME}-${{ matrix.name }}"
-          mkdir "$out"
-          for f in lumalink lumalink-gui lumalink.exe lumalink-gui.exe; do
-            [ -f "target/release/$f" ] && cp "target/release/$f" "$out/"
-          done
-          cp -r README.md LICENSE CHANGELOG.md docs examples "$out/"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            7z a "$out.zip" "$out" >/dev/null
-          else
-            zip -qr "$out.zip" "$out"
-          fi
-      - uses: actions/upload-artifact@v4
+          git clone --filter=blob:none https://github.com/NebulaCoop/nebula-coop.git nebula
+          git -C nebula checkout "$(cat nebula.commit)"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
         with:
-          name: ${{ matrix.name }}
-          path: lumalink-*.zip
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
+          python-version: '3.12'
+      - name: The pinned LLVM's version
+        id: llvm
+        shell: bash
+        run: |
+          echo "version=$(sed -n 's/^pub const LLVM: &str = "\([0-9.]*\)";/\1/p' crates/lumalink-core/src/build.rs)" >> "$GITHUB_OUTPUT"
+      - name: The pinned LLVM built from source, cached
+        if: matrix.llvm == 'source'
+        uses: actions/cache@v4
         with:
-          merge-multiple: true
-      - name: Publish
+          path: ${{ runner.temp }}/llvm
+          key: llvm-${{ steps.llvm.outputs.version }}-${{ matrix.os }}-clang-lld-x86-aarch64
+      - name: The pinned LLVM built from source
+        if: matrix.llvm == 'source'
+        shell: bash
+        run: |
+          llvm=${{ steps.llvm.outputs.version }}
+          if [ -x "$RUNNER_TEMP/llvm/bin/clang" ]; then exit 0; fi
+          brew install ninja
+          curl -fsSL -o "$RUNNER_TEMP/src.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/llvm-project-$llvm.src.tar.xz"
+          mkdir "$RUNNER_TEMP/src"
+          tar -xJf "$RUNNER_TEMP/src.tar.xz" -C "$RUNNER_TEMP/src" --strip-components=1
+          cmake -S "$RUNNER_TEMP/src/llvm" -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/llvm"
+          cmake --build "$RUNNER_TEMP/build" --target install-clang install-clang-resource-headers install-lld
+          "$RUNNER_TEMP/llvm/bin/clang" --version
+      - name: The pinned LLVM
+        if: matrix.llvm != 'source'
+        shell: bash
+        run: |
+          llvm=${{ steps.llvm.outputs.version }}
+          archive=$(echo '${{ matrix.llvm }}' | sed "s/{0}/$llvm/")
+          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm/$archive.tar.xz"
+          # Relative paths: Git Bash's tar reads "D:\..." as a remote host.
+          cd "$RUNNER_TEMP"
+          mkdir llvm
+          tar -xJf llvm.tar.xz -C llvm --strip-components=1
+          rm llvm.tar.xz
+      - name: Build the Setup (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./installer/build-setup.ps1 -Llvm "$env:RUNNER_TEMP\llvm" -OutputDirectory "$env:RUNNER_TEMP\dist" -SigningKey ''
+      - name: Build the Setup
+        if: runner.os != 'Windows'
+        shell: bash
+        run: sh installer/build-setup.sh --llvm "$RUNNER_TEMP/llvm" --output "$RUNNER_TEMP/dist"
+      - name: Keep it (dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-${{ matrix.os }}
+          path: ${{ runner.temp }}/dist/LumaLink-*Setup*
+          if-no-files-found: error
+      - name: Add it to the release
+        if: ${{ !inputs.dry_run }}
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" lumalink-*.zip --repo "$GITHUB_REPOSITORY" --generate-notes
+        run: |
+          have=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for file in "$RUNNER_TEMP"/dist/LumaLink-*Setup*; do
+            name=$(basename "$file")
+            case $name in *.sig) continue ;; esac
+            if echo "$have" | grep -qx "$name.sig"; then echo "$name is there, signed"; continue; fi
+            gh release upload "$TAG" "$file" --clobber --repo "$GITHUB_REPOSITORY"
+          done

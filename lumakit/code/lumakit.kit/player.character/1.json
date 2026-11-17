@@ -1,0 +1,91 @@
+{
+  "$comment": "kit/player.character/<file>.json (lumakit data version 1; character.lum's CharacterData). A character without code: id is the name code finds it by; name the name shown; icon a texture of the mod; look its model; actions maps the game's action names to the model's; voice maps the game's sound names to the mod's; tuning maps the player's constants by name to a value; as_luigi: it plays as Luigi does.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "look"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "icon": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      ],
+      "default": null
+    },
+    "look": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "actions": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "default": {}
+    },
+    "voice": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "default": {}
+    },
+    "tuning": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      ],
+      "default": null
+    },
+    "as_luigi": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

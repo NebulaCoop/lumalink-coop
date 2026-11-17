@@ -46,6 +46,7 @@ pub struct KnownPatch {
     pub value: &'static str,
     pub id: u32,
     pub parameter: u32,
+    /// Its row in LumaLink's text (LumaLink.Patch.*): what the change does, in the player's language with say!.
     pub what: &'static str,
 }
 
@@ -56,29 +57,29 @@ const fn row(address: u32, value: &'static str, id: u32, parameter: u32, what: &
 }
 
 pub const KNOWN: &[KnownPatch] = &[
-    row(0x80153D84, "39000001", WATER_BAZOOKA_SHOT_FLAG, 1, "water bazooka shots' flag"),
-    row(0x80001800, "C4BB8000C03E00103C608000C0031800EC00082AD01E0010809E008C4E800020", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "Kamek's barrier 1500 lower"),
-    row(0x800382B8, "4BFC954D", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "Kamek's barrier 1500 lower"),
-    row(0x8007679C, "60000000", SKELETAL_FISH_BABY_NO_BUBBLE, 1, "no air bubble from hit skeletal fish"),
-    row(0x80054490, "4836F0A9", DODORYU_SHELL_ONLY, 1, "Dodoryu hurt by shells only"),
-    row(0x800564C4, "4836D075", DODORYU_SHELL_ONLY, 1, "Dodoryu hurt by shells only"),
-    row(0x803F82D8, "4BC0A058", MISS_STAR_PIECES, 0xFFFFFC19, "every star bit lost after a miss"),
-    row(0x80002330, "3860FC19483ADFB980010034483F5FA0", MISS_STAR_PIECES, 0xFFFFFC19, "every star bit lost after a miss"),
-    row(0x803F6298, "38600000", NO_HIDDEN_STAR_TABLE, 1, "hidden stars without their table"),
-    row(0x803F5D40, "386000004E800020", NO_SUDDEN_DEATH_DODORYU, 1, "no sudden-death Dodoryu"),
-    row(0x800D02C0, "38600000", BEGOMAN_FIRE_PROOF, 1, "Begomans survive fire ground"),
-    row(0x800D5DD8, "38600000", BEGOMAN_FIRE_PROOF, 1, "Begomans survive fire ground"),
-    row(0x800D7D50, "38600000", BEGOMAN_FIRE_PROOF, 1, "Begomans survive fire ground"),
-    row(0x80275440, "60000000", MESSENGER_ALWAYS_EX, 1, "the 1-up messenger's larger supply"),
-    row(0x8039AA2C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x8039AAF0, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x804A432C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x8039AA48, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x8039AB0C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x804A430C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x8039BF80, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x8039C044, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
-    row(0x804A656C, "60000000", NATIVE_ALREADY, 0, "the console's crash debugger (Nebula reports crashes itself)"),
+    row(0x80153D84, "39000001", WATER_BAZOOKA_SHOT_FLAG, 1, "LumaLink.Patch.WaterCannonFlag"),
+    row(0x80001800, "C4BB8000C03E00103C608000C0031800EC00082AD01E0010809E008C4E800020", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "LumaLink.Patch.KamekBarrierLower"),
+    row(0x800382B8, "4BFC954D", KAMECK_BARRIER_OFFSET_Y, 0xC4BB8000, "LumaLink.Patch.KamekBarrierLower"),
+    row(0x8007679C, "60000000", SKELETAL_FISH_BABY_NO_BUBBLE, 1, "LumaLink.Patch.NoFishBubble"),
+    row(0x80054490, "4836F0A9", DODORYU_SHELL_ONLY, 1, "LumaLink.Patch.DodoryuShellsOnly"),
+    row(0x800564C4, "4836D075", DODORYU_SHELL_ONLY, 1, "LumaLink.Patch.DodoryuShellsOnly"),
+    row(0x803F82D8, "4BC0A058", MISS_STAR_PIECES, 0xFFFFFC19, "LumaLink.Patch.MissLosesStarBits"),
+    row(0x80002330, "3860FC19483ADFB980010034483F5FA0", MISS_STAR_PIECES, 0xFFFFFC19, "LumaLink.Patch.MissLosesStarBits"),
+    row(0x803F6298, "38600000", NO_HIDDEN_STAR_TABLE, 1, "LumaLink.Patch.HiddenStarsNoTable"),
+    row(0x803F5D40, "386000004E800020", NO_SUDDEN_DEATH_DODORYU, 1, "LumaLink.Patch.NoSuddenDeathDodoryu"),
+    row(0x800D02C0, "38600000", BEGOMAN_FIRE_PROOF, 1, "LumaLink.Patch.BegomanFireProof"),
+    row(0x800D5DD8, "38600000", BEGOMAN_FIRE_PROOF, 1, "LumaLink.Patch.BegomanFireProof"),
+    row(0x800D7D50, "38600000", BEGOMAN_FIRE_PROOF, 1, "LumaLink.Patch.BegomanFireProof"),
+    row(0x80275440, "60000000", MESSENGER_ALWAYS_EX, 1, "LumaLink.Patch.MessengerSupply"),
+    row(0x8039AA2C, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x8039AAF0, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x804A432C, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x8039AA48, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x8039AB0C, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x804A430C, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x8039BF80, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x8039C044, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
+    row(0x804A656C, "60000000", NATIVE_ALREADY, 0, "LumaLink.Patch.CrashDebugger"),
 ];
 
 /// How a setting's value is read from what a mod writes at its place in the program.
@@ -111,33 +112,33 @@ const fn set(address: u32, id: u32, reads: Reads, what: &'static str) -> Setting
 
 /// The game's settings, by where the program keeps them.
 const SETTINGS: &[Setting] = &[
-    set(0x801DD690, FLIP_PANEL_OBSERVER_GROUP, Reads::Number, "the size of flip panel observer groups"),
-    set(0x801DCE48, FLIP_PANEL_GROUP, Reads::Number, "the size of flip panel groups"),
-    set(0x80275458, MESSENGER_EX_ONE_UPS, Reads::Number, "the 1-ups from the messenger"),
-    set(0x802750F0, MESSENGER_EX_ONE_UPS, Reads::Compared, "the 1-ups from the messenger"),
-    set(0x802750FC, MESSENGER_EX_ONE_UPS, Reads::Number, "the 1-ups from the messenger"),
-    set(0x802AE8A4, PLAYER_HEALTH, Reads::Number, "the player's health"),
-    set(0x802AE8C4, PLAYER_HEALTH_FIXED, Reads::Skipped, "the player's health stays the same on Daredevil comets"),
-    set(0x802B1C2C, HIT_TAKES_ALL, Reads::Zeroed, "a hit takes all the player's health"),
-    set(0x802B1CD8, HIT_TAKES_ALL, Reads::Zeroed, "a hit takes all the player's health"),
-    set(0x802B079C, LIFE_UP_HEALTH, Reads::Number, "the health a Life Up gives"),
-    set(0x802B07A0, LIFE_UP_HEALTH, Reads::Nothing(0), "a Life Up gives no health"),
-    set(0x802DDF50, NO_LOW_HEALTH_WARNING, Reads::Skipped, "no low health warning"),
-    set(0x803CDB60, NO_DARK_COMET_RULES, Reads::ReturnsZero, "Daredevil comets are like any other"),
-    set(0x803B237C, MAX_LIVES, Reads::Number, "the most lives"),
-    set(0x803B236C, MAX_LIVES, Reads::Number, "the most lives"),
-    set(0x803B2348, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
-    set(0x803B22E4, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
-    set(0x803B2318, STARTING_LIVES, Reads::Number, "the lives a file starts with"),
-    set(0x803B23E0, MAX_STAR_BITS, Reads::Number, "the most star bits kept"),
-    set(0x803B2550, MAX_CARRIED_STAR_BITS, Reads::Number, "the most star bits carried"),
-    set(0x803B2598, MAX_CARRIED_STAR_BITS, Reads::Number, "the most star bits carried"),
-    set(0x80345860, MAX_COINS, Reads::Number, "the most coins in a stage"),
-    set(0x80345890, COINS_PER_ONE_UP, Reads::Number, "coins for a 1-up"),
-    set(0x803458C8, PURPLE_COINS_FOR_STAR, Reads::Compared, "purple coins for their star"),
-    set(0x8034592C, STAR_BITS_PER_ONE_UP, Reads::Number, "star bits for a 1-up"),
-    set(0x802B1CA8, WATER_AIR, Reads::Number, "the air under water"),
-    set(0x802AE8A8, WATER_AIR, Reads::Number, "the air under water"),
+    set(0x801DD690, FLIP_PANEL_OBSERVER_GROUP, Reads::Number, "LumaLink.Patch.FlipPanelObserverGroups"),
+    set(0x801DCE48, FLIP_PANEL_GROUP, Reads::Number, "LumaLink.Patch.FlipPanelGroups"),
+    set(0x80275458, MESSENGER_EX_ONE_UPS, Reads::Number, "LumaLink.Patch.MessengerOneUps"),
+    set(0x802750F0, MESSENGER_EX_ONE_UPS, Reads::Compared, "LumaLink.Patch.MessengerOneUps"),
+    set(0x802750FC, MESSENGER_EX_ONE_UPS, Reads::Number, "LumaLink.Patch.MessengerOneUps"),
+    set(0x802AE8A4, PLAYER_HEALTH, Reads::Number, "LumaLink.Patch.PlayerHealth"),
+    set(0x802AE8C4, PLAYER_HEALTH_FIXED, Reads::Skipped, "LumaLink.Patch.DaredevilHealth"),
+    set(0x802B1C2C, HIT_TAKES_ALL, Reads::Zeroed, "LumaLink.Patch.HitTakesAll"),
+    set(0x802B1CD8, HIT_TAKES_ALL, Reads::Zeroed, "LumaLink.Patch.HitTakesAll"),
+    set(0x802B079C, LIFE_UP_HEALTH, Reads::Number, "LumaLink.Patch.LifeUpHealth"),
+    set(0x802B07A0, LIFE_UP_HEALTH, Reads::Nothing(0), "LumaLink.Patch.LifeUpNoHealth"),
+    set(0x802DDF50, NO_LOW_HEALTH_WARNING, Reads::Skipped, "LumaLink.Patch.NoLowHealthWarning"),
+    set(0x803CDB60, NO_DARK_COMET_RULES, Reads::ReturnsZero, "LumaLink.Patch.NoDaredevilRules"),
+    set(0x803B237C, MAX_LIVES, Reads::Number, "LumaLink.Patch.MaxLives"),
+    set(0x803B236C, MAX_LIVES, Reads::Number, "LumaLink.Patch.MaxLives"),
+    set(0x803B2348, STARTING_LIVES, Reads::Number, "LumaLink.Patch.StartingLives"),
+    set(0x803B22E4, STARTING_LIVES, Reads::Number, "LumaLink.Patch.StartingLives"),
+    set(0x803B2318, STARTING_LIVES, Reads::Number, "LumaLink.Patch.StartingLives"),
+    set(0x803B23E0, MAX_STAR_BITS, Reads::Number, "LumaLink.Patch.MaxStarBits"),
+    set(0x803B2550, MAX_CARRIED_STAR_BITS, Reads::Number, "LumaLink.Patch.MaxCarriedStarBits"),
+    set(0x803B2598, MAX_CARRIED_STAR_BITS, Reads::Number, "LumaLink.Patch.MaxCarriedStarBits"),
+    set(0x80345860, MAX_COINS, Reads::Number, "LumaLink.Patch.MaxCoins"),
+    set(0x80345890, COINS_PER_ONE_UP, Reads::Number, "LumaLink.Patch.CoinsPerOneUp"),
+    set(0x803458C8, PURPLE_COINS_FOR_STAR, Reads::Compared, "LumaLink.Patch.PurpleCoins"),
+    set(0x8034592C, STAR_BITS_PER_ONE_UP, Reads::Number, "LumaLink.Patch.StarBitsPerOneUp"),
+    set(0x802B1CA8, WATER_AIR, Reads::Number, "LumaLink.Patch.WaterAir"),
+    set(0x802AE8A8, WATER_AIR, Reads::Number, "LumaLink.Patch.WaterAir"),
 ];
 
 /// A place in the program a mod set a value of, read from the instruction it wrote.
@@ -433,6 +434,50 @@ const TUNABLES: &[(u32, &str, &str, Carry)] = &[
     (WATER_AIR, "water_air", "MarioActor.cWaterAir", Carry::Number),
 ];
 
+/// Each tunable's number in the game's code (luma_numbers.json: a file's constant, signature "" and place 0), which a
+/// converted mod's code sets (LumaCore set_number).
+const NUMBER_NAMES: &[(&str, &str)] = &[
+    ("FlipPanel.cPanelGroupSize", "Game/MapObj/FlipPanel.cpp#cPanelGroupSize"),
+    ("FlipPanel.cObserverGroupSize", "Game/MapObj/FlipPanel.cpp#cObserverGroupSize"),
+    ("WaterBazooka.cShotInvalidSpinKill", "Game/Enemy/WaterBazooka.cpp#cShotInvalidSpinKill"),
+    ("BossKameckBarrier.cOffsetY", "Game/Boss/BossKameckBarrier.cpp#cOffsetY"),
+    ("SkeletalFishBaby.cBreakAirBubble", "Game/Boss/SkeletalFishBaby.cpp#cBreakAirBubble"),
+    ("GameRules.cDodoryuShellOnly", "Game/System/GameRules.cpp#cDodoryuShellOnly"),
+    ("SequenceUtil.cMissStarPieceNum", "Game/Util/SequenceUtil.cpp#cMissStarPieceNum"),
+    ("SceneUtil.cHiddenStarTable", "Game/Util/SceneUtil.cpp#cHiddenStarTable"),
+    ("SceneUtil.cSuddenDeathDodoryu", "Game/Util/SceneUtil.cpp#cSuddenDeathDodoryu"),
+    ("GameRules.cBegomanFireProof", "Game/System/GameRules.cpp#cBegomanFireProof"),
+    ("KinopioAstro.cMessangerAlwaysEx", "Game/NPC/KinopioAstro.cpp#cMessangerAlwaysEx"),
+    ("KinopioAstro.sMessangerOneUpExNum", "Game/NPC/KinopioAstro.cpp#sMessangerOneUpExNum"),
+    ("GameRules.cPlayerHealth", "Game/System/GameRules.cpp#cPlayerHealth"),
+    ("MarioActor.cDarkCometOneHealth", "Game/Player/MarioActor.cpp#cDarkCometOneHealth"),
+    ("MarioActor.cHitTakesAll", "Game/Player/MarioActor.cpp#cHitTakesAll"),
+    ("GameRules.cLifeUpHealth", "Game/System/GameRules.cpp#cLifeUpHealth"),
+    ("MarioEffect.cLowHealthWarning", "Game/Player/MarioEffect.cpp#cLowHealthWarning"),
+    ("EventUtil.cDarkCometRules", "Game/Util/EventUtil.cpp#cDarkCometRules"),
+    ("GameDataPlayerStatus.cMaxPlayerLeft", "Game/System/GameDataPlayerStatus.cpp#cMaxPlayerLeft"),
+    ("GameRules.cMaxStarBits", "Game/System/GameRules.cpp#cMaxStarBits"),
+    ("GameDataTemporaryInGalaxy.cMaxCarriedStarPieceNum", "Game/System/GameDataTemporaryInGalaxy.cpp#cMaxCarriedStarPieceNum"),
+    ("GameRules.cMaxCoins", "Game/System/GameRules.cpp#cMaxCoins"),
+    ("ScenePlayingResult.cCoinStepNum", "Game/Scene/ScenePlayingResult.cpp#cCoinStepNum"),
+    ("ScenePlayingResult.cStarPieceStepNum", "Game/Scene/ScenePlayingResult.cpp#cStarPieceStepNum"),
+    ("GameDataPlayerStatus.cStartingPlayerLeft", "Game/System/GameDataPlayerStatus.cpp#cStartingPlayerLeft"),
+    ("ScenePlayingResult.cPurpleCoinPowerStarAppearNum", "Game/Scene/ScenePlayingResult.cpp#cPurpleCoinPowerStarAppearNum"),
+    ("MarioActor.cWaterAir", "Game/Player/MarioActor.cpp#cWaterAir"),
+];
+
+/// A recognised patch as the game's number a mod's code sets: its name and value (a bool 1 or 0). None: Nebula covers
+/// it by itself.
+pub fn number(switch: u32, number: u32) -> Option<(&'static str, f64)> {
+    let (key, value) = tunable(switch, number)?;
+    let name = NUMBER_NAMES.iter().find(|n| n.0 == key)?.1;
+    let value = match value {
+        serde_json::Value::Bool(b) => f64::from(u8::from(b)),
+        v => v.as_f64()?,
+    };
+    Some((name, value))
+}
+
 /// Every tunable key a recognised patch can become.
 pub fn tunable_keys() -> impl Iterator<Item = &'static str> {
     TUNABLES.iter().map(|t| t.2)
@@ -461,6 +506,17 @@ pub fn tunable_for_switch(name: &str) -> Option<(&'static str, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_tunable_has_its_number() {
+        for (switch, _, key, _) in TUNABLES {
+            assert!(NUMBER_NAMES.iter().any(|n| n.0 == *key), "{key} has no number name");
+            assert!(number(*switch, 1).is_some(), "{key}");
+        }
+        assert_eq!(number(PLAYER_HEALTH, 1), Some(("Game/System/GameRules.cpp#cPlayerHealth", 1.0)));
+        assert_eq!(number(HIT_TAKES_ALL, 1), Some(("Game/Player/MarioActor.cpp#cHitTakesAll", 1.0)));
+        assert_eq!(number(NO_DARK_COMET_RULES, 1), Some(("Game/Util/EventUtil.cpp#cDarkCometRules", 0.0)));
+    }
 
     #[test]
     fn a_patch_is_known_by_region_address_and_bytes() {

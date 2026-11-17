@@ -1,0 +1,1295 @@
+// kit.net.kit: reliable ordered messages between up to 32 players over the net.local service's
+// datagrams (a star: the host relays), a clock shared with the host, and a small HTTP + WebSocket server for a page
+// (a phone as a controller), all built on svc.net.local and svc.time.
+//
+// A link is made by `reliable(port, local_network)` and joined to a host with `connect`. What arrives comes to the
+// callbacks given to `on_received`, `on_peer` and `on_page_message`, kept with the mod that gave them. A page's
+// files are `PageFile { path, body }`.
+//
+// Wire form (all little-endian; one datagram each):
+//   [0] 0x4C   [1] type   [2] from id   [3] to id   [4..8] seq   [8..12] ack   [12..] payload
+//   types: 1 HELLO (to the host), 2 WELCOME (the id given, in `to`), 3 DATA (reliable, by seq), 4 ACK, 5 PING,
+//          6 BYE, 7 CLOCK_Q (payload: token u32, sent f64), 8 CLOCK_A (token u32, the question's sent f64, the
+//          question came f64, the answer sent f64; the last two the host's)
+// The clock's four times (NTP's): a send is stamped as it goes, a receive as the previous frame's start (datagrams
+// reach a mod at a frame's start, so one handled now came after the previous one began: the earliest it can have).
+// The host answers from its frame, as the question went, so both ways wait alike and frame lengths drop out.
+//   DATA's payload: [0] kind (0 the mod's bytes, 1 a peer joined, 2 a peer left) [1] origin [2] target [3..] bytes
+// The host is id 0, players 1 to 254, 255 is "everyone". Reliability is per pair (host and each player): a DATA is
+// sent again every 12 frames until the cumulative ack passes it, received out of order is held until the gap fills,
+// and a pair silent for 300 frames (5 s at 60) is a peer that left. A PING goes out every 30 frames of quiet.
+
+use optional svc.net.local
+use svc.time
+
+// A link: its slot, 0 when it was not made. A page likewise. Their functions are also module functions
+// (`kit.send(l, to, data)`); the clock is the task `clock(l)`.
+pub struct Link {
+    slot: u32
+    fn connect(self, host: text, port: u16) -> bool { return connect(self, host, port) }
+    fn id(self) -> u8 { return id(self) }
+    fn port(self) -> u16 { return port(self) }
+    fn send(self, to: u8, data: bytes) -> bool { return send(self, to, data) }
+    fn send_all(self, data: bytes) -> bool { return send_all(self, data) }
+    fn peers(self) -> list<u8> { return peers(self) }
+    fn on_received(self, f: fn(Link, u8, bytes)) { on_received(self, f) }
+    fn on_peer(self, f: fn(Link, u8, bool)) { on_peer(self, f) }
+    fn close(self) { close(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+pub struct Page {
+    slot: u32
+    fn url(self) -> text { return url(self) }
+    fn port(self) -> u16 { return page_port(self) }
+    fn on_message(self, f: fn(Page, bytes)) { on_page_message(self, f) }
+    fn send(self, data: bytes, binary: bool = false) { page_send(self, data, binary) }
+    fn close(self) { close_page(self) }
+    fn alive(self) -> bool { return page_alive(self) }
+}
+// One file the page server gives: `path` as the browser asks it ("index.html", "pad.js"; "/" is index.html).
+pub struct PageFile { path: text, body: bytes }
+
+let MAGIC: u8 = 0x4C
+let T_HELLO: u8 = 1
+let T_WELCOME: u8 = 2
+let T_DATA: u8 = 3
+let T_ACK: u8 = 4
+let T_PING: u8 = 5
+let T_BYE: u8 = 6
+let T_CLOCK_Q: u8 = 7
+let T_CLOCK_A: u8 = 8
+let K_USER: u8 = 0
+let K_JOINED: u8 = 1
+let K_LEFT: u8 = 2
+let HOST: u8 = 0
+let ALL: u8 = 255
+let PLAYERS_MOST: u32 = 32
+let RESEND_FRAMES: u64 = 12
+let PING_FRAMES: u64 = 30
+let SILENT_FRAMES: u64 = 300
+let IN_FLIGHT_MOST: u32 = 256        // a pair's DATA not yet acked; past it `send` refuses (false)
+let BODY_MOST: u32 = 1200            // bytes of one message: one datagram under any path's MTU
+
+// net.local's events come as `local.Event`, one case per kind with the kind's values: Datagram(socket, data, from),
+// Accepted(socket), Data(socket, data), ...
+
+// ---- links ----------------------------------------------------------------------------------------------------------
+
+// Each link (slot - 1): its socket, the mod that made it (caller()), its own id, whether it hosts, the
+// callbacks, open.
+var sockets: list<local.Request?> = []
+var link_owner: list<u64> = []
+var own_id: list<u8> = []
+var hosting: list<bool> = []
+var received_fn: list<fn(Link, u8, bytes)?> = []
+var peer_fn: list<fn(Link, u8, bool)?> = []
+var link_open: list<bool> = []
+
+// Each pair (a link and the other side): for a host, one per player; for a player, one: the host.
+struct Pair {
+    link: u32
+    id: u8
+    host: text
+    port: u16
+    next_seq: u32        // the seq the next DATA takes
+    acked: u32           // every seq up to this the other side has
+    wanted: u32          // the next seq we take in order
+    heard: u64           // the frame we last heard from it
+    said: u64            // the frame we last sent to it
+    live: bool
+}
+var pairs: list<Pair> = []
+
+// DATA sent and not yet acked, and DATA received ahead of a gap.
+struct Out { pair: u32, seq: u32, packet: bytes, sent_at: u64 }
+struct Held { pair: u32, seq: u32, payload: bytes }
+var outs: list<Out> = []
+var helds: list<Held> = []
+
+// Clock answers by token: the host's time minus ours, in seconds, and how long the question took.
+var clock_offsets: map<u32, f64> = {}
+var clock_trips: map<u32, f64> = {}
+var clock_token: u32 = 0
+// The host's answers to send from its next frame: the pair and its player's id (a slot may be another's by then), the
+// question's token and sent time (12 bytes), when it came.
+var clock_due_pair: list<u32> = []
+var clock_due_id: list<u8> = []
+var clock_due_q: list<bytes> = []
+var clock_due_came: list<f64> = []
+
+var frame: u64 = 0
+
+fn seconds() -> f64 {
+    return time.monotonic_ns() as f64 / 1000000000.0
+}
+
+// When a datagram handled now came, at the earliest: the previous frame's start (the services give events at a frame's
+// start; one that came during the last delivery waited for this one).
+fn arrived() -> f64 {
+    let n = time.now()
+    return (n.frame_start_ns - n.frame_ns) as f64 / 1000000000.0
+}
+
+fn header(kind: u8, from: u8, to: u8, seq: u32, ack: u32) -> bytes {
+    var b: bytes = b""
+    b.push(MAGIC)
+    b.push(kind)
+    b.push(from)
+    b.push(to)
+    for i in 0..8 {
+        b.push(0)
+    }
+    b.write_u32(4, seq, big: false)
+    b.write_u32(8, ack, big: false)
+    return b
+}
+
+fn join(a: bytes, more: bytes) -> bytes {
+    var b = a
+    for i in 0..more.len() {
+        b.push(more[i])
+    }
+    return b
+}
+
+fn put(pair: u32, packet: bytes) {
+    guard local != none else {
+        return
+    }
+    let p = pairs[pair]
+    if let s = sockets[p.link] {
+        local.send_to(s, p.host, p.port, packet)
+        pairs[pair].said = frame
+    }
+}
+
+// net.local is there only while a mod that needs LumaKit has the player's permission for it (the permission is that
+// mod's, never LumaKit's), so each use of it tests it first. These two serve the sockets already open.
+fn close_socket(s: local.Request) {
+    if local != none {
+        local.close(s)
+    }
+}
+
+fn send_conn(s: local.Request, data: bytes) {
+    if local != none {
+        local.send(s, data)
+    }
+}
+
+fn pair_of(link: u32, id: u8) -> u32? {
+    for i in 0..pairs.len() as u32 {
+        if pairs[i].live and pairs[i].link == link and pairs[i].id == id {
+            return i
+        }
+    }
+    return none
+}
+
+fn pair_at(link: u32, host: text, port: u16) -> u32? {
+    for i in 0..pairs.len() as u32 {
+        if pairs[i].live and pairs[i].link == link and pairs[i].port == port and pairs[i].host == host {
+            return i
+        }
+    }
+    return none
+}
+
+// A dead pair's place is taken again (drop_pair and end_link leave none of its messages behind).
+fn new_pair(link: u32, id: u8, host: text, port: u16) -> u32 {
+    let p = Pair { link: link, id: id, host: host, port: port, next_seq: 1, acked: 0, wanted: 1, heard: frame,
+                   said: 0, live: true }
+    for i in 0..pairs.len() as u32 {
+        if not pairs[i].live {
+            pairs[i] = p
+            return i
+        }
+    }
+    pairs.push(p)
+    return pairs.len() as u32 - 1
+}
+
+fn in_flight(pair: u32) -> u32 {
+    var n: u32 = 0
+    for o in outs {
+        if o.pair == pair {
+            n += 1
+        }
+    }
+    return n
+}
+
+// Queues one reliable DATA on a pair; false when the pair has IN_FLIGHT_MOST waiting.
+fn send_data(pair: u32, kind: u8, origin: u8, target: u8, body: bytes) -> bool {
+    if in_flight(pair) >= IN_FLIGHT_MOST {
+        return false
+    }
+    let p = pairs[pair]
+    let seq = p.next_seq
+    pairs[pair].next_seq = seq + 1
+    var payload: bytes = b""
+    payload.push(kind)
+    payload.push(origin)
+    payload.push(target)
+    let packet = join(join(header(T_DATA, own_id[p.link], p.id, seq, p.wanted - 1), payload), body)
+    outs.push(Out { pair: pair, seq: seq, packet: packet, sent_at: frame })
+    put(pair, packet)
+    return true
+}
+
+fn ack_to(pair: u32, ack: u32) {
+    if ack <= pairs[pair].acked {
+        return
+    }
+    pairs[pair].acked = ack
+    var kept: list<Out> = []
+    for o in outs {
+        if o.pair != pair or o.seq > ack {
+            kept.push(o)
+        }
+    }
+    outs = kept
+}
+
+// A pair is gone: its queues dropped, the others told (a host's) and the mod's callback called.
+fn drop_pair(pair: u32, say: bool) {
+    if not pairs[pair].live {
+        return
+    }
+    pairs[pair].live = false
+    let link = pairs[pair].link
+    let id = pairs[pair].id
+    var kept: list<Out> = []
+    for o in outs {
+        if o.pair != pair {
+            kept.push(o)
+        }
+    }
+    outs = kept
+    var held: list<Held> = []
+    for h in helds {
+        if h.pair != pair {
+            held.push(h)
+        }
+    }
+    helds = held
+    if say {
+        put(pair, header(T_BYE, own_id[link], id, 0, 0))
+    }
+    if hosting[link] {
+        for i in 0..pairs.len() as u32 {
+            if pairs[i].live and pairs[i].link == link {
+                send_data(i, K_LEFT, id, ALL, b"")
+            }
+        }
+    }
+    tell_peer(link, id, false)
+}
+
+fn tell_peer(link: u32, id: u8, joined: bool) {
+    if let f = peer_fn[link] {
+        f(Link { slot: link + 1 }, id, joined)
+    }
+}
+
+fn tell_received(link: u32, from: u8, body: bytes) {
+    if let f = received_fn[link] {
+        f(Link { slot: link + 1 }, from, body)
+    }
+}
+
+// One DATA taken in order: a host relays a player's message to its target(s) and keeps its own share.
+fn deliver(link: u32, pair: u32, payload: bytes) {
+    if payload.len() < 3 {
+        return
+    }
+    let kind = payload[0]
+    let origin = payload[1]
+    let target = payload[2]
+    let body = payload.slice(3, payload.len())
+    if kind == K_JOINED {
+        tell_peer(link, origin, true)
+        return
+    }
+    if kind == K_LEFT {
+        tell_peer(link, origin, false)
+        return
+    }
+    if hosting[link] {
+        let from = pairs[pair].id     // a player speaks only for itself
+        for i in 0..pairs.len() as u32 {
+            if i != pair and pairs[i].live and pairs[i].link == link and (target == ALL or pairs[i].id == target) {
+                send_data(i, K_USER, from, target, body)
+            }
+        }
+        if target == ALL or target == HOST {
+            tell_received(link, from, body)
+        }
+        return
+    }
+    tell_received(link, origin, body)
+}
+
+fn take_data(link: u32, pair: u32, seq: u32, payload: bytes) {
+    let wanted = pairs[pair].wanted
+    if seq < wanted {
+        return                         // a copy sent again: our ACK was lost; the ACK below answers it
+    }
+    if seq > wanted {
+        for h in helds {
+            if h.pair == pair and h.seq == seq {
+                return
+            }
+        }
+        if helds.len() < IN_FLIGHT_MOST as int * 4 {
+            helds.push(Held { pair: pair, seq: seq, payload: payload })
+        }
+        return
+    }
+    deliver(link, pair, payload)
+    pairs[pair].wanted = wanted + 1
+    // What the gap held, in order.
+    var more = true
+    while more {
+        more = false
+        for i in 0..helds.len() {
+            if helds[i].pair == pair and helds[i].seq == pairs[pair].wanted {
+                let h = helds[i]
+                helds.remove(i)
+                deliver(link, pair, h.payload)
+                pairs[pair].wanted = h.seq + 1
+                more = true
+                break
+            }
+        }
+    }
+}
+
+fn on_datagram(link: u32, packet: bytes, host: text, port: u16) {
+    if packet.len() < 12 or packet[0] != MAGIC or not link_open[link] {
+        return
+    }
+    let kind = packet[1]
+    let from = packet[2]
+    let to = packet[3]
+    let seq = packet.read_u32(4, big: false)
+    let ack = packet.read_u32(8, big: false)
+    let payload = packet.slice(12, packet.len())
+    if kind == T_HELLO {
+        if not hosting[link] {
+            return
+        }
+        if let known = pair_at(link, host, port) {
+            put(known, header(T_WELCOME, HOST, pairs[known].id, 0, 0))   // the WELCOME was lost
+            return
+        }
+        guard let id = free_id(link) else {
+            return                     // full: no answer, the player's connect times out
+        }
+        let pair = new_pair(link, id, host, port)
+        put(pair, header(T_WELCOME, HOST, id, 0, 0))
+        for i in 0..pairs.len() as u32 {
+            if pairs[i].live and pairs[i].link == link and i != pair {
+                send_data(i, K_JOINED, id, ALL, b"")           // the others hear of the new one
+                send_data(pair, K_JOINED, pairs[i].id, id, b"") // and it of each of them
+            }
+        }
+        send_data(pair, K_JOINED, HOST, id, b"")
+        tell_peer(link, id, true)
+        return
+    }
+    if kind == T_WELCOME {
+        if hosting[link] or own_id[link] != ALL {
+            return
+        }
+        own_id[link] = to
+        if let pair = pair_of(link, HOST) {
+            pairs[pair].heard = frame
+        }
+        return
+    }
+    // A player hears only its host (whose address may read differently from the one connect named: "localhost").
+    var known: u32? = none
+    if hosting[link] {
+        known = pair_at(link, host, port)
+    } else {
+        known = pair_of(link, HOST)
+    }
+    guard let pair = known else {
+        return
+    }
+    pairs[pair].heard = frame
+    ack_to(pair, ack)
+    if kind == T_DATA {
+        take_data(link, pair, seq, payload)
+        put(pair, header(T_ACK, own_id[link], from, 0, pairs[pair].wanted - 1))
+    } else if kind == T_BYE {
+        drop_pair(pair, false)
+    } else if kind == T_CLOCK_Q and hosting[link] and payload.len() >= 12 {
+        // Answered from the next frame (send_clock_answers), as the question was sent from the asker's.
+        clock_due_pair.push(pair)
+        clock_due_id.push(from)
+        clock_due_q.push(payload.slice(0, 12))
+        clock_due_came.push(arrived())
+    } else if kind == T_CLOCK_A and payload.len() >= 28 {
+        let token = payload.read_u32(0, big: false)
+        let asked = payload.read_f64(4, big: false)
+        let came = payload.read_f64(12, big: false)
+        let went = payload.read_f64(20, big: false)
+        let back = arrived()
+        clock_trips[token] = (back - asked) - (went - came)
+        clock_offsets[token] = ((came - asked) + (went - back)) / 2.0
+    }
+    // T_ACK and T_PING: heard and acked above.
+}
+
+fn free_id(link: u32) -> u8? {
+    var count: u32 = 0
+    for p in pairs {
+        if p.live and p.link == link {
+            count += 1
+        }
+    }
+    if count >= PLAYERS_MOST {
+        return none
+    }
+    for id in 1..255 {
+        if pair_of(link, id as u8) == none {
+            return id as u8
+        }
+    }
+    return none
+}
+
+fn link_index(l: Link) -> u32? {
+    if l.slot == 0 or l.slot > sockets.len() as u32 or not link_open[l.slot - 1] {
+        return none
+    }
+    return l.slot - 1
+}
+
+// A link on `port` (0: one the system picks) of this machine (local_network false) or the local network too. It
+// hosts until `connect` joins it to a host. An empty link (slot 0) when the socket could not be made (the port in
+// use, 16 sockets held, or the calling mod does not have the permission net.local).
+pub fn reliable(port: u16, local_network: bool) -> Link {
+    guard local != none else {
+        log "kit.net.kit: reliable needs the permission net.local"
+        return Link { slot: 0 }
+    }
+    let link = sockets.len() as u32
+    var wide: u32 = 0
+    if local_network {
+        wide = 1
+    }
+    let s = local.udp_open(port, wide, fn(e: local.Event) {
+        match e {
+            local.Event.Datagram(socket, data, from) => on_datagram(link, data, from.host, from.port)
+            else => return
+        }
+    })
+    if s == none {
+        log "kit.net.kit: reliable could not open a socket on port {port}"
+        return Link { slot: 0 }
+    }
+    sockets.push(s)
+    link_owner.push(caller())
+    own_id.push(HOST)
+    hosting.push(true)
+    received_fn.push(none)
+    peer_fn.push(none)
+    link_open.push(true)
+    return Link { slot: link + 1 }
+}
+
+// Joins the link to the host at `host`:`port` (a local-network address): it stops hosting, says HELLO until the host
+// gives it an id (`id(l)` is 255 until then) and hears the players there through `on_peer`. False on an empty or
+// closed link, or one with players already.
+pub fn connect(l: Link, host: text, port: u16) -> bool {
+    guard let link = link_index(l) else {
+        return false
+    }
+    for p in pairs {
+        if p.live and p.link == link {
+            return false
+        }
+    }
+    hosting[link] = false
+    own_id[link] = ALL
+    let pair = new_pair(link, HOST, host, port)
+    put(pair, header(T_HELLO, ALL, HOST, 0, 0))
+    return true
+}
+
+// This side's id: 0 for a host, the host's number for a player, 255 while a player waits for it.
+pub fn id(l: Link) -> u8 {
+    guard let link = link_index(l) else {
+        return ALL
+    }
+    return own_id[link]
+}
+
+// The port the link's socket listens on (the one the system picked when 0 was asked).
+pub fn port(l: Link) -> u16 {
+    guard let link = link_index(l), local != none else {
+        return 0
+    }
+    if let s = sockets[link] {
+        return local.port(s)
+    }
+    return 0
+}
+
+// Sends `data` (at most 1200 bytes) to the player `to` (0: the host), in order with everything this side sent before.
+// False when the link is empty or closed, `to` is no player of it, the data is too long, or 256 messages to that side
+// are still unanswered.
+pub fn send(l: Link, to: u8, data: bytes) -> bool {
+    guard let link = link_index(l) else {
+        return false
+    }
+    if data.len() > BODY_MOST as int or to == ALL {
+        return false
+    }
+    if hosting[link] {
+        guard let pair = pair_of(link, to) else {
+            return false
+        }
+        return send_data(pair, K_USER, HOST, to, data)
+    }
+    guard let pair = pair_of(link, HOST) else {
+        return false
+    }
+    if own_id[link] == ALL {
+        return false                   // no id yet
+    }
+    return send_data(pair, K_USER, own_id[link], to, data)
+}
+
+// Sends `data` to every other player of the link (a player's goes through the host).
+pub fn send_all(l: Link, data: bytes) -> bool {
+    guard let link = link_index(l) else {
+        return false
+    }
+    if data.len() > BODY_MOST as int {
+        return false
+    }
+    var ok = true
+    for i in 0..pairs.len() as u32 {
+        if pairs[i].live and pairs[i].link == link {
+            if hosting[link] or own_id[link] != ALL {
+                ok = send_data(i, K_USER, own_id[link], ALL, data) and ok
+            } else {
+                ok = false             // no id yet
+            }
+        }
+    }
+    return ok
+}
+
+// The ids this side knows are there: a host's players, or a player's host (0) once it has an id.
+pub fn peers(l: Link) -> list<u8> {
+    var ids: list<u8> = []
+    guard let link = link_index(l) else {
+        return ids
+    }
+    for p in pairs {
+        if p.live and p.link == link {
+            ids.push(p.id)
+        }
+    }
+    return ids
+}
+
+// The mod's function for each message: (link, the sender's id, its bytes), in the order sent.
+pub fn on_received(l: Link, f: fn(Link, u8, bytes)) {
+    if let link = link_index(l) {
+        received_fn[link] = f
+    }
+}
+
+// The mod's function for each player that joins (true) or leaves (false).
+pub fn on_peer(l: Link, f: fn(Link, u8, bool)) {
+    if let link = link_index(l) {
+        peer_fn[link] = f
+    }
+}
+
+// Ends the link: every other side is told, nothing more is sent or heard. Any number of times.
+pub fn close(l: Link) {
+    if let link = link_index(l) {
+        end_link(link)
+    }
+}
+
+pub fn alive(l: Link) -> bool {
+    return link_index(l) != none
+}
+
+fn end_link(link: u32) {
+    for i in 0..pairs.len() as u32 {
+        if pairs[i].live and pairs[i].link == link {
+            put(i, header(T_BYE, own_id[link], pairs[i].id, 0, 0))
+            pairs[i].live = false
+        }
+    }
+    var kept: list<Out> = []
+    for o in outs {
+        if pairs[o.pair].link != link {
+            kept.push(o)
+        }
+    }
+    outs = kept
+    var held: list<Held> = []
+    for h in helds {
+        if pairs[h.pair].link != link {
+            held.push(h)
+        }
+    }
+    helds = held
+    if let s = sockets[link] {
+        close_socket(s)
+    }
+    sockets[link] = none
+    link_open[link] = false
+    received_fn[link] = none
+    peer_fn[link] = none
+}
+
+// The host's time minus ours, in seconds: four questions 2 frames apart, the answer of the quickest. A host
+// gives 0. The task stops (its `wait` gives nothing) when no answer came in 2 seconds.
+pub task clock(l: Link) -> f64 {
+    guard let link = link_index(l) else {
+        stop
+    }
+    if hosting[link] {
+        return 0.0
+    }
+    var tokens: list<u32> = []
+    for n in 0..4 {
+        guard let pair = pair_of(link, HOST) else {
+            stop
+        }
+        clock_token += 1
+        let token = clock_token
+        tokens.push(token)
+        var q = header(T_CLOCK_Q, own_id[link], HOST, 0, pairs[pair].wanted - 1)
+        for i in 0..12 {
+            q.push(0)
+        }
+        q.write_u32(12, token, big: false)
+        q.write_f64(16, seconds(), big: false)
+        put(pair, q)
+        wait 2 frames
+    }
+    let deadline = frame + 120
+    wait until clock_offsets.contains(tokens[3]) or frame >= deadline
+    // The quickest exchange's offset. A trip is the four times' (each receive stamped at its earliest), so it may be a
+    // little below 0.
+    var answered = false
+    var best: f64 = 0.0
+    var offset: f64 = 0.0
+    for t in tokens {
+        if let trip = clock_trips.remove(t) {
+            let o = clock_offsets.remove(t) ?? 0.0
+            if not answered or trip < best {
+                answered = true
+                best = trip
+                offset = o
+            }
+        }
+    }
+    if not answered {
+        stop
+    }
+    return offset
+}
+
+// ---- the page server ------------------------------------------------------------------------------------------------
+
+// Each page (slot - 1): its listener, owner, files and callback; each connection: its socket, page, bytes in, and
+// whether it is a WebSocket now.
+var listeners: list<local.Request?> = []
+var page_owner: list<u64> = []
+var page_files: list<list<PageFile>> = []
+var page_fn: list<fn(Page, bytes)?> = []
+var conns: list<local.Request> = []
+var conn_page: list<u32> = []
+var conn_in: list<bytes> = []
+var conn_ws: list<bool> = []
+var conn_message: list<bytes> = []      // a fragmented message so far
+
+let PAGE_REQUEST_MOST: int = 16384       // an HTTP request's head
+let PAGE_MESSAGE_MOST: int = 1048576     // one WebSocket message from the page
+
+fn conn_of(s: local.Request) -> int? {
+    for i in 0..conns.len() {
+        if same(conns[i], s) {
+            return i
+        }
+    }
+    return none
+}
+
+fn drop_conn(i: int) {
+    close_socket(conns[i])
+    conns.remove(i)
+    conn_page.remove(i)
+    conn_in.remove(i)
+    conn_ws.remove(i)
+    conn_message.remove(i)
+}
+
+fn find_bytes(b: bytes, what: bytes, from: int) -> int? {
+    if what.len() == 0 or b.len() < what.len() {
+        return none
+    }
+    for i in from..(b.len() - what.len() + 1) {
+        var same = true
+        for k in 0..what.len() {
+            if b[i + k] != what[k] {
+                same = false
+                break
+            }
+        }
+        if same {
+            return i
+        }
+    }
+    return none
+}
+
+fn lower_byte(c: u8) -> u8 {
+    if c >= 65 and c <= 90 {
+        return c + 32
+    }
+    return c
+}
+
+// The value of header `name` (lower case, with ": ") in an HTTP head, trimmed; none when absent.
+fn header_value(head: bytes, name: text) -> bytes? {
+    let want = name.bytes()
+    var line = 0
+    while line < head.len() {
+        guard let end = find_bytes(head, b"\r\n", line) else {
+            return none
+        }
+        if end - line > want.len() {
+            var same = true
+            for k in 0..want.len() {
+                if lower_byte(head[line + k]) != want[k] {
+                    same = false
+                    break
+                }
+            }
+            if same {
+                var a = line + want.len()
+                var z = end
+                while a < z and head[a] == 32 {
+                    a += 1
+                }
+                while z > a and head[z - 1] == 32 {
+                    z -= 1
+                }
+                return head.slice(a, z)
+            }
+        }
+        line = end + 2
+    }
+    return none
+}
+
+fn content_type(path: text) -> text {
+    if path.ends_with(".html") {
+        return "text/html; charset=utf-8"
+    }
+    if path.ends_with(".js") {
+        return "text/javascript; charset=utf-8"
+    }
+    if path.ends_with(".css") {
+        return "text/css; charset=utf-8"
+    }
+    if path.ends_with(".json") {
+        return "application/json"
+    }
+    if path.ends_with(".png") {
+        return "image/png"
+    }
+    if path.ends_with(".svg") {
+        return "image/svg+xml"
+    }
+    return "application/octet-stream"
+}
+
+fn answer(i: int, status: text, kind: text, body: bytes) {
+    let head = "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {body.len()}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+    send_conn(conns[i], join(head.bytes(), body))
+}
+
+// An HTTP request's head is in: a WebSocket upgrade, a file, or 404. Plain HTTP connections close after the answer.
+fn on_request(i: int, head: bytes) {
+    let page = conn_page[i]
+    guard let sp1 = find_bytes(head, b" ", 0) else {
+        drop_conn(i)
+        return
+    }
+    guard let sp2 = find_bytes(head, b" ", sp1 + 1) else {
+        drop_conn(i)
+        return
+    }
+    if head.slice(0, sp1) != b"GET" {
+        answer(i, "405 Method Not Allowed", "text/plain", b"GET only")
+        drop_conn(i)
+        return
+    }
+    if let key = header_value(head, "sec-websocket-key:") {
+        let accept = base64(sha1(join(key, b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11")))
+        let head_out = join(join(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ", accept), b"\r\n\r\n")
+        send_conn(conns[i], head_out)
+        conn_ws[i] = true
+        on_frames(i)                   // frames that came with the head
+        return
+    }
+    var path = head.slice(sp1 + 1, sp2)
+    if let q = find_bytes(path, b"?", 0) {
+        path = path.slice(0, q)
+    }
+    var name: bytes = b"index.html"
+    if path.len() > 1 {
+        name = path.slice(1, path.len())
+    }
+    for f in page_files[page] {
+        if f.path.bytes() == name {
+            answer(i, "200 OK", content_type(f.path), f.body)
+            drop_conn(i)
+            return
+        }
+    }
+    answer(i, "404 Not Found", "text/plain", b"not found")
+    drop_conn(i)
+}
+
+// WebSocket frames from the page (RFC 6455 5.2; a client's are masked): text and binary go to the page's callback,
+// a ping is answered, a close closes.
+fn on_frames(i: int) {
+    while true {
+        let b = conn_in[i]
+        if b.len() < 2 {
+            return
+        }
+        let fin = (b[0] & 0x80) != 0
+        let op = b[0] & 0x0F
+        if (b[1] & 0x80) == 0 {
+            drop_conn(i)               // an unmasked frame from a client: the protocol broken
+            return
+        }
+        var len: u64 = (b[1] & 0x7F) as u64
+        var at = 2
+        if len == 126 {
+            if b.len() < 4 {
+                return
+            }
+            len = b.read_u16(2, big: true) as u64
+            at = 4
+        } else if len == 127 {
+            if b.len() < 10 {
+                return
+            }
+            len = b.read_u64(2, big: true)
+            at = 10
+        }
+        if len > PAGE_MESSAGE_MOST as u64 {
+            drop_conn(i)
+            return
+        }
+        if b.len() < at + 4 + len as int {
+            return
+        }
+        var data: bytes = b""
+        for k in 0..len as int {
+            data.push(b[at + 4 + k] ^ b[at + k % 4])
+        }
+        conn_in[i] = b.slice(at + 4 + len as int, b.len())
+        if op == 8 {
+            send_conn(conns[i], ws_frame(8, b""))
+            drop_conn(i)
+            return
+        }
+        if op == 9 {
+            send_conn(conns[i], ws_frame(10, data))
+            continue
+        }
+        if op == 10 {
+            continue
+        }
+        let so_far = join(conn_message[i], data)
+        if so_far.len() > PAGE_MESSAGE_MOST {
+            drop_conn(i)
+            return
+        }
+        if not fin {
+            conn_message[i] = so_far
+            continue
+        }
+        conn_message[i] = b""
+        let page = conn_page[i]
+        if let f = page_fn[page] {
+            f(Page { slot: page + 1 }, so_far)
+        }
+    }
+}
+
+fn ws_frame(op: u8, data: bytes) -> bytes {
+    var b: bytes = b""
+    b.push(0x80 | op)
+    if data.len() < 126 {
+        b.push(data.len() as u8)
+    } else if data.len() < 65536 {
+        b.push(126)
+        b.push(0)
+        b.push(0)
+        b.write_u16(2, data.len() as u16, big: true)
+    } else {
+        b.push(127)
+        for k in 0..8 {
+            b.push(0)
+        }
+        b.write_u64(2, data.len() as u64, big: true)
+    }
+    return join(b, data)
+}
+
+fn on_page_event(page: u32, e: local.Event) {
+    match e {
+        local.Event.Accepted(socket) => {
+            conns.push(socket)
+            conn_page.push(page)
+            conn_in.push(b"")
+            conn_ws.push(false)
+            conn_message.push(b"")
+        }
+        local.Event.Closed(socket, status, code, reason) => {
+            if let i = conn_of(socket) {
+                drop_conn(i)
+            }
+        }
+        local.Event.Data(socket, data) => {
+            if let i = conn_of(socket) {
+                on_page_data(i, data)
+            }
+        }
+        else => return
+    }
+}
+
+// Bytes from a page's connection: an HTTP head, or WebSocket frames once upgraded.
+fn on_page_data(i: int, data: bytes) {
+    conn_in[i] = join(conn_in[i], data)
+    if conn_ws[i] {
+        on_frames(i)
+        return
+    }
+    if let end = find_bytes(conn_in[i], b"\r\n\r\n", 0) {
+        let head = conn_in[i].slice(0, end + 2)
+        conn_in[i] = conn_in[i].slice(end + 4, conn_in[i].len())
+        on_request(i, head)
+    } else if conn_in[i].len() > PAGE_REQUEST_MOST {
+        answer(i, "431 Request Header Fields Too Large", "text/plain", b"")
+        drop_conn(i)
+    }
+}
+
+fn page_index(p: Page) -> u32? {
+    if p.slot == 0 or p.slot > listeners.len() as u32 or listeners[p.slot - 1] == none {
+        return none
+    }
+    return p.slot - 1
+}
+
+// Serves `files` on `port` of the local network (0: one the system picks) to a browser: GET of a file's path, and a
+// WebSocket at any path whose messages go to `on_page_message`. An empty page (slot 0) when the port is in use or
+// 16 sockets are held, or the calling mod does not have the permission net.local.
+pub fn serve_page(port: u16, files: list<PageFile>) -> Page {
+    guard local != none else {
+        log "kit.net.kit: serve_page needs the permission net.local"
+        return Page { slot: 0 }
+    }
+    let page = listeners.len() as u32
+    let s = local.tcp_listen(port, 1, fn(e: local.Event) {
+        on_page_event(page, e)
+    })
+    if s == none {
+        log "kit.net.kit: serve_page could not listen on port {port}"
+        return Page { slot: 0 }
+    }
+    listeners.push(s)
+    page_owner.push(caller())
+    page_files.push(files)
+    page_fn.push(none)
+    return Page { slot: page + 1 }
+}
+
+// The address a phone on the same network opens: http://<this machine's local-network address>:<port>/.
+pub fn url(p: Page) -> text {
+    guard let page = page_index(p), local != none else {
+        return ""
+    }
+    let at = local.address() ?? "127.0.0.1"
+    if let s = listeners[page] {
+        let number = local.port(s)
+        return "http://{at}:{number}/"
+    }
+    return ""
+}
+
+// The port the page is served on (the one the system picked when 0 was asked); 0 for an empty or closed page.
+pub fn page_port(p: Page) -> u16 {
+    guard let page = page_index(p), local != none else {
+        return 0
+    }
+    if let s = listeners[page] {
+        return local.port(s)
+    }
+    return 0
+}
+
+// The mod's function for each whole message the page sends over its WebSocket.
+pub fn on_page_message(p: Page, f: fn(Page, bytes)) {
+    if let page = page_index(p) {
+        page_fn[page] = f
+    }
+}
+
+// Sends `data` to every page connected over WebSocket (binary when `binary`, else UTF-8 text).
+pub fn page_send(p: Page, data: bytes, binary: bool = false) {
+    guard let page = page_index(p) else {
+        return
+    }
+    var op: u8 = 1
+    if binary {
+        op = 2
+    }
+    let frame_out = ws_frame(op, data)
+    for i in 0..conns.len() {
+        if conn_page[i] == page and conn_ws[i] {
+            send_conn(conns[i], frame_out)
+        }
+    }
+}
+
+pub fn page_alive(p: Page) -> bool {
+    return page_index(p) != none
+}
+
+// Stops serving: the listener and every connection close. Any number of times.
+pub fn close_page(p: Page) {
+    if let page = page_index(p) {
+        end_page(page)
+    }
+}
+
+fn end_page(page: u32) {
+    var i = conns.len()
+    while i > 0 {
+        i -= 1
+        if conn_page[i] == page {
+            drop_conn(i)
+        }
+    }
+    if let s = listeners[page] {
+        close_socket(s)
+    }
+    listeners[page] = none
+    page_fn[page] = none
+    page_files[page] = []
+}
+
+// ---- SHA-1 (FIPS 180-4) and base64, for the WebSocket accept --------------------------------------------------------
+
+let M32: u64 = 0xFFFFFFFF
+
+fn rotl(x: u64, n: u64) -> u64 {
+    return ((x << n) | (x >> (32 - n))) & M32
+}
+
+fn sha1(message: bytes) -> bytes {
+    var m = message
+    let bits = message.len() as u64 * 8
+    m.push(0x80)
+    while m.len() % 64 != 56 {
+        m.push(0)
+    }
+    for k in 0..8 {
+        m.push(0)
+    }
+    m.write_u64(m.len() - 8, bits, big: true)
+    var h0: u64 = 0x67452301
+    var h1: u64 = 0xEFCDAB89
+    var h2: u64 = 0x98BADCFE
+    var h3: u64 = 0x10325476
+    var h4: u64 = 0xC3D2E1F0
+    var w: list<u64> = []
+    for t in 0..80 {
+        w.push(0)
+    }
+    var block = 0
+    while block < m.len() {
+        for t in 0..16 {
+            w[t] = m.read_u32(block + t * 4, big: true) as u64
+        }
+        for t in 16..80 {
+            w[t] = rotl(w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16], 1)
+        }
+        var a = h0
+        var b = h1
+        var c = h2
+        var d = h3
+        var e = h4
+        for t in 0..80 {
+            var f: u64 = 0
+            var k: u64 = 0
+            if t < 20 {
+                f = (b & c) | ((b ^ M32) & d)
+                k = 0x5A827999
+            } else if t < 40 {
+                f = b ^ c ^ d
+                k = 0x6ED9EBA1
+            } else if t < 60 {
+                f = (b & c) | (b & d) | (c & d)
+                k = 0x8F1BBCDC
+            } else {
+                f = b ^ c ^ d
+                k = 0xCA62C1D6
+            }
+            let temp = (rotl(a, 5) + f + e + k + w[t]) & M32
+            e = d
+            d = c
+            c = rotl(b, 30)
+            b = a
+            a = temp
+        }
+        h0 = (h0 + a) & M32
+        h1 = (h1 + b) & M32
+        h2 = (h2 + c) & M32
+        h3 = (h3 + d) & M32
+        h4 = (h4 + e) & M32
+        block += 64
+    }
+    var out: bytes = b""
+    for k in 0..20 {
+        out.push(0)
+    }
+    out.write_u32(0, h0 as u32, big: true)
+    out.write_u32(4, h1 as u32, big: true)
+    out.write_u32(8, h2 as u32, big: true)
+    out.write_u32(12, h3 as u32, big: true)
+    out.write_u32(16, h4 as u32, big: true)
+    return out
+}
+
+let B64: bytes = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+fn base64(b: bytes) -> bytes {
+    var out: bytes = b""
+    var i = 0
+    while i + 3 <= b.len() {
+        let n = (b[i] as u32 << 16) | (b[i + 1] as u32 << 8) | b[i + 2] as u32
+        out.push(B64[(n >> 18) as int & 63])
+        out.push(B64[(n >> 12) as int & 63])
+        out.push(B64[(n >> 6) as int & 63])
+        out.push(B64[n as int & 63])
+        i += 3
+    }
+    let rest = b.len() - i
+    if rest == 1 {
+        let n = b[i] as u32 << 16
+        out.push(B64[(n >> 18) as int & 63])
+        out.push(B64[(n >> 12) as int & 63])
+        out.push(61)
+        out.push(61)
+    } else if rest == 2 {
+        let n = (b[i] as u32 << 16) | (b[i + 1] as u32 << 8)
+        out.push(B64[(n >> 18) as int & 63])
+        out.push(B64[(n >> 12) as int & 63])
+        out.push(B64[(n >> 6) as int & 63])
+        out.push(61)
+    }
+    return out
+}
+
+// ---- frames and stopping mods ---------------------------------------------------------------------------------------
+
+// A mod that made links or pages was taken out: they close, the others go on.
+on mods.stopped(gone) {
+    for link in 0..sockets.len() as u32 {
+        if link_open[link] and link_owner[link] == gone {
+            end_link(link)
+        }
+    }
+    for page in 0..listeners.len() as u32 {
+        if listeners[page] != none and page_owner[page] == gone {
+            end_page(page)
+        }
+    }
+}
+
+// Each frame: DATA not acked in 12 frames sent again, a PING after 30 quiet frames, a pair silent for 300 gone, and a
+// player's HELLO said again until its WELCOME comes.
+// The clock answers due (T_CLOCK_Q, last frame's): each the question's token and sent time, when it came, and the time
+// it goes.
+fn send_clock_answers() {
+    for i in 0..clock_due_pair.len() {
+        let pair = clock_due_pair[i]
+        if pair >= pairs.len() as u32 or not pairs[pair].live or pairs[pair].id != clock_due_id[i] {
+            continue
+        }
+        var answer = join(header(T_CLOCK_A, HOST, pairs[pair].id, 0, pairs[pair].wanted - 1), clock_due_q[i])
+        for k in 0..16 {
+            answer.push(0)
+        }
+        answer.write_f64(24, clock_due_came[i], big: false)
+        answer.write_f64(32, seconds(), big: false)
+        put(pair, answer)
+    }
+    clock_due_pair = []
+    clock_due_id = []
+    clock_due_q = []
+    clock_due_came = []
+}
+
+on frame {
+    frame += 1
+    if clock_due_pair.len() > 0 {
+        send_clock_answers()
+    }
+    if pairs.len() == 0 {
+        return
+    }
+    for o in 0..outs.len() {
+        if frame - outs[o].sent_at >= RESEND_FRAMES {
+            outs[o].sent_at = frame
+            let pair = outs[o].pair
+            // The packet's ack is brought up to date: the other side learns what we have even from a resend.
+            var packet = outs[o].packet
+            packet.write_u32(8, pairs[pair].wanted - 1, big: false)
+            put(pair, packet)
+        }
+    }
+    for i in 0..pairs.len() as u32 {
+        if not pairs[i].live {
+            continue
+        }
+        let link = pairs[i].link
+        if frame - pairs[i].heard >= SILENT_FRAMES {
+            drop_pair(i, false)
+            continue
+        }
+        if not hosting[link] and own_id[link] == ALL {
+            if frame - pairs[i].said >= RESEND_FRAMES {
+                put(i, header(T_HELLO, ALL, HOST, 0, 0))
+            }
+            continue
+        }
+        if frame - pairs[i].said >= PING_FRAMES {
+            put(i, header(T_PING, own_id[link], pairs[i].id, 0, pairs[i].wanted - 1))
+        }
+    }
+}

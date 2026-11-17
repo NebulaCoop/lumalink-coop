@@ -1,0 +1,82 @@
+{
+  "$comment": "kit/player.form/<id>.json (lumakit data version 1). A form of the mod without code: every field of kit.player.form.Form but the functions; look, look_luigi, aura and music name the mod's own model, effect and sound; physics maps the player's constants by name (MarioConst's fields) to a multiplier; base is the game form kept under the look.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "look": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "look_luigi": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "aura": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "music": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "timer_frames": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 216000,
+      "default": null
+    },
+    "ends_on_damage": {
+      "type": "boolean",
+      "default": true
+    },
+    "meter": {
+      "type": "boolean",
+      "default": false
+    },
+    "scale": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10,
+      "default": 1
+    },
+    "opacity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 1
+    },
+    "hurts_on_touch": {
+      "type": "boolean",
+      "default": false
+    },
+    "physics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "default": {}
+    },
+    "base": {
+      "enum": [
+        "Normal",
+        "Bee",
+        "Boo",
+        "Spring",
+        "Fire",
+        "Ice",
+        "Flying",
+        "Rainbow"
+      ],
+      "default": "Normal"
+    }
+  }
+}

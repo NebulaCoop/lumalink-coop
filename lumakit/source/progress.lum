@@ -1,0 +1,320 @@
+// kit.progress: stars beyond the game's own counted, what
+// getting a star does, comets added to any galaxy, flags and numbers kept per save file, new-file rules.
+// Stars. A star of a galaxy the game knows is the game's (its own save data, GameDataFunction). A star of a galaxy a
+// mod adds (kit.stage) is kept by the kit on the save file (svc.save: a file's copy takes it along, an erased file
+// forgets it) and counted into the game's own total wherever the game asks for it
+// (GameDataFunction::calcCurrentPowerStarNum, MR::getPowerStarNum), so star gates open past 120.
+// on_star: when the game records a star as got (GameDataFunction::setGameFlagPowerStarSuccess), each mod's function
+// is asked, newest first; the first that does not answer Star decides: Nothing (the star is not recorded) or Instead
+// (kit.item gives that, and the star is not recorded).
+// Comets: a comet added to a galaxy's scenario is what the game's comet schedule answers for that galaxy
+// (GalaxyCometScheduler isCometLand, getEncounterCometName, getEncounterCometPowerStarId) while the mod is on.
+// Flags and numbers: per file, per mod, by id; their handles' functions are also module functions (`flag_get`).
+// Everything belongs to the mod that made it: its on_star and on_new_file functions and its comets go when
+// it stops; its flags, numbers and stars stay on the file for when it is on again.
+
+use ./item
+use ./stage
+use svc.save
+use svc.mods
+
+// A kit value written, as kit.item's put. Not pub (item.lum says why).
+fn put(key: text, value: bytes) {
+    save.set(key, value)
+}
+
+pub enum StarGet { Star, Nothing, Instead(g: item.Gives) }
+pub struct Flag {
+    key: text
+    fn get(self) -> bool { return flag_get(self) }
+    fn set(self, value: bool) { flag_set(self, value) }
+}
+pub struct Number {
+    key: text
+    fn get(self) -> i64 { return number_get(self) }
+    fn set(self, v: i64) { number_set(self, v) }
+    fn add(self, d: i64) -> i64 { return number_add(self, d) }
+}
+
+// The functions asked when a star is got, and at a new file; who gave each (kept with the giver:).
+var star_fns: list<fn(text, u32) -> StarGet> = []
+var star_owners: list<u64> = []
+var file_fns: list<fn()> = []
+var file_owners: list<u64> = []
+// Comets added: the galaxy, its scenario, the comet, the mod.
+var comet_galaxy: list<text> = []
+var comet_scenario: list<u32> = []
+var comet_kind: list<stage.Comet> = []
+var comet_owner: list<u64> = []
+
+// ---- the kit's own stars (galaxies the game does not know) ----------------------------------------------------------
+
+let stars_key: text = "kit.progress.stars"
+
+fn kit_stars() -> list<text> {
+    if let data = item.kept(stars_key) {
+        return json.decode<list<text>>(data) ?? []
+    }
+    return []
+}
+
+fn star_name(galaxy: text, scenario: u32) -> text {
+    return "{galaxy}/{scenario}"
+}
+
+// Whether the galaxy is one a mod added (kit.stage): its stars are the kit's.
+fn is_mod_galaxy(galaxy: text) -> bool {
+    return stage.find(galaxy) != none
+}
+
+// The game's total wherever it asks: the kit's stars counted in.
+hook after GameDataFunction::calcCurrentPowerStarNum() -> n {
+    result = n + kit_stars().len() as i32
+}
+
+// The game's stars and every mod's, on this file.
+pub fn stars() -> u32 {
+    let n = GameDataFunction::calcCurrentPowerStarNum()
+    if n < 0 {
+        return 0
+    }
+    return n as u32
+}
+
+pub fn has_star(galaxy: text, scenario: u32) -> bool {
+    if is_mod_galaxy(galaxy) {
+        return kit_stars().contains(star_name(galaxy, scenario))
+    }
+    return GameDataFunction::hasPowerStar(galaxy, scenario as i32)
+}
+
+// The star recorded as got on this file, as the game records its own (so on_star functions are asked for it too).
+pub fn give_star(galaxy: text, scenario: u32) {
+    GameDataFunction::setGameFlagPowerStarSuccess(galaxy, scenario as i32, true)
+}
+
+// What getting a star does, for the calling mod: asked with the galaxy and the scenario.
+pub fn on_star(f: fn(text, u32) -> StarGet) {
+    star_fns.push(f)
+    star_owners.push(caller())
+}
+
+wrap GameDataFunction::setGameFlagPowerStarSuccess(galaxy, scenario, success) {
+    guard let name = galaxy else {
+        proceed()
+        return
+    }
+    if not success or scenario < 0 {
+        proceed()
+        return
+    }
+    // Newest first; the first answer that is not Star decides.
+    var i = star_fns.len()
+    while i > 0 {
+        i -= 1
+        match star_fns[i](name, scenario as u32) {
+            StarGet.Star => {}
+            StarGet.Nothing => return
+            StarGet.Instead(g) => {
+                item.give(g)
+                return
+            }
+        }
+    }
+    if is_mod_galaxy(name) {
+        // The kit's own star: on the file, once.
+        var all = kit_stars()
+        let s = star_name(name, scenario as u32)
+        if not all.contains(s) {
+            all.push(s)
+            put(stars_key, json.encode(all).bytes())
+        }
+        return
+    }
+    proceed()
+}
+
+// ---- comets ---------------------------------------------------------------------------------------------------------
+
+// The game's own names of its comets (the names its comet schedule answers with).
+fn comet_name(c: stage.Comet) -> text {
+    match c {
+        stage.Comet.Speedy => return "Red"
+        stage.Comet.Daredevil => return "Dark"
+        stage.Comet.Cosmic => return "Ghost"
+        stage.Comet.FastFoe => return "Quick"
+        stage.Comet.Purple => return "Purple"
+    }
+}
+
+// The newest comet added to the galaxy, its place in the lists; none when there is none.
+fn comet_of(galaxy: text) -> int? {
+    var i = comet_galaxy.len()
+    while i > 0 {
+        i -= 1
+        if comet_galaxy[i] == galaxy {
+            return i
+        }
+    }
+    return none
+}
+
+// A comet over the galaxy's scenario for as long as the calling mod is on; a second for the same
+// galaxy by the same mod replaces the first, another mod's newer one holds it.
+pub fn add_comet(galaxy: text, scenario: u32, comet: stage.Comet) {
+    let owner = caller()
+    for i in 0..comet_galaxy.len() {
+        if comet_galaxy[i] == galaxy and comet_owner[i] == owner {
+            comet_scenario[i] = scenario
+            comet_kind[i] = comet
+            return
+        }
+    }
+    comet_galaxy.push(galaxy)
+    comet_scenario.push(scenario)
+    comet_kind.push(comet)
+    comet_owner.push(owner)
+}
+
+hook after GalaxyCometScheduler::isCometLand(galaxy) -> landed {
+    if let name = galaxy {
+        if comet_of(name) != none {
+            result = true
+        }
+    }
+}
+
+hook after GalaxyCometScheduler::getEncounterCometName(galaxy) -> was {
+    if let name = galaxy {
+        if let i = comet_of(name) {
+            result = comet_name(comet_kind[i])
+        }
+    }
+}
+
+hook after GalaxyCometScheduler::getEncounterCometPowerStarId(galaxy) -> was {
+    if let name = galaxy {
+        if let i = comet_of(name) {
+            result = comet_scenario[i] as i32
+        }
+    }
+}
+
+// ---- flags and numbers ----------------------------------------------------------------------------------------------
+
+// A per-file flag of the calling mod (following the file's copy and erase).
+pub fn flag(id: text) -> Flag {
+    return flag_of(caller(), id)
+}
+
+// The key is kit.item's save_key (by the mod's id); empty for a mod that is not running, which reads false and keeps
+// nothing.
+fn flag_of(owner: u64, id: text) -> Flag {
+    return Flag { key: item.save_key(owner, "progress", "flag", id) ?? "" }
+}
+
+pub fn flag_get(f: Flag) -> bool {
+    if f.key == "" {
+        return false
+    }
+    if let data = item.kept(f.key) {
+        return json.decode<bool>(data) ?? false
+    }
+    return false
+}
+
+// Only the calling mod's own flag is set: a Flag is a plain key, so one naming another mod's is refused.
+pub fn flag_set(f: Flag, value: bool) {
+    if f.key == "" {
+        return
+    }
+    if not item.owns_key(caller(), f.key, "progress", "flag") {
+        log "kit: a mod set a flag that is not its own ({f.key}); not set"
+        return
+    }
+    put(f.key, json.encode(value).bytes())
+}
+
+// The calling mod's flag `id` set in one call.
+pub fn set_flag(id: text, value: bool) {
+    flag_set(flag(id), value)
+}
+
+// A per-file number of the calling mod: experience, achievements.
+pub fn number(id: text) -> Number {
+    return Number { key: item.save_key(caller(), "progress", "number", id) ?? "" }
+}
+
+pub fn number_get(n: Number) -> i64 {
+    if n.key == "" {
+        return 0
+    }
+    if let data = item.kept(n.key) {
+        return json.decode<i64>(data) ?? 0
+    }
+    return 0
+}
+
+// Only the calling mod's own number is set, as flag_set.
+pub fn number_set(n: Number, v: i64) {
+    if n.key == "" {
+        return
+    }
+    if not item.owns_key(caller(), n.key, "progress", "number") {
+        log "kit: a mod set a number that is not its own ({n.key}); not set"
+        return
+    }
+    put(n.key, json.encode(v).bytes())
+}
+
+// The number moved by `d`: its new value.
+pub fn number_add(n: Number, d: i64) -> i64 {
+    let v = number_get(n) + d
+    number_set(n, v)
+    return v
+}
+
+// ---- a new file -----------------------------------------------------------------------------------------------------
+
+// The calling mod's rule for a new file (New Game+): run when the player makes a file, after the game has
+// made it, so the function sets its flags, numbers and stars on the new file.
+pub fn on_new_file(f: fn()) {
+    file_fns.push(f)
+    file_owners.push(caller())
+}
+
+hook after GameSequenceFunction::startCreateUserFileSequence(index) {
+    for f in file_fns {
+        f()
+    }
+}
+
+on mods.stopped(gone) {
+    // The stopped mod's functions and comets, newest first; what it kept on the file stays.
+    var i = star_fns.len()
+    while i > 0 {
+        i -= 1
+        if star_owners[i] == gone {
+            star_fns.remove(i)
+            star_owners.remove(i)
+        }
+    }
+    i = file_fns.len()
+    while i > 0 {
+        i -= 1
+        if file_owners[i] == gone {
+            file_fns.remove(i)
+            file_owners.remove(i)
+        }
+    }
+    i = comet_galaxy.len()
+    while i > 0 {
+        i -= 1
+        if comet_owner[i] == gone {
+            comet_galaxy.remove(i)
+            comet_scenario.remove(i)
+            comet_kind.remove(i)
+            comet_owner.remove(i)
+        }
+    }
+}

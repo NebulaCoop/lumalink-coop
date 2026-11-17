@@ -1,6 +1,9 @@
 /target
+# installer/build-setup.ps1 writes the Setup and its signature here.
+/dist
 /.cargo/config.toml
 *.nebulamod/
-
-# Built by each example's own script.
-/examples/*/plugins/
+# The Nebula tree the shared crates come from (Cargo.toml).
+/nebula
+# Built code: the packages beside the built-in mods carry it.
+/builtin/*/code/

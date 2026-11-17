@@ -1,0 +1,201 @@
+{
+  "$comment": "kit/actor/<name>.json (lumakit data version 1; actor.lum's KindData). A kind without code: the file's name is the name stages place it by (\"<name>\" in the mod's own stages, \"<mod id>/<name>\" elsewhere). look names the mod's own model; idle_action an action of it; collision the model's collision mesh. sensors: kind is Body, Attack, Eye or Push. defeated_by: the player's attacks that defeat it (Spin, Trample, HipDrop, StarBit, Fire, Any). drops is kit.item.Gives as json writes an enum's case. The functions (on_init, on_frame, on_touch_player, on_attacked, on_talk) are code only: find the kind in code and define it again with them.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "base": {
+      "type": "string",
+      "maxLength": 64,
+      "default": "LiveActor"
+    },
+    "look": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "idle_action": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "collision": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "sensors": {
+      "type": "array",
+      "maxItems": 8,
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "radius"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "Body",
+              "Attack",
+              "Eye",
+              "Push"
+            ]
+          },
+          "radius": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100000
+          }
+        }
+      }
+    },
+    "on_ground": {
+      "type": "boolean",
+      "default": true
+    },
+    "shadow": {
+      "type": "boolean",
+      "default": true
+    },
+    "defeated_by": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "enum": [
+          "Spin",
+          "Trample",
+          "HipDrop",
+          "StarBit",
+          "Fire",
+          "Any"
+        ]
+      }
+    },
+    "drops": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Coins"
+          ],
+          "properties": {
+            "Coins": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "StarBits"
+          ],
+          "properties": {
+            "StarBits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Lives"
+          ],
+          "properties": {
+            "Lives": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Health"
+          ],
+          "properties": {
+            "Health": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Carry"
+          ],
+          "properties": {
+            "Carry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        }
+      ],
+      "default": null
+    }
+  }
+}

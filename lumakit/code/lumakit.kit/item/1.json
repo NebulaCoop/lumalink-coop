@@ -1,0 +1,184 @@
+{
+  "$comment": "kit/item/<id>.json (lumakit data version 1). An item of the mod without code: the file's name is its id, placeable as \"<id>\" in the mod's own stages and \"<mod id>/<id>\" elsewhere. look, shine and sound_get name the mod's own model, effect and sound. gives is kit.item.Gives as json writes an enum's case; Form names a form of the mod's kit/player.form; Call is code only (find the item in code and define it again with the function).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "look",
+    "gives"
+  ],
+  "properties": {
+    "look": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1
+    },
+    "shine": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "sound_get": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "gives": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Coins"
+          ],
+          "properties": {
+            "Coins": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "StarBits"
+          ],
+          "properties": {
+            "StarBits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Lives"
+          ],
+          "properties": {
+            "Lives": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Health"
+          ],
+          "properties": {
+            "Health": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Carry"
+          ],
+          "properties": {
+            "Carry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Form"
+          ],
+          "properties": {
+            "Form": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "container": {
+      "enum": [
+        "None",
+        "Bubble",
+        "Crystal"
+      ],
+      "default": "None"
+    },
+    "floats": {
+      "type": "boolean",
+      "default": true
+    },
+    "respawns": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

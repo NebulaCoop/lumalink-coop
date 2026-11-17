@@ -1,0 +1,42 @@
+[package]
+name = "lumalink-setup"
+description = "LumaLink Setup: installs, updates and removes LumaLink on Windows, Linux and macOS, for the signed-in user."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+
+[[bin]]
+name = "LumaLink-Setup"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+lumalink-core = { path = "../lumalink-core" }
+lumalink-gui = { path = "../lumalink-gui" }
+rfd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zip = { version = "2", default-features = false, features = ["zstd"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+# The shortcuts (IShellLinkW) and the user's folders (SHGetKnownFolderPath): COM, which windows-sys does not carry.
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(unix)'.dependencies]
+# Waiting for the LumaLink an update replaces to end (kill with signal 0).
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[build-dependencies]
+crc32fast = "1.5"
+miniz_oxide = "0.8"
+zip = { version = "2", default-features = false, features = ["zstd"] }

@@ -1,0 +1,235 @@
+// kit.shop: buying things with coins or star bits. A shop is a list
+// screen of kit.screen: a row a ware, its name, its price and what is left of it; the title carries what the player
+// holds. Taking a row the player can pay for takes the price from the game's own counter (MR::incCoin and
+// MR::addStarPiece with the price as a negative count, the counters the HUD shows), gives the ware through kit.item,
+// and counts its stock down. A ware the player cannot pay for, or one sold out, is not sold: its row answers with the
+// game's own refusal sound and the shop stays open. The shop writes no words of its own (the names and the title are
+// the mod's; prices and counts are numbers), so it needs no translation.
+// Stock is kept per save file (svc.save: a file's copy takes it along, an erased file forgets it), under the shop's
+// id and the ware's name, for the mod that opened the shop. A shop without an id keeps its stock under its title.
+// A keeper, when given and alive, says the title in the game's balloon first (kit.talk) and the shop closes if the
+// keeper is gone. One shop is open at a time for all mods: a newer one closes the one before, whose waiter gets none.
+// Data: kit/shop/<id>.json of the calling mod, read by find(); `gives` as json writes an enum's case
+// ({"Coins": {"n": 5}}).
+
+use ./screen
+use ./item
+use ./talk
+use svc.save
+use svc.mods
+
+// A kit value written, as kit.item's put. Not pub (item.lum says why).
+fn put(key: text, value: bytes) {
+    save.set(key, value)
+}
+
+pub enum Currency { Coins, StarBits }
+pub struct Ware { name: text, price: u32, gives: item.Gives, stock: u32? = none }
+pub struct Shop { title: text, wares: list<Ware>, currency: Currency, keeper: ref<LiveActor>? = none, id: text = "" }
+
+// A shop as its data file writes it (a keeper is an object of the stage: given in code).
+struct WareData { name: text, price: u32, gives: item.GivesData, stock: u32? = none }
+struct ShopData { title: text, wares: list<WareData>, currency: Currency = Currency.Coins }
+
+// The shop open now: its number (0: none), who opened it, and whether its waiter was told to leave.
+var open_shop: u32 = 0
+var next_shop: u32 = 0
+var shop_owner: u64 = 0
+var closed_by_stop: bool = false
+
+// What the player holds of a currency, as the game counts it.
+fn held(c: Currency) -> u32 {
+    match c {
+        Currency.Coins => {
+            let n = MR::getCoinNum()
+            if n < 0 {
+                return 0
+            }
+            return n as u32
+        }
+        Currency.StarBits => {
+            let n = MR::getStarPieceNum()
+            if n < 0 {
+                return 0
+            }
+            return n as u32
+        }
+    }
+}
+
+// The price taken from the game's counter. Coins: MR::payCoin, the game's spend (ScenePlayingResult::payCoin: no heal,
+// 1-up or coin stat); MR::incCoin would pass the count to incPlayerLife (SceneUtil.cpp:362), a heal. Star bits as the
+// game spends them (StarPiece.cpp:811). The price is checked against the count first.
+fn pay(c: Currency, price: u32) {
+    match c {
+        Currency.Coins => {
+            MR::payCoin(price as i32)
+        }
+        Currency.StarBits => MR::addStarPiece(0 - (price as i32))
+    }
+}
+
+// Where a ware's stock is kept on the save file: kit.item's save_key, by the mod's id, the shop and the ware. Called
+// for a running mod only (its export or its open task); "kit.shop.none" holds nothing anyone reads otherwise.
+fn stock_key(owner: u64, s: Shop, w: Ware) -> text {
+    if s.id != "" {
+        return item.save_key(owner, "shop", "s", "{s.id}/{w.name}") ?? "kit.shop.none"
+    }
+    return item.save_key(owner, "shop", "t", "{s.title}/{w.name}") ?? "kit.shop.none"
+}
+
+// What is left of a ware: none when it never runs out, else what the file holds (its first stock until one is sold).
+fn left(owner: u64, s: Shop, w: Ware) -> u32? {
+    guard let first = w.stock else {
+        return none
+    }
+    // The count is kept as the typed save writes it (UTF-8 JSON).
+    if let data = item.kept(stock_key(owner, s, w)) {
+        if let kept = json.decode<u32>(data) {
+            if kept < first {
+                return kept
+            }
+        }
+    }
+    return first
+}
+
+// A ware's row: its name, its price, and what is left when it can run out.
+fn row_of(owner: u64, s: Shop, w: Ware) -> text {
+    if let n = left(owner, s, w) {
+        return "{w.name}   {w.price}   x{n}"
+    }
+    return "{w.name}   {w.price}"
+}
+
+fn rows_of(owner: u64, s: Shop) -> list<text> {
+    var rows: list<text> = []
+    for w in s.wares {
+        rows.push(row_of(owner, s, w))
+    }
+    return rows
+}
+
+fn keeper_gone(s: Shop) -> bool {
+    // Killed is gone too (the game keeps a killed actor; its ref is none only once destroyed).
+    if let k = s.keeper {
+        if let a = k.get() {
+            return MR::isDead(a)
+        }
+        return true
+    }
+    return false
+}
+
+// The shop of the calling mod's kit/shop/<id>.json; none when the mod has no such file, it does not read
+// as a shop, or a ware gives a form the mod does not have.
+pub fn find(id: text) -> Shop? {
+    guard let data = mods.kit_read(caller(), "shop", id) else {
+        return none
+    }
+    guard let d = json.decode<ShopData>(data) else {
+        return none
+    }
+    var wares: list<Ware> = []
+    for w in d.wares {
+        guard let g = item.gives_of(w.gives) else {
+            return none
+        }
+        wares.push(Ware { name: w.name, price: w.price, gives: g, stock: w.stock })
+    }
+    return Shop { title: d.title, wares: wares, currency: d.currency, keeper: none, id: id }
+}
+
+// The shop opened for the calling mod. The ware bought (the shop closes with the first sale); none when the player
+// left without buying, the keeper went, a newer shop opened, or the mod stopped.
+pub task open(s: Shop) -> Ware? {
+    let owner = caller()
+    next_shop += 1
+    let mine = next_shop
+    open_shop = mine
+    shop_owner = owner
+    closed_by_stop = false
+    defer leave(mine)
+    if s.wares.len() == 0 {
+        return none
+    }
+    if let k = s.keeper {
+        if k.get() != none {
+            wait start talk.say(k, s.title)
+        }
+    }
+    while open_shop == mine and not closed_by_stop {
+        if keeper_gone(s) {
+            return none
+        }
+        let taken = wait screen.choose("{s.title}   {held(s.currency)}", rows_of(owner, s))
+        guard let i = taken else {
+            return none
+        }
+        if open_shop != mine or closed_by_stop {
+            return none
+        }
+        if i < 0 or i >= s.wares.len() {
+            return none
+        }
+        let w = s.wares[i]
+        let n = left(owner, s, w)
+        var sold_out = false
+        if let have = n {
+            sold_out = have == 0
+        }
+        if sold_out or held(s.currency) < w.price {
+            // Not sold: the game's own "cannot" sound, and the list again.
+            MR::startSystemSE("SE_SY_BUZZER", -1, -1)
+            wait 1 frames
+            continue
+        }
+        pay(s.currency, w.price)
+        if let have = n {
+            put(stock_key(owner, s, w), json.encode(have - 1).bytes())
+        }
+        item.give(w.gives)
+        MR::startSystemSE("SE_SY_DECIDE_1", -1, -1)
+        return w
+    }
+    return none
+}
+
+// The shop numbered `mine` is no longer the one open.
+fn leave(mine: u32) {
+    if open_shop == mine {
+        open_shop = 0
+        shop_owner = 0
+    }
+}
+
+// What is left of a ware of a shop of the calling mod on this file (none: it never runs out). For a mod that shows
+// its stock elsewhere (a sign, a HUD row).
+pub fn stock_left(s: Shop, ware: u32) -> u32? {
+    if ware >= s.wares.len() as u32 {
+        return none
+    }
+    return left(caller(), s, s.wares[ware as int])
+}
+
+// A ware of a shop of the calling mod filled again to its first stock on this file (a daily restock is the mod's
+// rule: it calls this when its day turns).
+pub fn restock(s: Shop, ware: u32) {
+    if ware >= s.wares.len() as u32 {
+        return
+    }
+    let w = s.wares[ware as int]
+    if w.stock != none {
+        save.remove(stock_key(caller(), s, w))
+    }
+}
+
+on mods.stopped(gone) {
+    // The stopped mod's shop closes: its waiter is told to leave, and its task ends with the mod. Stock is
+    // on the save file under the mod's number and stays for when the mod is on again.
+    if open_shop != 0 and shop_owner == gone {
+        closed_by_stop = true
+        open_shop = 0
+        shop_owner = 0
+    }
+}
