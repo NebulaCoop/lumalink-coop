@@ -1,113 +1,120 @@
+<p align="center"><img src="assets/icon/lumalink.svg" width="128" height="128" alt="LumaLink icon"></p>
+
 # LumaLink
 
-LumaLink turns Super Mario Galaxy mods and texture packs into `.luma` files that [Nebula](https://github.com/keepvaibin/nebula), the native version of the game, runs directly.
+Makes, checks, builds and packs mods for [Nebula](https://github.com/keepvaibin/nebula) (`.luma` files). It checks
+with the game's own validator, so a mod LumaLink packs is one the game accepts.
 
-One mod makes one file, for every version of the game and every device. There's a window and a command line.
+## Install
 
-## Quick start
+LumaLink Setup installs the window, the command line, the compiler that builds mod code (clang and lld of LLVM
+22.1.6) and LumaKit, for your account only (no administrator password). LumaLink finds the installed game, its SDK
+and LumaKit by itself, so nothing else needs setting up.
 
-Open LumaLink, drop a mod on it, and press Convert. Or:
+**Windows.** Download `LumaLink-Setup.exe` (`LumaLink-Setup-windows-arm64.exe` on Windows on ARM) from the
+[latest release](https://github.com/keepvaibin/lumalink/releases/latest) and run it.
 
-```console
-lumalink convert "Some Mod.zip" --game "path/to/game.pak"
+**Linux** (x86-64 or ARM64, glibc 2.35 or later) **and macOS** (Apple silicon or Intel). In a terminal:
+
+```sh
+curl -fLO https://github.com/keepvaibin/lumalink/releases/latest/download/LumaLink-Setup-linux-x64
+chmod +x LumaLink-Setup-linux-x64
+./LumaLink-Setup-linux-x64
 ```
 
-This writes `Some Mod.luma` and a report. In Nebula: Settings, Mods, Import.
+On ARM64 Linux, use `LumaLink-Setup-linux-arm64`; on a Mac, `LumaLink-Setup-macos-arm64` (Apple silicon) or
+`LumaLink-Setup-macos-x64` (Intel). LumaLink is not signed by Apple: download it with `curl` as shown, since
+macOS stops a copy downloaded with a browser.
 
-`game.pak` is the game you imported into Nebula. LumaLink reads it to place loose files; none of it goes into the `.luma`.
+Setup's choices:
 
-## What you can give it
-
-| You have | LumaLink handles it as |
+| Choice | Default |
 |---|---|
-| A `.zip`, `.7z` or `.rar`, or a plain folder | Unpacks it and finds what's inside, however its folders are arranged |
-| A Riivolution mod (`riivolution/*.xml`) | Reads its patches and options. Options become choices players make in the game |
-| Files laid out like the disc (`StageData`, `ObjectData`, ...) | Places each file where it goes |
-| Loose files such as `Kuribo.arc` | Places each one where the game has a file of that name |
-| A texture pack (`tex1_...png` or `.dds`, with or without `manifest.json`) | Keeps the textures, including mipmaps and wildcard names |
+| Add LumaLink to PATH: `lumalink` works in any new terminal | on |
+| Start menu shortcut (Windows), Applications menu entry (Linux), Add to Applications (macOS) | on |
+| Desktop shortcut | off |
+| Check for updates when LumaLink starts | on |
 
-## What converts
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| Installed in | `%LOCALAPPDATA%\Programs\LumaLink` | `~/.local/share/lumalink` | `~/Library/LumaLink`, with `~/Applications/LumaLink.app` |
+| PATH | your user PATH | a line in each shell's startup file (`~/.profile`, `~/.bashrc`, `~/.zshenv`, fish's `conf.d`) that reads `env` in the folder | the same |
+| Removing it | **Settings > Apps > Installed apps** | `LumaLink-Setup --uninstall` in the folder | the same |
 
-| Content | Result |
-|---|---|
-| Levels, layouts, text and models | Converted automatically |
-| Music and sound, including 4-bit ADPCM streams | Converted automatically |
-| Texture packs | Carried over. Nebula sorts them into categories players can switch on and off |
-| Models with materials Nebula doesn't have | Nebula builds their programs on the player's device, once, with a progress screen |
-| A galaxy the mod adds | Listed in the file, and given its own saves |
-| Known code patches and Gecko codes (`.gct`, Dolphin `.ini`) | Turned into the tunable or sample plugin that does the same |
-| Other code patches, `CustomCode` and `.dol` files | **Not converted.** Named in the report; the rest of the mod applies |
-| Mods for Super Mario Galaxy 2 | Refused |
+Removing LumaLink leaves your mods where they are.
 
-### Why Wii code can't be converted
+For scripts: `LumaLink-Setup --silent`, with `--folder <folder>`, `--no-path`, `--no-menu`, `--desktop-shortcut` or
+`--no-update-check` as needed (`--no-start-menu` on Windows also works). `--uninstall --silent` removes LumaLink with no
+window. On Linux, Setup with no display (over SSH) needs `--silent`.
 
-Code patches are PowerPC instructions for exact addresses in the Wii program, which Nebula doesn't contain. Their effect has to be rewritten as a tunable or a plugin. [`known_patches.rs`](crates/lumalink-core/src/known_patches.rs) and [`gecko.rs`](crates/lumalink-core/src/gecko.rs) list the ones done.
+## Updates
+
+An installed LumaLink looks for a newer release by itself:
+
+- **The window** checks when it opens, at most once an hour. A newer version shows a bar with **Update**,
+  **What's new**, **Not now** and **Skip this version**. Turn the check off in the window's **Settings** menu.
+- **The command line** checks at most once a day and prints one line after a command. It never prints during
+  `lumalink lsp` or when its output goes to a file or another program.
+
+`lumalink update` installs the newest version now, `lumalink update --check` only says whether there is one, and
+`lumalink update --check-at-start off` turns the automatic check off. Set `LUMALINK_NO_UPDATE_CHECK=1` to turn it off
+for one run.
+
+An update downloads the release's Setup for your system and runs it only if it is signed with the LumaLink release key
+and is the version the release names. Anything else is deleted without being run. Setup keeps your choices. A LumaLink
+installed some other way (a package manager, a copy of the programs) is told about new releases but not updated.
 
 ## Commands
 
-```console
-lumalink inspect <mod> [--game game.pak] [--json]     # say what a mod is, write nothing
-lumalink convert <mod> [-o folder] [--game game.pak]  # convert one mod
-lumalink batch <folder> [-o folder] [--game game.pak] # convert every mod in a folder
-lumalink new <folder> [--name "My Mod"] [--plugin]    # start a new mod, with code if you ask
-lumalink pack <folder> [-o folder] [--game game.pak]  # build a project into a .luma
-lumalink check <folder or .luma> [--game game.pak]    # list every problem before you publish
-lumalink unpack <file.luma> -o <folder>               # open a .luma to see how it's made
-lumalink cook <file> --as <game path> -o <file>       # convert one file to test it
-```
-
-`inspect`, `batch` and `check` exit with code 2 if a mod can't be used.
-
-## Making your own mod
-
-```console
-lumalink new "My Mod"
-# put files where they go in the game under layers/base/files/, and textures under layers/base/textures/
-lumalink check "My Mod"
-lumalink pack "My Mod"
-```
-
-| To do this | Read |
+| Command | What it does |
 |---|---|
-| Make a mod, from the first file to a galaxy of your own | [docs/guide.md](docs/guide.md), with projects to copy in [examples](examples) |
-| Everything a `.luma` can hold: options, regions, saves, new galaxies, hungry Lumas, text, shaders | [docs/format.md](docs/format.md) |
-| Change what the game does, with your own code | [docs/plugins.md](docs/plugins.md) |
-| Everything, in one page | [docs/REFERENCE.md](docs/REFERENCE.md) |
-| Every page and the game's lists as one book | [docs/book.md](docs/book.md) |
+| `lumalink new <folder> --id <id> --name <name> --summary <line> --author <who>` | Starts a mod: `luma.json` and an empty base layer |
+| `lumalink add <what> ...` | Adds a need, option, permission, layer, file, asset, texture, text, character and more, checked before it is kept |
+| `lumalink check <folder or .luma>` | Lists every problem with its code, file and line; `--json` for tools |
+| `lumalink build <folder>` | Builds the mod's LumaScript and C for every platform |
+| `lumalink pack <folder>` | Writes the `.luma` once every rule passes and none is left unchecked |
+| `lumalink run <folder or .luma>` | Imports the mod into the installed game and starts it |
+| `lumalink test <folder>` | Builds the mod and runs each `tests/**/test.json` in the game, hidden and silent |
+| `lumalink convert <mod> <folder>` | Converts a Riivolution pack, disc-layout folder, loose files, texture pack or Gecko list to a mod folder |
+| `lumalink format <paths>` | Formats `.lum` files; `--check` writes nothing |
+| `lumalink list <.luma>` | What is inside |
+| `lumalink extract <.luma> [entries] -o <folder>` | Writes entries out |
+| `lumalink verify <.luma> --source <folder>` | Whether the `.luma` is exactly what the folder packs to |
+| `lumalink explain L203` | What a code means |
+| `lumalink list tables --game game.pak` | Tables, models, messages or files of your imported game; `--self` names table columns |
+| `lumalink extract <path> --game game.pak -o <folder>` | Files out of your imported game |
+| `lumalink lsp` | The editor server (Language Server Protocol over stdin and stdout) |
+| `lumalink services` | Every service function of the game's SDK and whether scripts reach it |
+| `lumalink update` | Installs a newer LumaLink; `--check` only says whether there is one |
 
-`lumalink-core` is the library behind LumaLink, if you'd rather use it.
+Every command that reads the game uses the installed one unless `--game <game.pak>` and `--names <folder>` name
+another; `--no-installed` leaves it out. Messages and help come in any of the game's 14 languages
+(`--language EuGerman`, `lumalink help check --language JpJapanese`).
+
+## Editors
+
+`editors/vscode` is the LumaScript extension for Visual Studio Code: colours, brackets, snippets, and errors as you
+type, completion, hover, go to definition, rename and formatting from `lumalink lsp`. To install it, open LumaLink,
+then **Settings** > **Add LumaScript to Visual Studio Code**. Setup installs the extension packed
+(`editors/lumascript.vsix`, made by `installer/vsix.py`); `code --install-extension` takes that file too. Other editors
+run `lumalink lsp` with their own Language Server Protocol client; Nebula's modding docs have Neovim and Helix
+settings.
 
 ## Building
 
-You need [Rust](https://rustup.rs) 1.85 or newer and, on Windows, Visual Studio's C++ tools.
+LumaLink uses Nebula's validator and cooker crates. `nebula/` must be a Nebula tree: a checkout of the commit in
+`nebula.commit`, or a link to a Nebula worktree.
 
 ```console
-git clone https://github.com/keepvaibin/lumalink.git
-cd lumalink
-cargo build --release
-cargo test
+git clone https://github.com/keepvaibin/nebula.git nebula
+git -C nebula checkout $(cat nebula.commit)
+cargo test --workspace
 ```
 
-This builds `target/release/lumalink` and `target/release/lumalink-gui`. Conversion uses Nebula's `nebula-import` crate. `.rar` files need the system `tar` (Windows 10+, macOS, most Linux).
+A release: write its notes in `.github/release-notes/<version>.md`, then push a tag `v<version>`. That runs the
+release workflow, which makes the release with those notes and adds each Setup as its
+system finishes building it (`installer/build-setup.ps1` on Windows, `installer/build-setup.sh` on Linux and macOS).
+On the PC that holds the release key, `installer/sign-release.ps1 -Tag <tag>` signs the Setups the release has so
+far; run it again for any Setup added later.
 
-## Layout
-
-| Folder | What it is |
-|---|---|
-| `crates/lumalink-core` | The engine: archives, layouts, Riivolution, plans, packages, checks |
-| `crates/lumalink` | The command line |
-| `crates/lumalink-gui` | The window |
-| `docs` | The guide, the file format and plugins |
-| `examples` | Complete mods, none holding any of the game's files |
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). For a mod that converts badly, send its name and `report.txt`, not game files.
-
-## License
-
-GPL-3.0-only. See [LICENSE](LICENSE).
-
-The window's font is M PLUS Rounded 1c, under the SIL Open Font License: see `crates/lumalink-gui/assets`.
-
-LumaLink doesn't include any game files, and you need your own copy of the game. Super Mario Galaxy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.
+GPL-3.0-only.

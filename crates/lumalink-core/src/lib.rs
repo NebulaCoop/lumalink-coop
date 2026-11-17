@@ -1,34 +1,41 @@
-//! LumaLink's engine: reads a mod in any of the forms people publish, works out what it is, and converts it to a package
-//! Nebula loads directly. The command line and the graphical tool are thin layers over this crate.
-//!
-//! The order of a conversion:
-//!
-//! 1. [`source::open`] unpacks an archive, or takes a folder as it is.
-//! 2. [`layout::Layout::of`] finds the Riivolution patches, disc folders, texture packs and loose files inside.
-//! 3. [`riivolution`] reads the patches and their options.
-//! 4. [`plan::build`] decides which file goes where, what is for one version only and what players choose, with the reason
-//!    for everything it does not use.
-//! 5. [`package::write`] checks each file with the converter Nebula uses and writes the
-//!    `.luma`: see docs/format.md.
+//! LumaLink's engine. [`luma_file`] writes and reads `.luma` files (docs/modding/format/luma.md), each one checked by the
+//! game's own validator (`luma-validate`, the same library the game runs). [`inspect`] and [`game_store`] read the
+//! player's imported game. [`text`] holds LumaLink's own lines in the game's 14 languages. The readers of published mods ([`source`], [`layout`], [`riivolution`], [`texture_pack`],
+//! [`gecko`]) and the conversion decisions ([`plan`], [`known_patches`], [`region_map`], [`object_table`],
+//! [`player_constants`]) are kept for conversion, which writes the new format.
 
-pub mod column_names;
+pub mod add;
+pub mod build;
+pub mod character;
+pub mod code_stubs;
+pub mod convert;
+pub mod dev;
+pub mod editor;
+pub mod effects_check;
+pub mod files_check;
 pub mod gecko;
+pub mod game_functions;
 pub mod game_store;
 pub mod inspect;
+pub mod installed;
+pub mod jobs;
 pub mod known_patches;
 pub mod object_table;
 pub mod layout;
-pub mod lumascript;
+pub mod lsp;
+pub mod luma_file;
 pub mod messages;
-pub mod package;
+pub mod numbers_code;
 pub mod plan;
+pub mod table_patch;
+pub mod text;
+pub mod update;
+pub mod vscode;
 pub mod player_constants;
-pub mod project;
+pub mod ppc;
 pub mod region_map;
 pub mod riivolution;
+pub mod script;
 pub mod source;
 pub mod texture_pack;
-pub mod tunable_names;
 
-/// The package format this version writes; Nebula refuses a newer one.
-pub const PACKAGE_FORMAT: u32 = 1;

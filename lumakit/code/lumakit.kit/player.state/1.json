@@ -1,0 +1,161 @@
+{
+  "$comment": "kit/player.state/<file>.json (lumakit data version 1; state.lum's StateData). A move without code: id is the name code and kit/ride find it by; starts is \"code\" (an action's id waits on finding a mod's action, and starts by code meanwhile); from: where it may start; ends: what ends it (frames: after `frames`); action the player's action played; motion the speed set at its start; attack what it hurts with; effect_start and sound_start the mod's effect and sound at its start.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "starts": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "default": "code"
+    },
+    "from": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "ground",
+          "air",
+          "water",
+          "any"
+        ]
+      },
+      "default": [
+        "air"
+      ]
+    },
+    "once_per_air": {
+      "type": "boolean",
+      "default": false
+    },
+    "action": {
+      "type": "string",
+      "maxLength": 64,
+      "default": ""
+    },
+    "motion": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "velocity_up": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": null
+            },
+            "velocity_forward": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": null
+            },
+            "gravity_scale": {
+              "type": "number",
+              "default": 1
+            },
+            "friction": {
+              "type": "number",
+              "default": 1
+            },
+            "turn": {
+              "type": "number",
+              "default": 1
+            }
+          }
+        }
+      ],
+      "default": null
+    },
+    "ends": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "ground",
+          "wall",
+          "water",
+          "frames",
+          "action_end",
+          "code"
+        ]
+      },
+      "default": [
+        "ground"
+      ]
+    },
+    "frames": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "default": 0
+    },
+    "attack": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "enum": [
+            "spin",
+            "trample",
+            "hip_drop",
+            "star_bit",
+            "fire"
+          ]
+        }
+      ],
+      "default": null
+    },
+    "effect_start": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      ],
+      "default": null
+    },
+    "sound_start": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      ],
+      "default": null
+    }
+  }
+}

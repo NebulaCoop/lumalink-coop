@@ -1,0 +1,57 @@
+{
+  "$comment": "kit/ride/<name>.json (lumakit data version 1; ride.lum's MountData). A mount without code: look names the mod's own model, seat_joint a joint of it where the player sits, rider_action the player's action while riding; speed and jump in units a frame, turn_degrees the most it turns a frame; surface: it runs along the ground under it; moves name the mod's kit/player.state moves by id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "look",
+    "seat_joint"
+  ],
+  "properties": {
+    "look": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "seat_joint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "rider_action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "default": "Ride"
+    },
+    "speed": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 15
+    },
+    "jump": {
+      "type": "number",
+      "minimum": 0,
+      "default": 30
+    },
+    "turn_degrees": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 180,
+      "default": 6
+    },
+    "surface": {
+      "type": "boolean",
+      "default": true
+    },
+    "moves": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "default": []
+    }
+  }
+}

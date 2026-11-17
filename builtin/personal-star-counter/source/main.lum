@@ -1,0 +1,107 @@
+// sm64coopdx's Personal Star Counter (personal-starcount-ex.lua), on Galaxy's HUD and in the player list.
+//
+// Red: the Power Stars this player got in this room, new to its save. The host counts each one for who got it, as the
+// mod counts a star only when the save's count goes up.
+// Green: every Power Star this player ever got, kept across saves with Nebula's other all-time counts (stats.ini's
+// power_stars), as the mod keeps its total in its storage.
+//
+// Both come in under the HUD's Power Star counter, in its look with the star tinted (coop.hud_counter): red first in a
+// room, green alone outside one. The player list shows each player's red count beside their round trip
+// (coop.set_description, the mod's network_player_set_description). /psc off hides the counters for this player,
+// /psc on brings them back, and /psc alone turns them over.
+
+use svc.coop
+
+var hidden = false  // /psc off
+var tick: u32 = 0
+var psc: u32 = 0    // the command's number
+
+fn counters() {
+    if hidden {
+        coop.hud_counter(1, #FFFFFFFF, -1)
+        coop.hud_counter(2, #FFFFFFFF, -1)
+        return
+    }
+    let red = #E81123FF
+    let green = #32B028FF
+    var all_time: i64 = 0
+    if let n = coop.stat("power_stars") {
+        all_time = n as i64
+    }
+    if coop.in_room() != 0 {
+        var mine: i64 = 0
+        if let p = coop.player(coop.me()) {
+            mine = p.stars as i64
+        }
+        coop.hud_counter(1, red, mine)
+        coop.hud_counter(2, green, all_time)
+    } else {
+        coop.hud_counter(1, green, all_time)
+        coop.hud_counter(2, #FFFFFFFF, -1)
+    }
+}
+
+fn player_list() {
+    var i: u32 = 0
+    while i < coop.max_players() {
+        if let p = coop.player(i) {
+            // A Power Star and their count: white once they have one, the list's dim blue before.
+            var colour = #A6AED6FF
+            if p.stars > 0 {
+                colour = #FFFFFFFF
+            }
+            coop.set_description(i, "[icon 7]{p.stars}", colour)
+        }
+        i = i + 1
+    }
+}
+
+fn heard(e: coop.Event) {
+    match e {
+        coop.Event.Joined(value) => {
+            counters()
+            player_list()
+        }
+        coop.Event.PlayerJoin(value) => player_list()
+        coop.Event.Command(value, flags) => {
+            if value != psc as u64 {
+                return
+            }
+            // 1: on, 2: off, 0: no word, which turns them over.
+            if flags == 1 {
+                hidden = false
+            } else if flags == 2 {
+                hidden = true
+            } else {
+                hidden = not hidden
+            }
+            counters()
+            if hidden {
+                coop.chat_say("CoopCmdPscOff")
+            } else {
+                coop.chat_say("CoopCmdPscOn")
+            }
+        }
+        else => return
+    }
+}
+
+on start {
+    if let n = coop.add_command("psc", "CoopCmdPscHelp", "on off") {
+        psc = n
+    }
+    coop.watch(heard)
+    counters()
+}
+
+on frame {
+    // A few times a second: the counts change a star at a time.
+    tick = tick + 1
+    if tick % 10 != 0 {
+        return
+    }
+    counters()
+    if coop.in_room() != 0 {
+        player_list()
+    }
+}

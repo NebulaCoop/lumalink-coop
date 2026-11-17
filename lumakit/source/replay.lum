@@ -1,0 +1,1208 @@
+// kit.replay: poses and inputs recorded a world step at a time, tracks
+// written as bytes that read the same on every platform, puppets posed from a track, an input track played back
+// step for step, the game's random numbers seeded, and rewind of the player and chosen actors.
+// Handles are small structs; their functions are also module functions (`replay.stop_recording(r)`,
+// `replay.pose_at(t, n)`). A track's data lives in LumaKit, counted for the mod that made it, and
+// goes with that mod or at free(); a Track value is its number and its length.
+// What is recorded, each world step (`on step`: the game's own steps, so a track is frame-exact at any speed):
+//   What.Player   the player's place, turn (from the player's own front and up), animation name and frame, and form
+//   What.Actor    an actor's place, turn (its rotation), animation frame
+//   What.Inputs   what the game read from player 0's controls that step (svc.input game), and the player's pose at
+//                 the first step: the state the reads moved the player from
+// Bytes: "LKT1", little-endian, floats as IEEE 754 single: the same file on every platform. A pose alone is the same form with one pose.
+// Playing inputs back: svc.input.inject (the calling mod needs the permission input.inject:), one step's
+// read set before each step; the player put at the track's first pose (place, turn, animation and its frame) in the
+// step the first read is taken, so the reads move the player from the state they were recorded from (the frame of
+// the animation steers the player's walk: the same reads from another frame drift apart); the track's end, the mod
+// stopping or stop() on the pending ends the injection.
+// Rewind keeps the last `seconds` of steps of each thing asked for (at most 60 s) and back(n) puts each n steps back:
+// the player by place and matrix, an actor by place and rotation; the world around them is not rewound.
+
+use svc.time
+use svc.input
+use optional svc.input.inject
+use svc.mods
+use ./player/form as pform
+use ./item
+
+pub enum What { Player, Actor(a: ref<LiveActor>), Inputs }
+pub struct Pose { at: vec3, rotation: quat, action: text, frame: f32, form: text? = none }
+pub struct Track {
+    id: u32
+    frames: u32
+    fn pose_at(self, frame: u32) -> Pose? { return pose_at(self, frame) }
+    fn encode(self) -> bytes { return encode(self) }
+    fn free(self) { free(self) }
+}
+pub struct Recorder {
+    id: u32
+    fn stop_recording(self) -> Track { return stop_recording(self) }
+    fn discard(self) { discard(self) }
+}
+pub struct Puppet {
+    id: u32
+    fn pose(self, t: Track, frame: u32) { pose(self, t, frame) }
+    fn set_pose(self, p: Pose) { set_pose(self, p) }
+    fn view(self) -> LiveActor { return view(self) }
+    fn remove(self) { remove(self) }
+    fn alive(self) -> bool { return alive(self) }
+}
+pub struct Rewind {
+    id: u32
+    fn back(self, frames: u32) -> u32 { return back(self, frames) }
+    fn end(self) { end(self) }
+}
+
+// One step's read of the controls (svc.input's game read, without the device), and the camera as the player read it
+// in that step (MarioActor::updateCameraInfo): its axes (mCamDirX/Y/Z: the stick moves the player relative to them),
+// the cut (mCameraCut: the camera turned 30 degrees or moved 500 units in the step) and the turn (mCamDirZ 45 degrees
+// or more from mPrevCamDirZ: Mario::fixHeadFrontVecByGravity keeps the move direction), so the read moves the player
+// the same way whatever the camera does when it is played.
+struct Read { buttons: u32, stick_x: f32, stick_y: f32, pointer_x: f32, pointer_y: f32, pointer_on: bool, shake: bool,
+              cam_x: vec3 = vec3(0.0, 0.0, 0.0), cam_y: vec3 = vec3(0.0, 0.0, 0.0), cam_z: vec3 = vec3(0.0, 0.0, 0.0),
+              cut: bool = false, turn: bool = false }
+
+// Mario::fixHeadFrontVecByGravity's camera turn: MR::toRadian(45.0f), the same f32.
+let camera_turn: f32 = 0.7853982
+
+let most_puppets: u32 = 15
+let most_rewind_steps: u32 = 3600
+let most_track_steps: u32 = 216000   // an hour
+
+// Tracks: poses or reads, the mod each is counted for, whether it is still held.
+var trk_poses: list<list<Pose>> = []
+var trk_reads: list<list<Read>> = []
+var trk_owner: list<u64> = []
+var trk_live: list<bool> = []
+// An input track's player pose at its first read (none for a pose track, or an input track with no read yet).
+var trk_start: list<Pose?> = []
+
+// Recorders: what each records (0 player, 1 an actor, 2 inputs), its actor, its track being filled, its mod.
+var rec_kind: list<u32> = []
+var rec_actor: list<ref<LiveActor>?> = []
+var rec_track: list<u32> = []
+var rec_owner: list<u64> = []
+var rec_live: list<bool> = []
+
+// Puppets: the actor, its mod.
+var pup_actor: list<ref<LiveActor>?> = []
+var pup_owner: list<u64> = []
+var pup_live: list<bool> = []
+var puppets_now: u32 = 0
+
+// An input track playing: the track, the step it is at, the injection, the mod, the number a waiter watches.
+var play_track: u32 = 0
+var play_at: u32 = 0
+var play_owner: u64 = 0
+var play_number: u32 = 0
+var play_handle: inject.Inject? = none
+// The played read the game took this step (set the step before): the player reads it in its recorded camera axes.
+var play_cam: Read? = none
+
+// Rewinds: what each keeps (kinds and actors as recorders), its ring of poses a thing, the steps kept.
+var rw_kinds: list<list<u32>> = []
+var rw_actors: list<list<ref<LiveActor>?>> = []
+var rw_poses: list<list<list<Pose>>> = []
+var rw_most: list<u32> = []
+var rw_owner: list<u64> = []
+var rw_live: list<bool> = []
+
+// The random numbers' seed asked for (applied by the hook below), and for whom.
+var seed_set: bool = false
+var seed_state: u32 = 0
+var seed_owner: u64 = 0
+
+// ---- turns ----------------------------------------------------------------------------------------------------------
+
+// The turn whose axes are `side` (x), `up` (y) and `front` (z), unit and square to each other, as a unit quaternion.
+fn quat_of_axes(side: vec3, up: vec3, front: vec3) -> quat {
+    let t = side.x + up.y + front.z
+    if t > 0.0 {
+        let s = sqrt(t + 1.0) * 2.0
+        return quat((up.z - front.y) / s, (front.x - side.z) / s, (side.y - up.x) / s, 0.25 * s)
+    }
+    if side.x > up.y and side.x > front.z {
+        let s = sqrt(1.0 + side.x - up.y - front.z) * 2.0
+        return quat(0.25 * s, (up.x + side.y) / s, (front.x + side.z) / s, (up.z - front.y) / s)
+    }
+    if up.y > front.z {
+        let s = sqrt(1.0 + up.y - side.x - front.z) * 2.0
+        return quat((up.x + side.y) / s, 0.25 * s, (front.y + up.z) / s, (front.x - side.z) / s)
+    }
+    let s = sqrt(1.0 + front.z - side.x - up.y) * 2.0
+    return quat((front.x + side.z) / s, (front.y + up.z) / s, 0.25 * s, (side.y - up.x) / s)
+}
+
+// A turn and a place as the game's matrix: its columns the turned x, y and z axes and the place.
+fn matrix_of(q: quat, at: vec3) -> mat34 {
+    let xx = q.x * q.x
+    let yy = q.y * q.y
+    let zz = q.z * q.z
+    let xy = q.x * q.y
+    let xz = q.x * q.z
+    let yz = q.y * q.z
+    let wx = q.w * q.x
+    let wy = q.w * q.y
+    let wz = q.w * q.z
+    return mat34(vec4(1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy), at.x),
+                 vec4(2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx), at.y),
+                 vec4(2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy), at.z))
+}
+
+let to_radians: f32 = 0.017453292
+let to_degrees: f32 = 57.29578
+
+// An actor's rotation (degrees about x, then y, then z: the game's own order, MR::makeMtxTR) as a turn, and back.
+fn quat_of_degrees(r: vec3) -> quat {
+    let hx = r.x * to_radians * 0.5
+    let hy = r.y * to_radians * 0.5
+    let hz = r.z * to_radians * 0.5
+    let cx = cos(hx)
+    let sx = sin(hx)
+    let cy = cos(hy)
+    let sy = sin(hy)
+    let cz = cos(hz)
+    let sz = sin(hz)
+    return quat(sx * cy * cz - cx * sy * sz, cx * sy * cz + sx * cy * sz, cx * cy * sz - sx * sy * cz, cx * cy * cz + sx * sy * sz)
+}
+
+fn degrees_of(q: quat) -> vec3 {
+    let sinp = clamp(2.0 * (q.w * q.y - q.z * q.x), -1.0, 1.0)
+    let x = atan2(2.0 * (q.w * q.x + q.y * q.z), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+    let y = atan2(sinp, sqrt(1.0 - sinp * sinp))
+    let z = atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+    return vec3(x * to_degrees, y * to_degrees, z * to_degrees)
+}
+
+// ---- poses ----------------------------------------------------------------------------------------------------------
+
+// The player's form by the game's own names (the harness's `form` names), none for the plain one.
+fn player_form() -> text? {
+    if MR::isPlayerElementModeBee() {
+        return "bee"
+    }
+    if MR::isPlayerElementModeTeresa() {
+        return "boo"
+    }
+    if MR::isPlayerElementModeIce() {
+        return "ice"
+    }
+    if MR::isPlayerElementModeHopper() {
+        return "spring"
+    }
+    if MR::isPlayerElementModeInvincible() {
+        return "rainbow"
+    }
+    return none
+}
+
+// none where no player exists (the file select, the observatory before the player is made, a movie): the game's
+// MR::getPlayer* read through the player without checking it, so nothing here calls one before the player is known.
+fn player_pose() -> Pose? {
+    guard let pa = MarioAccess::getPlayerActor() else {
+        return none
+    }
+    let at = MR::getPlayerPos() ?? vec3(0.0, 0.0, 0.0)
+    // The player's turn from its own axes: its front, its up (Mario::mHeadVec, which leans with a slope or a planet's
+    // ground and is not its gravity's up), its side square to both.
+    var front = vec3(0.0, 0.0, 1.0)
+    MR::getPlayerFrontVec(var front)
+    var up = normal((MR::getPlayerGravity() ?? vec3(0.0, -1.0, 0.0)) * -1.0)
+    if let m = pa.mMario {
+        up = m.mHeadVec
+    }
+    let side = normal(cross(up, front))
+    let turn = quat_of_axes(side, up, cross(side, up))
+    var frame: f32 = 0.0
+    if let p = MR::getPlayerDemoActor() {
+        frame = MR::getBckFrame(p)
+    }
+    return Pose { at: at, rotation: turn, action: MR::getPlayerCurrentBckName() ?? "", frame: frame, form: player_form() }
+}
+
+fn actor_pose(a: LiveActor) -> Pose {
+    return Pose { at: a.mPosition, rotation: quat_of_degrees(a.mRotation), action: "", frame: MR::getBckFrame(a), form: none }
+}
+
+// The pose of `w` now. An actor that is gone, and What.Inputs (which has no pose): a script error.
+pub fn current_pose(w: What) -> Pose {
+    match w {
+        // No player (the file select, a movie): a script error at the caller's line, as a gone actor.
+        What.Player => return player_pose()!
+        What.Actor(a) => {
+            // An actor that is gone: a script error at the caller's line (the unwrap of none).
+            return actor_pose(a.get()!)
+        }
+        What.Inputs => {
+            // Inputs have no pose: a script error (the unwrap of none); record them and read the track.
+            let no_pose: Pose? = none
+            return no_pose!
+        }
+    }
+}
+
+// ---- tracks ---------------------------------------------------------------------------------------------------------
+
+fn new_track(owner: u64) -> u32 {
+    trk_poses.push([])
+    trk_reads.push([])
+    trk_start.push(none)
+    trk_owner.push(owner)
+    trk_live.push(true)
+    return trk_live.len() as u32
+}
+
+// A track's place in the lists, none when it is no track of the calling mod's any more.
+fn held(t: Track) -> int? {
+    if t.id == 0 or t.id > trk_live.len() as u32 {
+        return none
+    }
+    let i = (t.id - 1) as int
+    if not trk_live[i] or trk_owner[i] != caller() {
+        return none
+    }
+    return i
+}
+
+// The pose of step `frame` of a pose track; none past its end, for an input track or a freed one.
+pub fn pose_at(t: Track, frame: u32) -> Pose? {
+    guard let i = held(t) else {
+        return none
+    }
+    return trk_poses[i].get(frame as int)
+}
+
+// The track's data given up now (it goes with its mod otherwise).
+pub fn free(t: Track) {
+    if let i = held(t) {
+        trk_live[i] = false
+        trk_poses[i] = []
+        trk_reads[i] = []
+        trk_start[i] = none
+    }
+}
+
+// The bytes being written, and a place in bytes being read.
+var out: bytes = b""
+var src: bytes = b""
+var at_byte: int = 0
+var bad: bool = false
+
+fn put_u8(v: u8) {
+    out.push(v)
+}
+
+fn put_u16(v: u16) {
+    let at = out.len()
+    out.push(0)
+    out.push(0)
+    out.write_u16(at, v, false)
+}
+
+fn put_u32(v: u32) {
+    let at = out.len()
+    for k in 0..4 {
+        out.push(0)
+    }
+    out.write_u32(at, v, false)
+}
+
+fn put_f32(v: f32) {
+    let at = out.len()
+    for k in 0..4 {
+        out.push(0)
+    }
+    out.write_f32(at, v, false)
+}
+
+fn put_text(s: text) {
+    let b = s.bytes()
+    put_u16(b.len() as u16)
+    for k in 0..b.len() {
+        out.push(b[k])
+    }
+}
+
+fn get_u8() -> u8 {
+    if at_byte + 1 > src.len() {
+        bad = true
+        return 0
+    }
+    at_byte += 1
+    return src[at_byte - 1]
+}
+
+fn get_u16() -> u16 {
+    if at_byte + 2 > src.len() {
+        bad = true
+        return 0
+    }
+    at_byte += 2
+    return src.read_u16(at_byte - 2, false)
+}
+
+fn get_u32() -> u32 {
+    if at_byte + 4 > src.len() {
+        bad = true
+        return 0
+    }
+    at_byte += 4
+    return src.read_u32(at_byte - 4, false)
+}
+
+fn get_f32() -> f32 {
+    if at_byte + 4 > src.len() {
+        bad = true
+        return 0.0
+    }
+    at_byte += 4
+    return src.read_f32(at_byte - 4, false)
+}
+
+fn get_text() -> text {
+    let n = get_u16() as int
+    if bad or at_byte + n > src.len() {
+        bad = true
+        return ""
+    }
+    at_byte += n
+    return src.slice(at_byte - n, at_byte).text() ?? ""
+}
+
+// The file's head: "LKT1", the kind (0 poses, 1 reads), the count.
+fn put_head(kind: u8, count: u32) {
+    out = b""
+    put_u8(0x4C)
+    put_u8(0x4B)
+    put_u8(0x54)
+    put_u8(0x31)
+    put_u8(kind)
+    put_u32(count)
+}
+
+// Poses share their names: a table of the texts in first-use order, then each pose with two numbers into it
+// (0xFFFF: no form).
+fn put_poses(poses: list<Pose>) {
+    var names: list<text> = []
+    for p in poses {
+        if not names.contains(p.action) {
+            names.push(p.action)
+        }
+        if let f = p.form {
+            if not names.contains(f) {
+                names.push(f)
+            }
+        }
+    }
+    put_u16(names.len() as u16)
+    for n in names {
+        put_text(n)
+    }
+    for p in poses {
+        put_f32(p.at.x)
+        put_f32(p.at.y)
+        put_f32(p.at.z)
+        put_f32(p.rotation.x)
+        put_f32(p.rotation.y)
+        put_f32(p.rotation.z)
+        put_f32(p.rotation.w)
+        put_f32(p.frame)
+        var action_at: u16 = 0
+        var form_at: u16 = 0xFFFF
+        for k in 0..names.len() {
+            if names[k] == p.action {
+                action_at = k as u16
+            }
+            if let f = p.form {
+                if names[k] == f {
+                    form_at = k as u16
+                }
+            }
+        }
+        put_u16(action_at)
+        put_u16(form_at)
+    }
+}
+
+fn get_poses(count: u32) -> list<Pose>? {
+    let n_names = get_u16() as int
+    var names: list<text> = []
+    for k in 0..n_names {
+        names.push(get_text())
+        if bad {
+            return none
+        }
+    }
+    // 36 bytes a pose: a count the bytes cannot hold is no track.
+    if at_byte + (count as int) * 36 > src.len() {
+        return none
+    }
+    var poses: list<Pose> = []
+    for k in 0..(count as int) {
+        let x = get_f32()
+        let y = get_f32()
+        let z = get_f32()
+        let qx = get_f32()
+        let qy = get_f32()
+        let qz = get_f32()
+        let qw = get_f32()
+        let frame = get_f32()
+        let action_at = get_u16() as int
+        let form_at = get_u16() as int
+        if bad or action_at >= names.len() and names.len() > 0 {
+            return none
+        }
+        var form: text? = none
+        if form_at != 0xFFFF {
+            if form_at >= names.len() {
+                return none
+            }
+            form = names[form_at]
+        }
+        var action = ""
+        if names.len() > 0 {
+            action = names[action_at]
+        }
+        poses.push(Pose { at: vec3(x, y, z), rotation: quat(qx, qy, qz, qw), action: action, frame: frame, form: form })
+    }
+    return poses
+}
+
+// A pose as bytes (a track of one pose), and back; none when the bytes are no pose.
+pub fn pose_encode(p: Pose) -> bytes {
+    put_head(0, 1)
+    put_poses([p])
+    return out
+}
+
+pub fn pose_decode(b: bytes) -> Pose? {
+    src = b
+    at_byte = 0
+    bad = false
+    if get_u8() != 0x4C or get_u8() != 0x4B or get_u8() != 0x54 or get_u8() != 0x31 or get_u8() != 0 {
+        return none
+    }
+    if get_u32() != 1 or bad {
+        return none
+    }
+    guard let poses = get_poses(1) else {
+        return none
+    }
+    return poses.first()
+}
+
+// A track as bytes; empty for a track that is not the calling mod's any more.
+pub fn encode(t: Track) -> bytes {
+    guard let i = held(t) else {
+        return b""
+    }
+    if trk_reads[i].len() > 0 {
+        put_head(1, trk_reads[i].len() as u32)
+        for r in trk_reads[i] {
+            put_u32(r.buttons)
+            put_f32(r.stick_x)
+            put_f32(r.stick_y)
+            put_f32(r.pointer_x)
+            put_f32(r.pointer_y)
+            var bits: u8 = 0
+            if r.pointer_on {
+                bits += 1
+            }
+            if r.shake {
+                bits += 2
+            }
+            if r.cut {
+                bits += 4
+            }
+            if r.turn {
+                bits += 8
+            }
+            put_u8(bits)
+            for v in [r.cam_x, r.cam_y, r.cam_z] {
+                put_f32(v.x)
+                put_f32(v.y)
+                put_f32(v.z)
+            }
+        }
+        // The start pose: 1 and the pose (as a pose track's), or 0.
+        if let s = trk_start[i] {
+            put_u8(1)
+            put_poses([s])
+        } else {
+            put_u8(0)
+        }
+        return out
+    }
+    put_head(0, trk_poses[i].len() as u32)
+    put_poses(trk_poses[i])
+    return out
+}
+
+// A track from bytes, counted for the calling mod; none when they are no track (wrong head, cut short, a number out
+// of range, more than an hour of steps).
+pub fn decode(b: bytes) -> Track? {
+    src = b
+    at_byte = 0
+    bad = false
+    if get_u8() != 0x4C or get_u8() != 0x4B or get_u8() != 0x54 or get_u8() != 0x31 {
+        return none
+    }
+    let kind = get_u8()
+    let count = get_u32()
+    if bad or kind > 1 or count > most_track_steps {
+        return none
+    }
+    if kind == 1 {
+        // 57 bytes a read: 21 of the controls, 36 of the camera's three axes; then the start pose.
+        if at_byte + (count as int) * 57 > src.len() {
+            return none
+        }
+        var reads: list<Read> = []
+        for k in 0..(count as int) {
+            let buttons = get_u32()
+            let sx = get_f32()
+            let sy = get_f32()
+            let px = get_f32()
+            let py = get_f32()
+            let bits = get_u8()
+            var axes: list<vec3> = []
+            for a in 0..3 {
+                let x = get_f32()
+                let y = get_f32()
+                axes.push(vec3(x, y, get_f32()))
+            }
+            reads.push(Read { buttons: buttons, stick_x: sx, stick_y: sy, pointer_x: px, pointer_y: py,
+                              pointer_on: bits % 2 == 1, shake: bits / 2 % 2 == 1, cam_x: axes[0], cam_y: axes[1],
+                              cam_z: axes[2], cut: bits / 4 % 2 == 1, turn: bits / 8 % 2 == 1 })
+        }
+        var first: Pose? = none
+        let has_start = get_u8()
+        if has_start == 1 {
+            guard let s = get_poses(1) else {
+                return none
+            }
+            first = s[0]
+        } else if has_start != 0 {
+            return none
+        }
+        if bad {
+            return none
+        }
+        let id = new_track(caller())
+        trk_reads[(id - 1) as int] = reads
+        trk_start[(id - 1) as int] = first
+        return Track { id: id, frames: count }
+    }
+    guard let poses = get_poses(count) else {
+        return none
+    }
+    let id = new_track(caller())
+    trk_poses[(id - 1) as int] = poses
+    return Track { id: id, frames: count }
+}
+
+// ---- recording ------------------------------------------------------------------------------------------------------
+
+// Recording of `w` from the next world step, for the calling mod, until stop or discard (or an hour).
+pub fn record(w: What) -> Recorder {
+    var kind: u32 = 0
+    var actor: ref<LiveActor>? = none
+    match w {
+        What.Player => kind = 0
+        What.Actor(a) => {
+            kind = 1
+            actor = a
+        }
+        What.Inputs => kind = 2
+    }
+    rec_kind.push(kind)
+    rec_actor.push(actor)
+    rec_track.push(new_track(caller()))
+    rec_owner.push(caller())
+    rec_live.push(true)
+    return Recorder { id: rec_live.len() as u32 }
+}
+
+fn recorder(r: Recorder) -> int? {
+    if r.id == 0 or r.id > rec_live.len() as u32 {
+        return none
+    }
+    let i = (r.id - 1) as int
+    if not rec_live[i] or rec_owner[i] != caller() {
+        return none
+    }
+    return i
+}
+
+// The recording ends: its track (`stop` is a word of the language, so the function is stop_recording). A recorder stopped or discarded before gives an empty track.
+pub fn stop_recording(r: Recorder) -> Track {
+    guard let i = recorder(r) else {
+        return Track { id: 0, frames: 0 }
+    }
+    rec_live[i] = false
+    let id = rec_track[i]
+    let t = (id - 1) as int
+    var frames = trk_poses[t].len()
+    if trk_reads[t].len() > frames {
+        frames = trk_reads[t].len()
+    }
+    return Track { id: id, frames: frames as u32 }
+}
+
+// The recording ends and its steps are thrown away.
+pub fn discard(r: Recorder) {
+    if let i = recorder(r) {
+        rec_live[i] = false
+        let t = (rec_track[i] - 1) as int
+        trk_live[t] = false
+        trk_poses[t] = []
+        trk_reads[t] = []
+        trk_start[t] = none
+    }
+}
+
+fn read_now() -> Read {
+    if let g = input.game(0) {
+        return Read { buttons: g.buttons, stick_x: g.stick_x, stick_y: g.stick_y, pointer_x: g.pointer_x, pointer_y: g.pointer_y,
+                      pointer_on: g.pointer_on != 0, shake: g.shake != 0 }
+    }
+    return Read { buttons: 0, stick_x: 0.0, stick_y: 0.0, pointer_x: 0.0, pointer_y: 0.0, pointer_on: false, shake: false }
+}
+
+// ---- puppets --------------------------------------------------------------------------------------------------------
+
+// A puppet: an object of the stage that only shows a model, lit as the player is, placed and turned by its pose.
+// Made with std make under the kit's class name (its maker the game's plain model object, SimpleMapObj); its model
+// is the look given to puppet().
+var next_look: model? = none
+
+class KitPuppet : LiveActor made by LumaObj {
+    override fn init(rIter: TableIter) {
+        if let look = next_look {
+            self.initModelManagerWithAnm(look.name(), none, false)
+        }
+        MR::connectToSceneMapObjStrongLight(self)
+        MR::initLightCtrl(self)
+        MR::invalidateClipping(self)
+        self.makeActorAppeared()
+    }
+}
+
+// A puppet showing `look`, for the calling mod; at most 15 at once for all mods: past that, and when the
+// stage cannot make one, an empty handle whose alive() is false and whose other calls do nothing.
+pub fn puppet(look: model) -> Puppet {
+    // Puppets whose object went with its stage no longer count toward the 15.
+    for i in 0..pup_live.len() {
+        if pup_live[i] {
+            var standing = false
+            if let r = pup_actor[i] {
+                standing = r.get() != none
+            }
+            if not standing {
+                drop_puppet(i)
+            }
+        }
+    }
+    if puppets_now >= most_puppets {
+        return Puppet { id: 0 }
+    }
+    if not item.has_model(look) {
+        log "kit.replay: puppet: model {look.name()} is not in the game's files; none made"
+        return Puppet { id: 0 }
+    }
+    next_look = look
+    var at = vec3(0.0, 0.0, 0.0)
+    if let pa = MarioAccess::getPlayerActor() {
+        at = pa.mPosition
+    }
+    let made = make("KitPuppet", MakePlace { at: at }, 1)
+    next_look = none
+    guard let a = made.first() else {
+        return Puppet { id: 0 }
+    }
+    pup_actor.push(ref(a))
+    pup_owner.push(caller())
+    pup_live.push(true)
+    puppets_now += 1
+    return Puppet { id: pup_live.len() as u32 }
+}
+
+fn puppet_at(p: Puppet) -> int? {
+    if p.id == 0 or p.id > pup_live.len() as u32 {
+        return none
+    }
+    let i = (p.id - 1) as int
+    if not pup_live[i] or pup_owner[i] != caller() {
+        return none
+    }
+    return i
+}
+
+// The puppet placed as the pose says: its place, its turn, its animation at the pose's frame (started when the name
+// changes and the puppet's model has it).
+pub fn set_pose(p: Puppet, pose: Pose) {
+    guard let i = puppet_at(p) else {
+        return
+    }
+    guard let r = pup_actor[i] else {
+        return
+    }
+    guard let a = r.get() else {
+        return
+    }
+    a.mPosition = pose.at
+    a.mRotation = degrees_of(pose.rotation)
+    if pose.action != "" and MR::isExistBck(a, pose.action) {
+        if not MR::isBckPlaying(a, pose.action) {
+            MR::startBck(a, pose.action, none)
+        }
+        MR::setBckFrameAndStop(a, pose.frame)
+    }
+}
+
+// The puppet at a track's step; hidden past the track's end (shown again by a step inside it).
+pub fn pose(p: Puppet, t: Track, frame: u32) {
+    guard let i = puppet_at(p) else {
+        return
+    }
+    guard let r = pup_actor[i] else {
+        return
+    }
+    guard let a = r.get() else {
+        return
+    }
+    if let at = pose_at(t, frame) {
+        MR::showModel(a)
+        set_pose(p, at)
+    } else {
+        MR::hideModel(a)
+    }
+}
+
+// The puppet's object, for a mod that draws on it (draw.inst opacity) or reads it. After remove(): a script error
+//.
+pub fn view(p: Puppet) -> LiveActor {
+    // A removed puppet, an empty handle or another mod's: the unwrap of none, a script error at the caller's line.
+    let i = puppet_at(p)!
+    return pup_actor[i]!.get()!
+}
+
+pub fn alive(p: Puppet) -> bool {
+    if let i = puppet_at(p) {
+        if let r = pup_actor[i] {
+            return r.get() != none
+        }
+    }
+    return false
+}
+
+fn drop_puppet(i: int) {
+    if not pup_live[i] {
+        return
+    }
+    pup_live[i] = false
+    if let r = pup_actor[i] {
+        if let a = r.get() {
+            a.kill()
+        }
+    }
+    pup_actor[i] = none
+    if puppets_now > 0 {
+        puppets_now -= 1
+    }
+}
+
+// The puppet killed with the game's own kill; may be called again.
+pub fn remove(p: Puppet) {
+    if let i = puppet_at(p) {
+        drop_puppet(i)
+    }
+}
+
+// ---- inputs played back ---------------------------------------------------------------------------------------------
+
+fn end_play() {
+    if let h = play_handle {
+        if inject != none {
+            inject.end(h)
+        }
+    }
+    play_handle = none
+    play_track = 0
+    play_owner = 0
+}
+
+// An input track played back for the calling mod: each world step reads the track's next step instead of the
+// player's controls. Ends at the track's end; an input track playing before ends first. The calling mod needs the
+// permission input.inject.
+pub task play_inputs(t: Track) {
+    guard inject != none else {
+        log "kit.replay: play_inputs needs the permission input.inject"
+        return
+    }
+    guard let i = held(t) else {
+        return
+    }
+    if trk_reads[i].len() == 0 {
+        return
+    }
+    end_play()
+    guard let h = inject.begin(0) else {
+        return
+    }
+    play_number += 1
+    let mine = play_number
+    play_handle = h
+    play_track = t.id
+    play_at = 0
+    play_owner = caller()
+    defer end_mine(mine)
+    wait until play_number != mine or play_track == 0
+}
+
+fn end_mine(mine: u32) {
+    if play_number == mine and play_track != 0 {
+        end_play()
+    }
+}
+
+// The camera as the player reads it, each step it moves: recorded with the step's read (pushed at the step's start),
+// and while a track plays, the played read's own in place of the game's (the stick then moves the player as it did
+// when recorded): the axes, the cut with the effects updateCameraInfo gives it, and the previous Z that makes the
+// recorded turn (the read's own Z when it had none, its opposite when it had one). mCamPos stays the game camera's
+// (shadows and the black hole draw from it; no move reads it).
+wrap MarioActor::updateCameraInfo() {
+    // A read of a step the player did not move in (no axes taken) leaves the game's own.
+    var played = false
+    if let r = play_cam {
+        if length(r.cam_z) > 0.0 {
+            played = true
+            self.mCameraCut = r.cut
+            if r.cut {
+                if let m = self.mMario {
+                    m.changeAnimationInterpoleFrame(0)
+                }
+                self.stopSpinTicoEffect(true)
+                self.mBlendMtxTimer = 0
+            }
+            self.mCamPos = MR::getCamPos()
+            self.mCamDirX = r.cam_x
+            self.mCamDirY = r.cam_y
+            if r.turn {
+                self.mPrevCamDirZ = vec3(0.0, 0.0, 0.0) - r.cam_z
+            } else {
+                self.mPrevCamDirZ = r.cam_z
+            }
+            self.mCamDirZ = r.cam_z
+        }
+    }
+    if not played {
+        proceed()
+    }
+    for i in 0..rec_live.len() {
+        if not rec_live[i] or rec_kind[i] != 2 {
+            continue
+        }
+        let t = (rec_track[i] - 1) as int
+        let n = trk_reads[t].len()
+        if n == 0 {
+            continue
+        }
+        var r = trk_reads[t][n - 1]
+        r.cam_x = self.mCamDirX
+        r.cam_y = self.mCamDirY
+        r.cam_z = self.mCamDirZ
+        r.cut = self.mCameraCut
+        r.turn = MR::diffAngleAbs(self.mCamDirZ, self.mPrevCamDirZ) >= camera_turn
+        trk_reads[t][n - 1] = r
+    }
+}
+
+// ---- random numbers -------------------------------------------------------------------------------------------------
+
+// The game's random numbers from `n` from now on, for as long as the calling mod is on: MR::getRandom answers a
+// 32-bit generator of the kit's own (xorshift), the same on every platform, so a run of recorded inputs meets the
+// same numbers again.
+pub fn seed(n: u32) {
+    seed_state = n
+    if seed_state == 0 {
+        seed_state = 0x9E3779B9
+    }
+    seed_set = true
+    seed_owner = caller()
+}
+
+wrap MR::getRandom() {
+    if not seed_set {
+        proceed()
+    } else {
+        seed_state = seed_state ^ (seed_state << 13)
+        seed_state = seed_state ^ (seed_state >> 17)
+        seed_state = seed_state ^ (seed_state << 5)
+        // 24 bits: every value is exact in a float, 0 to under 1.
+        result = ((seed_state >> 8) as f32) / 16777216.0
+    }
+}
+
+// ---- rewind ---------------------------------------------------------------------------------------------------------
+
+// The last `seconds` (at most 60) of each of `what` kept from now on, for the calling mod. What.Inputs is not kept.
+pub fn rewind(what: list<What>, seconds: f32) -> Rewind {
+    var kinds: list<u32> = []
+    var actors: list<ref<LiveActor>?> = []
+    var poses: list<list<Pose>> = []
+    for w in what {
+        match w {
+            What.Player => {
+                kinds.push(0)
+                actors.push(none)
+                poses.push([])
+            }
+            What.Actor(a) => {
+                kinds.push(1)
+                actors.push(a)
+                poses.push([])
+            }
+            What.Inputs => {}
+        }
+    }
+    var most = (clamp(seconds, 0.0, 60.0) * 60.0) as u32
+    if most > most_rewind_steps {
+        most = most_rewind_steps
+    }
+    rw_kinds.push(kinds)
+    rw_actors.push(actors)
+    rw_poses.push(poses)
+    rw_most.push(most)
+    rw_owner.push(caller())
+    rw_live.push(true)
+    return Rewind { id: rw_live.len() as u32 }
+}
+
+fn rewind_at(r: Rewind) -> int? {
+    if r.id == 0 or r.id > rw_live.len() as u32 {
+        return none
+    }
+    let i = (r.id - 1) as int
+    if not rw_live[i] or rw_owner[i] != caller() {
+        return none
+    }
+    return i
+}
+
+// The player put at a pose: place, turn and animation (a recorded start, a rewind). Nothing where no player exists.
+pub fn put_player(p: Pose) {
+    guard let pa = MarioAccess::getPlayerActor() else {
+        return
+    }
+    MR::setPlayerPos(p.at)
+    MR::setPlayerBaseMtx(matrix_of(p.rotation, p.at))
+    // The base matrix turns the drawn player only (MarioActor::forceSetBaseMtx); the player's own axes, which the stick
+    // and every move turn from, are the pose's: its turn's X (side), Y (up) and Z (front) axes (player_pose), set as
+    // Mario::forceSetHeadVecKeepSide sets them (the body's up with the head, the frame's start front with the front).
+    let q = p.rotation
+    let side = vec3(1.0 - 2.0 * (q.y * q.y + q.z * q.z), 2.0 * (q.x * q.y + q.w * q.z), 2.0 * (q.x * q.z - q.w * q.y))
+    let up = vec3(2.0 * (q.x * q.y - q.w * q.z), 1.0 - 2.0 * (q.x * q.x + q.z * q.z), 2.0 * (q.y * q.z + q.w * q.x))
+    let front = vec3(2.0 * (q.x * q.z + q.w * q.y), 2.0 * (q.y * q.z - q.w * q.x), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+    if let m = pa.mMario {
+        m.mHeadVec = up
+        m.mPostureUpVec = up
+        m.mSideVec = side
+        m.mFrontVec = front
+        m.mPrevFrontVec = front
+    }
+    if p.action != "" {
+        // The animation started only when another plays (a restart blends from the old pose), then at the pose's frame.
+        if (MR::getPlayerCurrentBckName() ?? "") != p.action {
+            MR::startBckPlayer(p.action, p.action)
+        }
+        if let a = MR::getPlayerDemoActor() {
+            MR::setBckFrame(a, p.frame)
+        }
+    }
+}
+
+// Each thing put back `frames` steps, or as far as is kept: the steps gone back. What is kept after that point is
+// dropped (the future is recorded anew). A step's pose is kept as the step begins, so the newest kept is one step
+// before now: `frames` back is the kept pose that many from the end.
+pub fn back(r: Rewind, frames: u32) -> u32 {
+    guard let i = rewind_at(r) else {
+        return 0
+    }
+    var gone: u32 = frames
+    for k in 0..rw_kinds[i].len() {
+        let kept = rw_poses[i][k].len() as u32
+        if kept < gone {
+            gone = kept
+        }
+    }
+    if gone == 0 {
+        return 0
+    }
+    for k in 0..rw_kinds[i].len() {
+        let n = rw_poses[i][k].len()
+        let p = rw_poses[i][k][n - (gone as int)]
+        var cut = 0
+        while cut < gone as int {
+            rw_poses[i][k].pop()
+            cut += 1
+        }
+        if rw_kinds[i][k] == 0 {
+            put_player(p)
+        } else if let ra = rw_actors[i][k] {
+            if let a = ra.get() {
+                a.mPosition = p.at
+                a.mRotation = degrees_of(p.rotation)
+                a.mVelocity = vec3(0.0, 0.0, 0.0)
+            }
+        }
+    }
+    return gone
+}
+
+// Nothing is kept any more; may be called again.
+pub fn end(r: Rewind) {
+    if let i = rewind_at(r) {
+        rw_live[i] = false
+        rw_poses[i] = []
+        rw_actors[i] = []
+        rw_kinds[i] = []
+    }
+}
+
+// ---- each world step ------------------------------------------------------------------------------------------------
+
+on step {
+    // The held form first (kit.player.form; a mod has one `on step`).
+    pform.kit_step()
+    // The input track playing: the next read set (the game read this step's controls before the step began, so a
+    // read set now is taken at the next step); the one it took now, set at the step before, is played in its
+    // recorded camera axes (the hook on MarioActor::updateCameraInfo).
+    play_cam = none
+    // A step while the game holds the scene (its pause menu, the galaxy map; world steps still run there) is not the
+    // run's: nothing is played, recorded or kept for a rewind in it, so a recording carries no paused stretch.
+    if time.now().state != time.State.Play {
+        return
+    }
+    if play_track != 0 {
+        let t = (play_track - 1) as int
+        if trk_live[t] and play_at > 0 {
+            play_cam = trk_reads[t].get((play_at - 1) as int)
+        }
+        // The step the first read is taken: the player as the track began (before the player moves in this step, as
+        // the start pose was taken).
+        if trk_live[t] and play_at == 1 {
+            if let s = trk_start[t] {
+                put_player(s)
+            }
+        }
+        if not trk_live[t] or play_at as int >= trk_reads[t].len() {
+            end_play()
+        } else if let h = play_handle {
+            let r = trk_reads[t][play_at as int]
+            var g = input.Game { buttons: r.buttons, stick_x: r.stick_x, stick_y: r.stick_y, pointer_x: r.pointer_x,
+                                 pointer_y: r.pointer_y, pointer_on: 0, shake: 0, device: 0, injected: 0 }
+            if r.pointer_on {
+                g.pointer_on = 1
+            }
+            if r.shake {
+                g.shake = 1
+            }
+            if inject != none {
+                inject.set(h, g)
+            }
+            play_at += 1
+        }
+    }
+    // Recorders.
+    for i in 0..rec_live.len() {
+        if not rec_live[i] {
+            continue
+        }
+        let t = (rec_track[i] - 1) as int
+        if trk_poses[t].len() + trk_reads[t].len() >= most_track_steps as int {
+            continue
+        }
+        // A recorder of the player records nothing at a step with no player.
+        if rec_kind[i] == 0 {
+            if let p = player_pose() {
+                trk_poses[t].push(p)
+            }
+        } else if rec_kind[i] == 2 {
+            if trk_reads[t].len() == 0 {
+                if let p = player_pose() {
+                    trk_start[t] = p
+                }
+            }
+            trk_reads[t].push(read_now())
+        } else if let ra = rec_actor[i] {
+            if let a = ra.get() {
+                trk_poses[t].push(actor_pose(a))
+            }
+        }
+    }
+    // Rewinds: each thing's ring.
+    for i in 0..rw_live.len() {
+        if not rw_live[i] {
+            continue
+        }
+        for k in 0..rw_kinds[i].len() {
+            if rw_kinds[i][k] == 0 {
+                if let p = player_pose() {
+                    rw_poses[i][k].push(p)
+                }
+            } else if let ra = rw_actors[i][k] {
+                if let a = ra.get() {
+                    rw_poses[i][k].push(actor_pose(a))
+                }
+            }
+            if rw_poses[i][k].len() > (rw_most[i] as int) + 1 {
+                rw_poses[i][k].remove(0)
+            }
+        }
+    }
+}
+
+on mods.stopped(gone) {
+    // Everything of the stopped mod, newest first: its input playback, its rewinds, its puppets, its
+    // recorders, its tracks, its seed.
+    if play_track != 0 and play_owner == gone {
+        end_play()
+    }
+    var i = rw_live.len()
+    while i > 0 {
+        i -= 1
+        if rw_owner[i] == gone {
+            rw_live[i] = false
+            rw_poses[i] = []
+            rw_actors[i] = []
+            rw_kinds[i] = []
+        }
+    }
+    i = pup_live.len()
+    while i > 0 {
+        i -= 1
+        if pup_owner[i] == gone {
+            drop_puppet(i)
+        }
+    }
+    i = rec_live.len()
+    while i > 0 {
+        i -= 1
+        if rec_owner[i] == gone {
+            rec_live[i] = false
+        }
+    }
+    i = trk_live.len()
+    while i > 0 {
+        i -= 1
+        if trk_owner[i] == gone {
+            trk_live[i] = false
+            trk_poses[i] = []
+            trk_reads[i] = []
+        }
+    }
+    if seed_set and seed_owner == gone {
+        seed_set = false
+    }
+}

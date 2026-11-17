@@ -1,5 +1,6 @@
 //! A mod as published: a folder, or a `.zip`, `.7z` or `.rar` archive.
 
+use crate::say;
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::io::{Read, Write};
@@ -43,13 +44,13 @@ pub(crate) fn safe_relative(name: &str) -> Option<PathBuf> {
 /// Writes one entry, and no more of it than is left of what the archive may unpack to, whatever it says of itself.
 fn write_limited(from: &mut dyn Read, target: &Path, left: &mut u64) -> Result<()> {
     if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("{} cannot be created", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| say!("LumaLink.CannotMake", path = parent.display()))?;
     }
-    let mut to = std::io::BufWriter::new(fs::File::create(target).with_context(|| format!("{} cannot be created", target.display()))?);
-    let copied = std::io::copy(&mut from.take(*left + 1), &mut to).with_context(|| format!("{} cannot be unpacked", target.display()))?;
-    to.flush().with_context(|| format!("{} cannot be written", target.display()))?;
+    let mut to = std::io::BufWriter::new(fs::File::create(target).with_context(|| say!("LumaLink.CannotMake", path = target.display()))?);
+    let copied = std::io::copy(&mut from.take(*left + 1), &mut to).with_context(|| say!("LumaLink.Source.CannotUnpack", path = target.display()))?;
+    to.flush().with_context(|| say!("LumaLink.CannotWrite", path = target.display()))?;
     if copied > *left {
-        bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
+        bail!(say!("LumaLink.Source.TooBig", size = MAX_UNPACKED >> 30));
     }
     *left -= copied;
     Ok(())
@@ -57,8 +58,8 @@ fn write_limited(from: &mut dyn Read, target: &Path, left: &mut u64) -> Result<(
 
 /// Unpacks a zip. Links in it are left out: they would be a way out of the folder, and no mod needs one.
 pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
-    let file = fs::File::open(archive).with_context(|| format!("{} cannot be read", archive.display()))?;
-    let mut zip = zip::ZipArchive::new(file).with_context(|| format!("{} is not a readable zip", archive.display()))?;
+    let file = fs::File::open(archive).with_context(|| say!("LumaLink.CannotRead", path = archive.display()))?;
+    let mut zip = zip::ZipArchive::new(file).with_context(|| say!("LumaLink.Source.NotReadable", path = archive.display(), kind = "zip"))?;
     let mut left = MAX_UNPACKED;
     for i in 0..zip.len() {
         // LZMA first: the library hands this method's four-byte zip header to the decoder as if it were LZMA data.
@@ -67,23 +68,23 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
             let mut entry = zip.by_index_raw(i)?;
             let name = entry.name().to_string();
             let Some(relative) = safe_relative(&name) else {
-                bail!("{name}: a path in the archive leaves its folder");
+                bail!(say!("LumaLink.Source.LeavesFolder", path = name));
             };
             let target = into.join(relative);
             let (size, crc) = (entry.size(), entry.crc32());
             if size > left {
-                bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
+                bail!(say!("LumaLink.Source.TooBig", size = MAX_UNPACKED >> 30));
             }
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).with_context(|| format!("{} cannot be created", parent.display()))?;
+                fs::create_dir_all(parent).with_context(|| say!("LumaLink.CannotMake", path = parent.display()))?;
             }
             // Straight to the file, never whole in memory: an entry may state any size.
-            let file = fs::File::create(&target).with_context(|| format!("{} cannot be created", target.display()))?;
+            let file = fs::File::create(&target).with_context(|| say!("LumaLink.CannotMake", path = target.display()))?;
             let mut to = Checked { to: std::io::BufWriter::new(file), crc: crc32fast::Hasher::new(), written: 0, size };
-            unzip_lzma(&mut entry, size, &mut to).with_context(|| format!("{name} cannot be unpacked"))?;
-            to.flush().with_context(|| format!("{} cannot be written", target.display()))?;
+            unzip_lzma(&mut entry, size, &mut to).with_context(|| say!("LumaLink.Source.CannotUnpack", path = name))?;
+            to.flush().with_context(|| say!("LumaLink.CannotWrite", path = target.display()))?;
             if to.written != size || to.crc.finalize() != crc {
-                bail!("{name} is damaged in the archive");
+                bail!(say!("LumaLink.Source.Damaged", path = name));
             }
             left -= size;
             continue;
@@ -91,14 +92,14 @@ pub(crate) fn unzip(archive: &Path, into: &Path) -> Result<()> {
         let mut entry = zip.by_index(i)?;
         let name = entry.name().to_string();
         let Some(relative) = safe_relative(&name) else {
-            bail!("{name}: a path in the archive leaves its folder");
+            bail!(say!("LumaLink.Source.LeavesFolder", path = name));
         };
         let target = into.join(relative);
         if entry.is_symlink() {
             continue;
         }
         if entry.is_dir() {
-            fs::create_dir_all(&target).with_context(|| format!("{} cannot be created", target.display()))?;
+            fs::create_dir_all(&target).with_context(|| say!("LumaLink.CannotMake", path = target.display()))?;
             continue;
         }
         write_limited(&mut entry, &target, &mut left)?;
@@ -134,9 +135,9 @@ impl Write for Checked {
 /// may not end in a marker, so the size comes from the zip's own record.
 fn unzip_lzma(packed: &mut dyn Read, size: u64, to: &mut Checked) -> Result<()> {
     let mut head = [0u8; 4];
-    packed.read_exact(&mut head).context("too short")?;
+    packed.read_exact(&mut head).with_context(|| say!("LumaLink.Source.LzmaShort"))?;
     if u16::from_le_bytes([head[2], head[3]]) != 5 {
-        bail!("not the LZMA a zip holds");
+        bail!(say!("LumaLink.Source.NotLzma"));
     }
     let options = lzma_rs::decompress::Options {
         unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(size)),
@@ -153,7 +154,7 @@ fn un7z(archive: &Path, into: &Path) -> Result<()> {
     sevenz_rust2::decompress_file_with_extract_fn(archive, into, |entry, reader, _| {
         // The library joins the archive's names as they are: each goes through the same check as a zip's.
         let Some(relative) = safe_relative(entry.name()) else {
-            return Err(sevenz_rust2::Error::other(format!("{}: a path in the archive leaves its folder", entry.name())));
+            return Err(sevenz_rust2::Error::other(say!("LumaLink.Source.LeavesFolder", path = entry.name())));
         };
         let target = into.join(relative);
         if entry.is_directory() {
@@ -163,7 +164,7 @@ fn un7z(archive: &Path, into: &Path) -> Result<()> {
         }
         Ok(true)
     })
-    .with_context(|| format!("{} is not a readable 7z", archive.display()))
+    .with_context(|| say!("LumaLink.Source.NotReadable", path = archive.display(), kind = "7z"))
 }
 
 /// The commands that can read a `.rar`, in the order to try: the system's own first, never a program of that name that
@@ -182,7 +183,7 @@ fn rar_readers() -> Vec<PathBuf> {
 /// A `.rar` through the system's bsdtar, which keeps paths inside the folder and won't write through a link. What it
 /// says it holds is checked first, and what it wrote after.
 fn unrar(archive: &Path, into: &Path) -> Result<()> {
-    let mut last = String::from("reading a .rar needs bsdtar (libarchive), which isn't on this system");
+    let mut last = say!("LumaLink.Source.NoRarReader");
     for reader in rar_readers() {
         let Ok(listing) = std::process::Command::new(&reader).arg("-tvf").arg(archive).output() else { continue };
         if !listing.status.success() {
@@ -194,11 +195,11 @@ fn unrar(archive: &Path, into: &Path) -> Result<()> {
             .filter_map(|line| line.split_whitespace().nth(4).and_then(|size| size.parse::<u64>().ok()))
             .fold(0, u64::saturating_add);
         if stated > MAX_UNPACKED {
-            bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
+            bail!(say!("LumaLink.Source.TooBig", size = MAX_UNPACKED >> 30));
         }
-        let output = std::process::Command::new(&reader).arg("-xf").arg(archive).arg("-C").arg(into).output().with_context(|| format!("{} cannot be started", reader.display()))?;
+        let output = std::process::Command::new(&reader).arg("-xf").arg(archive).arg("-C").arg(into).output().with_context(|| say!("LumaLink.Source.CannotStart", path = reader.display()))?;
         if !output.status.success() {
-            bail!("{} cannot be unpacked: {}", archive.display(), String::from_utf8_lossy(&output.stderr).trim());
+            bail!(say!("LumaLink.Source.CannotUnpackWhy", path = archive.display(), why = String::from_utf8_lossy(&output.stderr).trim()));
         }
         let root = fs::canonicalize(into)?;
         let mut total = 0u64;
@@ -206,7 +207,7 @@ fn unrar(archive: &Path, into: &Path) -> Result<()> {
         for entry in walkdir::WalkDir::new(into) {
             let entry = entry?;
             if !fs::canonicalize(entry.path())?.starts_with(&root) {
-                bail!("{}: a path in the archive leaves its folder", entry.path().display());
+                bail!(say!("LumaLink.Source.LeavesFolder", path = entry.path().display()));
             }
             if entry.path_is_symlink() {
                 links.push(entry.path().to_path_buf());
@@ -216,14 +217,14 @@ fn unrar(archive: &Path, into: &Path) -> Result<()> {
         }
         // Links are left out, as from a zip: no mod needs one, and one to a folder above it would never end.
         for link in links {
-            fs::remove_file(&link).or_else(|_| fs::remove_dir(&link)).with_context(|| format!("{} cannot be removed", link.display()))?;
+            fs::remove_file(&link).or_else(|_| fs::remove_dir(&link)).with_context(|| say!("LumaLink.Source.CannotRemove", path = link.display()))?;
         }
         if total > MAX_UNPACKED {
-            bail!("the archive unpacks to more than {MAX_UNPACKED} bytes");
+            bail!(say!("LumaLink.Source.TooBig", size = MAX_UNPACKED >> 30));
         }
         return Ok(());
     }
-    bail!("{} cannot be unpacked: {last}", archive.display())
+    bail!(say!("LumaLink.Source.CannotUnpackWhy", path = archive.display(), why = last))
 }
 
 /// A mod's name from its file or folder name.
@@ -290,9 +291,9 @@ pub(crate) fn original_files() -> Result<std::collections::HashMap<String, (u64,
         }
     }
     let Some(base) = BASE_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
-        bail!("this is a whole game. To take only what the mod changes, LumaLink needs your game imported by this Nebula, or your own disc named with --base");
+        bail!(say!("LumaLink.Source.WholeGame"));
     };
-    let mut game = nebula_import::ChangedGame::open(&base).with_context(|| format!("{} can't be read as this game", base.display()))?;
+    let mut game = nebula_import::ChangedGame::open(&base).with_context(|| say!("LumaLink.Source.NotThisGame", path = base.display()))?;
     let mut files = std::collections::HashMap::new();
     game.visit_files(&mut |path, bytes| {
         files.insert(path.to_ascii_lowercase(), (bytes.len() as u64, cook::texture::xxh64(&bytes)));
@@ -325,7 +326,7 @@ fn changes_from_game(input: &Path, work: &Path) -> Result<PathBuf> {
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&target, &bytes).with_context(|| format!("{} cannot be written", target.display()))?;
+        fs::write(&target, &bytes).with_context(|| say!("LumaLink.CannotWrite", path = target.display()))?;
         count += 1;
         Ok(())
     })?;
@@ -342,7 +343,7 @@ fn changes_from_game(input: &Path, work: &Path) -> Result<PathBuf> {
         count += 1;
     }
     if count == 0 {
-        bail!("{}: it's the same as the game's own disc", input.display());
+        bail!(say!("LumaLink.Source.SameAsGame", path = input.display()));
     }
     Ok(into)
 }
@@ -356,23 +357,23 @@ pub fn open(input: &Path, work: &Path) -> Result<PathBuf> {
         return Ok(input.to_path_buf());
     }
     if !input.is_file() {
-        bail!("{} does not exist", input.display());
+        bail!(say!("LumaLink.Source.NotExist", path = input.display()));
     }
     if is_disc(input) {
         return changes_from_game(input, work);
     }
     if matches!(input.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("xdelta" | "vcdiff" | "bps" | "ips" | "ppf")) {
-        bail!("{}: a patch for a disc image. Apply it to your disc with its own tool, then give LumaLink the result and your original with --base", input.display());
+        bail!(say!("LumaLink.Source.DiscPatch", path = input.display()));
     }
     if !is_archive(input) {
-        bail!("{}: a mod is a folder, a .zip, .7z or .rar archive, or a changed disc image", input.display());
+        bail!(say!("LumaLink.Source.NotAMod", path = input.display()));
     }
     // The file's name, when it's a name: `...zip` is a real file, and its stem is the folder above.
     let into = work.join(safe_relative(&mod_name(input)).filter(|p| p.components().count() == 1).unwrap_or_else(|| PathBuf::from("mod")));
     if into.exists() {
-        fs::remove_dir_all(&into).with_context(|| format!("{} cannot be cleared", into.display()))?;
+        fs::remove_dir_all(&into).with_context(|| say!("LumaLink.Source.CannotRemove", path = into.display()))?;
     }
-    fs::create_dir_all(&into).with_context(|| format!("{} cannot be created", into.display()))?;
+    fs::create_dir_all(&into).with_context(|| say!("LumaLink.CannotMake", path = into.display()))?;
     match input.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
         Some("zip") => unzip(input, &into)?,
         Some("7z") => un7z(input, &into)?,

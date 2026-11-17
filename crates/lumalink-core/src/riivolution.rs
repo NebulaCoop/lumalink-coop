@@ -1,5 +1,6 @@
 //! Riivolution patch files: the `<wiidisc>` XML most Wii mods are published with, and the choices saved beside them.
 
+use crate::say;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -157,14 +158,14 @@ pub fn parse(text: &str) -> Result<Disc> {
         // Some mods carry a DTD. Nested entities can't make more than a mod's XML ever needs.
         roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: 2_000_000 },
     )
-    .map_err(|e| anyhow!("the XML cannot be read: {e}"))?;
+    .map_err(|e| anyhow!(say!("LumaLink.Riivolution.NotXml", why = e)))?;
     let root = document.root_element();
     if !root.has_tag_name("wiidisc") {
-        bail!("not a Riivolution patch (no <wiidisc>)");
+        bail!(say!("LumaLink.Riivolution.NotPatch"));
     }
-    let version = root.attribute("version").and_then(number).context("the patch has no version")?;
+    let version = root.attribute("version").and_then(number).with_context(|| say!("LumaLink.Riivolution.NoVersion"))?;
     if version != 1 {
-        bail!("Riivolution version {version}: only version 1 exists");
+        bail!(say!("LumaLink.Riivolution.Version", version = version));
     }
     let mut disc = Disc { root: root.attribute("root").unwrap_or("").to_string(), ..Default::default() };
     if let Some(id) = root.children().find(|c| c.has_tag_name("id")) {

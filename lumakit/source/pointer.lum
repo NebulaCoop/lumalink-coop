@@ -1,0 +1,244 @@
+// kit.pointer: the star pointer: where it points on screen and in the world, what B throws and what it
+// costs, grabbing, the source that aims it.
+// What B throws: the player's shooter (StarPieceShooter, one a pointer port) charges and shoots as the game's; while a
+// throw is set, its shot replaces the star bit (StarPieceShooter::shoot skipped, kit.projectile throws the mod's shot
+// from where the game's leaves, the camera's side, toward the game's goal: the locked or searched target, else the
+// pointing point) and its cost is paid in place of the star bit. Whether the player can pay is what the shooter asks
+// (MR::getStarPieceNum, inside tryShoot only), so the game's own refusal and its "no star bits" sound play when not.
+// Grab: A (the jump button's press) while the shooter has a target under the pointer (its search or lock-on sensor's
+// actor) calls the newest grab function with it. The shooter searches only while the player has star bits (the game's
+// tryShoot): with none there is no target, so no grab.
+// The newest throw and the newest grab hold; ending one gives the one before, then the game's.
+// Throws and grabs are recorded under caller(); `on mods.stopped` ends a stopped mod's.
+// ThrowSet.end is also a module function (`end`). Cost's cases name their number (`StarBits(n: u32)`), as
+// item.Gives. Coins are paid with MR::payCoin (false with fewer than n; no 1-up, no coin count, no life taken).
+
+use svc.input
+use ./projectile
+
+// The pointer's place on screen (the game's layout units); none: off screen.
+pub fn screen() -> vec2? {
+    if not MR::isStarPointerInScreen(0) {
+        return none
+    }
+    guard let p = MR::getStarPointerScreenPosition(0) else { return none }
+    return p
+}
+
+// The map point under the pointer and the map's normal there; none: off screen or no map along the look.
+pub fn world() -> (vec3, vec3)? {
+    guard let s = screen() else { return none }
+    var look = vec3(0.0, 0.0, 0.0)
+    if not MR::calcWorldRayDirectionFromScreen(var look, s) {
+        return none
+    }
+    if length(look) < 0.0001 {
+        return none
+    }
+    var n = vec3(0.0, 0.0, 0.0)
+    var at = vec3(0.0, 0.0, 0.0)
+    if not MR::getFirstPolyNormalOnLineToMap(var n, MR::getCamPos(), normal(look) * 100000.0, var at, none) {
+        return none
+    }
+    return (at, n)
+}
+
+pub enum Cost { StarBits(n: u32), Coins(n: u32), Free }
+
+pub struct Throw { shot: fn(vec3, vec3) -> projectile.Shot, cost: Cost = Cost.StarBits(1) }   // (from, toward)
+
+pub struct ThrowSet {
+    n: u64
+    fn end(self) { end(self) }
+}
+
+pub enum Source { Infrared, Gyro(sensitivity: f32), Mouse, Stick }
+
+// The throws and the grabs in force, oldest first (one numbering for both): numbers, owners, what each does.
+var throws: list<u64> = []
+var throw_owners: list<u64> = []
+var throw_sets: list<Throw> = []
+var grabs: list<u64> = []
+var grab_owners: list<u64> = []
+var grab_fns: list<fn(LiveActor) -> bool> = []
+var next_set: u64 = 1
+// Inside the shooter's tryShoot while a throw holds: the star bit count it asks is whether the throw can be paid.
+var in_try: bool = false
+
+// What B throws from now on; end(): star bits again (or the throw before).
+pub fn set_throw(t: Throw) -> ThrowSet {
+    let n = next_set
+    next_set += 1
+    throws.push(n)
+    throw_owners.push(caller())
+    throw_sets.push(t)
+    return ThrowSet { n: n }
+}
+
+// A on an actor under the pointer calls `f` with it (true: grabbed).
+pub fn on_grab(f: fn(LiveActor) -> bool) -> ThrowSet {
+    let n = next_set
+    next_set += 1
+    grabs.push(n)
+    grab_owners.push(caller())
+    grab_fns.push(f)
+    return ThrowSet { n: n }
+}
+
+pub fn end(s: ThrowSet) {
+    for i in 0..throws.len() {
+        if throws[i] == s.n {
+            throws.remove(i)
+            throw_owners.remove(i)
+            throw_sets.remove(i)
+            return
+        }
+    }
+    for i in 0..grabs.len() {
+        if grabs[i] == s.n {
+            grabs.remove(i)
+            grab_owners.remove(i)
+            grab_fns.remove(i)
+            return
+        }
+    }
+}
+
+// The pointer on pad `pad` aimed by `s`. False, and a log line naming the source, when the service refuses
+// it: the player has no such device now (the service reports no LUMA_E_ABSENT), or pad 1 (the co-star's pointer
+// follows its own controller).
+pub fn source(pad: input.Pad, s: Source) -> bool {
+    var took = true
+    var name = ""
+    match s {
+        Source.Infrared => {
+            took = input.pointer_source(pad, input.PointerSource.Infrared, 0.0)
+            name = "Infrared"
+        }
+        Source.Gyro(sensitivity) => {
+            took = input.pointer_source(pad, input.PointerSource.Gyro, sensitivity)
+            name = "Gyro"
+        }
+        Source.Mouse => {
+            took = input.pointer_source(pad, input.PointerSource.Mouse, 0.0)
+            name = "Mouse"
+        }
+        Source.Stick => {
+            took = input.pointer_source(pad, input.PointerSource.Stick, 0.0)
+            name = "Stick"
+        }
+    }
+    if not took {
+        log "kit.pointer: source {name} refused: the player has no such device now, or the pad is the co-star's"
+    }
+    return took
+}
+
+// The throw that holds (the newest), or none.
+fn throw_now() -> Throw? {
+    if throws.len() == 0 {
+        return none
+    }
+    return throw_sets[throws.len() - 1]
+}
+
+// Whether the player can pay `c` now (the game's real counts).
+fn can_pay(c: Cost, star_bits: s32) -> bool {
+    match c {
+        Cost.StarBits(n) => { return star_bits >= n as s32 }
+        Cost.Coins(n) => { return MR::getCoinNum() >= n as s32 }
+        Cost.Free => { return true }
+    }
+}
+
+fn pay(c: Cost) {
+    match c {
+        Cost.StarBits(n) => { MR::addStarPiece(-(n as s32)) }
+        Cost.Coins(n) => { MR::payCoin(n as s32) }
+        Cost.Free => {}
+    }
+}
+
+// The shooter's step: a grab first (A on its target), then whether a set throw can be paid while tryShoot asks.
+hook before StarPieceShooter::tryShoot() {
+    if grabs.len() > 0 {
+        let g = grab_fns[grabs.len() - 1]
+        if MR::isPressedJump(self.mPort) {
+            var target = self.mLockOnSensor
+            if target == none {
+                target = self.mSearchSensor
+            }
+            if let sensor = target {
+                if let host = sensor.mHost {
+                    g(host)
+                }
+            }
+        }
+    }
+    in_try = throw_now() != none
+}
+
+hook after StarPieceShooter::tryShoot() {
+    in_try = false
+}
+
+// Inside tryShoot with a throw set: a throw that can be paid with no star bits still aims (the count read as 1). The
+// count is otherwise the real one: tryShoot reads it before its search too, so a 0 for a throw that cannot be paid
+// would stop the search a grab needs; that throw is refused at the shot (below). Nowhere else (the counter shows the
+// real count).
+hook after MR::getStarPieceNum() -> count {
+    if not in_try {
+        return
+    }
+    guard let t = throw_now() else { return }
+    if count < 1 and can_pay(t.cost, count) {
+        result = 1
+    }
+}
+
+// The shot: the set throw's in place of the star bit, its cost paid.
+hook before StarPieceShooter::shoot() {
+    in_try = false  // the real count from here (pay reads and writes it)
+    guard let t = throw_now() else { return }
+    if not can_pay(t.cost, MR::getStarPieceNum()) {
+        // The game's own refusal sound, as tryShoot plays it when there is nothing to throw.
+        MR::startCSSound("CS_NO_SPIECE", "SE_SY_CS_NO_PIECE", self.mPort)
+        skip false
+    }
+    var toward = self.mPosition
+    var target = self.mLockOnSensor
+    if target == none {
+        target = self.mSearchSensor
+    }
+    if let sensor = target {
+        toward = sensor.mPosition
+    }
+    guard let director = MR::getStarPieceDirector() else { skip false }
+    let from = director.calcPosCameraShoot(self.mPort)
+    pay(t.cost)
+    let f = t.shot
+    projectile.throw(f(from, toward))
+    skip true
+}
+
+// A mod that set throws or grabs was taken out: its sets end; the ones before hold again.
+on mods.stopped(gone) {
+    var i = throws.len()
+    while i > 0 {
+        i -= 1
+        if throw_owners[i] == gone {
+            throws.remove(i)
+            throw_owners.remove(i)
+            throw_sets.remove(i)
+        }
+    }
+    var k = grabs.len()
+    while k > 0 {
+        k -= 1
+        if grab_owners[k] == gone {
+            grabs.remove(k)
+            grab_owners.remove(k)
+            grab_fns.remove(k)
+        }
+    }
+}

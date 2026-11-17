@@ -1,5 +1,6 @@
 //! Looking inside the game and inside files: what a modder needs to know the names of.
 
+use crate::say;
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
@@ -8,21 +9,67 @@ use std::path::Path;
 
 /// A column's hash, as the game's tables have it.
 fn column_hash(name: &str) -> u32 {
-    name.bytes().fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(u32::from(byte)))
+    nebula_import::cook::table::column_hash(name)
 }
 
-/// The names of columns: tables keep only their hashes. A hash not among these comes out as `0x` and its hash, which reads back the same.
-fn column_names() -> BTreeMap<u32, &'static str> {
-    crate::column_names::NAMES.iter().map(|n| (column_hash(n), *n)).collect()
+/// The names of columns: tables keep only their hashes. The names come from the game's self-description
+/// (`names.columns`, made by the game's build from its source: every name the game's code reads a column by), then from
+/// the store's own folder and file names (a scenario table's columns are its zones). A hash not among them comes out
+/// as `0x` and its hash, which reads back the same.
+#[derive(Clone, Debug, Default)]
+pub struct ColumnNames(BTreeMap<u32, String>);
+
+impl ColumnNames {
+    /// No names: every column by its hash.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// The column names a self-description file lists.
+    pub fn from_self_description(bytes: &[u8], shown_as: &Path) -> Result<Self> {
+        let value: Value = serde_json::from_slice(bytes)
+            .map_err(|e| anyhow::anyhow!(say!("LumaLink.SelfNotJson", path = shown_as.display(), line = e.line(), column = e.column())))?;
+        let mut names = BTreeMap::new();
+        let columns = value.get("names").and_then(|n| n.get("columns")).and_then(Value::as_array);
+        for name in columns.into_iter().flatten().filter_map(Value::as_str) {
+            names.entry(column_hash(name)).or_insert_with(|| name.to_string());
+        }
+        Ok(Self(names))
+    }
+
+    /// Adds the store's folder and file names, each whole and without its extension, where no name has the hash yet.
+    pub fn add_store_names(&mut self, store: &Path) -> Result<()> {
+        for (path, _, _) in crate::game_store::GameStore::files(store)? {
+            for part in path.split('/').filter(|p| !p.is_empty()) {
+                let stem = part.split('.').next().unwrap_or(part);
+                for name in [part, stem] {
+                    self.0.entry(column_hash(name)).or_insert_with(|| name.to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn name(&self, hash: u32) -> String {
+        self.0.get(&hash).cloned().unwrap_or_else(|| format!("0x{hash:08x}"))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// A table of the game, disc or cooked, as the JSON a mod writes.
-pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
+pub fn table_to_json(bytes: &[u8], names: &ColumnNames) -> Result<Value> {
     if bytes.starts_with(nebula_import::cook::table::MAGIC) {
-        return cooked_table_to_json(bytes);
+        return cooked_table_to_json(bytes, names);
     }
     if bytes.len() < 16 {
-        bail!("too short to be a table");
+        bail!(say!("LumaLink.Table.TooShort"));
     }
     let little = {
         let fields = u32::from_le_bytes(bytes[4..8].try_into()?) as usize;
@@ -30,18 +77,17 @@ pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
         data == 16 + fields * 12
     };
     let word = |at: usize| -> Result<u32> {
-        let b: [u8; 4] = bytes.get(at..at + 4).context("past the table's end")?.try_into()?;
+        let b: [u8; 4] = bytes.get(at..at + 4).with_context(|| say!("LumaLink.Table.PastEnd"))?.try_into()?;
         Ok(if little { u32::from_le_bytes(b) } else { u32::from_be_bytes(b) })
     };
     let half = |at: usize| -> Result<u16> {
-        let b: [u8; 2] = bytes.get(at..at + 2).context("past the table's end")?.try_into()?;
+        let b: [u8; 2] = bytes.get(at..at + 2).with_context(|| say!("LumaLink.Table.PastEnd"))?.try_into()?;
         Ok(if little { u16::from_le_bytes(b) } else { u16::from_be_bytes(b) })
     };
     let (rows, fields, data, size) = (word(0)? as usize, word(4)? as usize, word(8)? as usize, word(12)? as usize);
     if data != 16 + fields * 12 {
-        bail!("this isn't a table");
+        bail!(say!("LumaLink.Table.NotTable"));
     }
-    let names = column_names();
     struct Column {
         name: String,
         mask: u32,
@@ -54,11 +100,11 @@ pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
         let at = 16 + 12 * f;
         let hash = word(at)?;
         columns.push(Column {
-            name: names.get(&hash).map_or_else(|| format!("0x{hash:08x}"), |n| (*n).to_string()),
+            name: names.name(hash),
             mask: word(at + 4)?,
             offset: half(at + 8)? as usize,
-            shift: u32::from(*bytes.get(at + 10).context("past the table's end")?),
-            kind: *bytes.get(at + 11).context("past the table's end")?,
+            shift: u32::from(*bytes.get(at + 10).with_context(|| say!("LumaLink.Table.PastEnd"))?),
+            kind: *bytes.get(at + 11).with_context(|| say!("LumaLink.Table.PastEnd"))?,
         });
     }
     let pool = data + rows * size;
@@ -87,8 +133,8 @@ pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
                     }
                 }
                 4 => json!(i64::from(half(at)?) & i64::from(column.mask)),
-                5 => json!(i64::from(*bytes.get(at).context("past the table's end")?)),
-                other => bail!("a column of kind {other}"),
+                5 => json!(i64::from(*bytes.get(at).with_context(|| say!("LumaLink.Table.PastEnd"))?)),
+                other => bail!(say!("LumaLink.Table.ColumnKind", kind = other)),
             };
             row.insert(column.name.clone(), value);
         }
@@ -104,17 +150,21 @@ pub fn table_to_json(bytes: &[u8]) -> Result<Value> {
 
 /// A cooked table (the imported game's, or Nebula's own) as the JSON a mod writes: an int as the game reads it (signed,
 /// at its width), a float marked in `columns`, words as UTF-8.
-fn cooked_table_to_json(bytes: &[u8]) -> Result<Value> {
+fn cooked_table_to_json(bytes: &[u8], names: &ColumnNames) -> Result<Value> {
     use nebula_import::cook::table::{Cell, Kind, TableIr};
     let table = TableIr::from_ntbl(bytes)?;
-    let names = column_names();
-    let named: Vec<String> = table.columns.iter().map(|c| names.get(&c.hash).map_or_else(|| format!("0x{:08x}", c.hash), |n| (*n).to_string())).collect();
+    let named: Vec<String> = table.columns.iter().map(|c| names.name(c.hash)).collect();
     let mut out = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
         let mut fields = Map::new();
         for ((column, name), cell) in table.columns.iter().zip(&named).zip(row) {
             let value = match (column.kind, cell) {
-                (Kind::Text, Cell::Text(word)) => Value::String(String::from_utf8_lossy(word).into_owned()),
+                // Words are UTF-8 but for a few the disc spells with bytes no encoding reads (two cameras' ids end in a
+                // counter byte); those keep every byte, so two rows never read as one (docs/modding/format/table-keys.md, section 5).
+                (Kind::Text, Cell::Text(word)) => match std::str::from_utf8(word) {
+                    Ok(text) => Value::String(text.to_string()),
+                    Err(_) => json!({ "bytes": word.iter().map(|b| format!("{b:02x}")).collect::<String>() }),
+                },
                 (Kind::Float, Cell::Bits(bits)) => json!(f64::from(f32::from_bits(*bits))),
                 (Kind::Int, Cell::Bits(bits)) => match column.width {
                     8 => json!(i64::from(*bits as u8 as i8)),
@@ -122,7 +172,7 @@ fn cooked_table_to_json(bytes: &[u8]) -> Result<Value> {
                     _ => json!(i64::from(*bits as i32)),
                 },
                 (_, Cell::Bits(bits)) => json!(*bits),
-                (_, Cell::Text(_)) => bail!("column {name} holds a word where a number belongs"),
+                (_, Cell::Text(_)) => bail!(say!("LumaLink.Table.WordForNumber", name = name)),
             };
             fields.insert(name.clone(), value);
         }
@@ -142,12 +192,11 @@ pub struct TableListing {
 
 /// Every table of an imported game, in the store's order: what a mod's `merge/` file can add rows to, remove rows from
 /// or change. `filter` keeps those whose path or a column name holds it.
-pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListing>> {
+pub fn list_tables(store: &Path, filter: Option<&str>, names: &ColumnNames) -> Result<Vec<TableListing>> {
     use nebula_import::cook::table::{Kind, TableIr, MAGIC};
     use std::io::{Read, Seek, SeekFrom};
-    let names = column_names();
     let wanted = filter.map(str::to_ascii_lowercase);
-    let mut pak = fs::File::open(store).with_context(|| format!("{} cannot be read", store.display()))?;
+    let mut pak = fs::File::open(store).with_context(|| say!("LumaLink.CannotRead", path = store.display()))?;
     let store_length = pak.metadata()?.len();
     let mut found = Vec::new();
     for (path, position, size) in crate::game_store::GameStore::files(store)? {
@@ -161,17 +210,17 @@ pub fn list_tables(store: &Path, filter: Option<&str>) -> Result<Vec<TableListin
             continue;
         }
         if position.checked_add(size).is_none_or(|end| end > store_length) {
-            bail!("{path}: past the end of the store");
+            bail!(say!("LumaLink.Store.PastEnd", path = path));
         }
         let mut bytes = vec![0u8; size as usize];
         pak.seek(SeekFrom::Start(position))?;
         pak.read_exact(&mut bytes)?;
-        let table = TableIr::from_ntbl(&bytes).with_context(|| format!("{path}: table"))?;
+        let table = TableIr::from_ntbl(&bytes).with_context(|| say!("LumaLink.Table.In", path = path))?;
         let columns: Vec<(String, &'static str)> = table
             .columns
             .iter()
             .map(|c| {
-                let name = names.get(&c.hash).map_or_else(|| format!("0x{:08x}", c.hash), |n| (*n).to_string());
+                let name = names.name(c.hash);
                 let kind = match c.kind {
                     Kind::Int => "int",
                     Kind::Field => "field",
@@ -217,7 +266,7 @@ pub fn list_models(store: &Path, filter: Option<&str>) -> Result<Vec<ModelListin
             animations.entry(folder(path)).or_default().push(name);
         }
     }
-    let mut pak = fs::File::open(store).with_context(|| format!("{} cannot be read", store.display()))?;
+    let mut pak = fs::File::open(store).with_context(|| say!("LumaLink.CannotRead", path = store.display()))?;
     let mut found = Vec::new();
     for (path, position, size) in &files {
         if !matches!(ending(path).as_str(), "bdl" | "bmd") || wanted.as_ref().is_some_and(|w| !path.to_ascii_lowercase().contains(w)) {
@@ -226,7 +275,7 @@ pub fn list_models(store: &Path, filter: Option<&str>) -> Result<Vec<ModelListin
         let mut bytes = vec![0u8; usize::try_from(*size)?];
         pak.seek(SeekFrom::Start(*position))?;
         pak.read_exact(&mut bytes)?;
-        let names = nebula_import::cook::model_write::names(&bytes).with_context(|| format!("{path}: model"))?;
+        let names = nebula_import::cook::model_write::names(&bytes).with_context(|| say!("LumaLink.Model.In", path = path))?;
         let mut beside = animations.get(&folder(path)).cloned().unwrap_or_default();
         beside.sort_by_key(|a| a.to_ascii_lowercase());
         found.push(ModelListing { path: path.clone(), names, animations: beside });
@@ -239,10 +288,10 @@ pub fn list_models(store: &Path, filter: Option<&str>) -> Result<Vec<ModelListin
 pub fn list_messages(store: &Path, language: &str) -> Result<Vec<(String, String, bool)>> {
     use nebula_import::cook::store as game_store;
     let folder = format!("{language}/MessageData/Message");
-    let files = game_store::read_folder(store, &folder).with_context(|| format!("the game has no {folder}"))?;
+    let files = game_store::read_folder(store, &folder).with_context(|| say!("LumaLink.Store.NoFolder", folder = folder))?;
     let find = |name: &str| files.iter().find(|(path, _)| path.eq_ignore_ascii_case(name)).map(|(_, bytes)| bytes.as_slice());
     let (Some(message_file), Some(id_table)) = (find("message.bmg"), find("messageid.tbl")) else {
-        bail!("{folder} has no message.bmg and messageid.tbl");
+        bail!(say!("LumaLink.Store.NoMessages", folder = folder));
     };
     Ok(crate::messages::read(message_file, id_table)?
         .into_iter()
@@ -259,6 +308,17 @@ fn text_of(bytes: &[u8]) -> String {
     encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned()
 }
 
+/// The game's sound names (its sound table, AudioRes/SMR), sorted, those holding `filter` in any case: the names a
+/// mod's sound `replace` takes.
+pub fn list_sounds(store: &Path, filter: Option<&str>) -> Result<Vec<String>> {
+    use nebula_import::cook::{sound, store as game_store};
+    let wanted = filter.map(str::to_ascii_lowercase);
+    let mut names = sound::sound_names(&game_store::read_file(store, "AudioRes/SMR.szs")?)?;
+    names.retain(|n| wanted.as_ref().is_none_or(|w| n.to_ascii_lowercase().contains(w.as_str())));
+    names.sort();
+    Ok(names)
+}
+
 /// Every file of an imported game under a folder, by its place.
 pub fn list_files(store: &Path, folder: &str) -> Result<Vec<(String, u64)>> {
     use nebula_import::cook::store as game_store;
@@ -267,7 +327,7 @@ pub fn list_files(store: &Path, folder: &str) -> Result<Vec<(String, u64)>> {
 }
 
 /// One file or a whole folder of an imported game into `output`: tables as JSON too, so they can be read and changed.
-pub fn extract(store: &Path, path: &str, output: &Path) -> Result<usize> {
+pub fn extract(store: &Path, path: &str, output: &Path, names: &ColumnNames) -> Result<usize> {
     use nebula_import::cook::store as game_store;
     let path = path.trim_matches('/');
     let items = match game_store::read_folder(store, path) {
@@ -278,79 +338,42 @@ pub fn extract(store: &Path, path: &str, output: &Path) -> Result<usize> {
     for (place, bytes) in items {
         let target = output.join(&place);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("{} cannot be created", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| say!("LumaLink.CannotMake", path = parent.display()))?;
         }
-        if let Ok(table) = table_to_json(&bytes) {
-            let mut json = target.as_os_str().to_owned();
-            json.push(".json");
-            fs::write(&json, serde_json::to_vec_pretty(&table)?)?;
-        } else if let Ok(particles) = particles_to_json(store, &place, &bytes) {
-            let mut json = target.as_os_str().to_owned();
-            json.push(".json");
-            fs::write(&json, serde_json::to_vec_pretty(&particles)?)?;
+        // A table, a particle file or a layout comes with its JSON beside it (a layout's as a patch that changes
+        // nothing: every pane by name, with its values); nothing already there is written over.
+        let readable = table_to_json(&bytes, names)
+            .ok()
+            .or_else(|| particles_to_json(store, &place, &bytes).ok())
+            .or_else(|| nebula_import::cook::layout_patch::as_patch(&bytes));
+        let mut json = target.as_os_str().to_owned();
+        json.push(".json");
+        let json = std::path::PathBuf::from(json);
+        for out in std::iter::once(&target).chain(readable.as_ref().map(|_| &json)) {
+            if out.exists() {
+                bail!(say!("LumaLink.AlreadyThere", path = out.display()));
+            }
         }
-        fs::write(&target, &bytes)?;
+        if let Some(value) = readable {
+            fs::write(&json, serde_json::to_vec_pretty(&value)?).with_context(|| say!("LumaLink.CannotWrite", path = json.display()))?;
+            written += 1;
+        }
+        fs::write(&target, &bytes).with_context(|| say!("LumaLink.CannotWrite", path = target.display()))?;
         written += 1;
     }
     Ok(written)
 }
 
-/// The game's particles (ParticleData/Effect.arc/Particles.jpc) as a mod's Particles.jpc.json writes them, each with its
-/// name from ParticleNames beside it: one can be copied into a mod's file and changed.
+/// The game's particles (ParticleData/Effect.arc/Particles.jpc) as a mod's `layers/<layer>/assets/effects.json` writes
+/// them (docs/modding/content/effects.md, section 7): each under `replace` by its name from ParticleNames beside it, every value and its
+/// textures by role. Copied into a mod and changed, the changed particles replace the game's; one copied under
+/// `effects` (or named by `like`) is a new effect starting from it.
 fn particles_to_json(store: &Path, place: &str, bytes: &[u8]) -> Result<serde_json::Value> {
-    use nebula_import::cook::{particle_json, particles, store as game_store};
+    use nebula_import::cook::{effects, particle_json, particles, store as game_store};
     let ir = particles::read_nptc(bytes)?;
     let folder = place.rsplit_once('/').map_or("", |(folder, _)| folder);
-    let names = game_store::read_file(store, &format!("{folder}/ParticleNames.bcsv")).ok().and_then(|t| particle_json::names_index(&t).ok()).unwrap_or_default();
-    let name_of: std::collections::HashMap<u32, &str> = names.iter().map(|(name, n)| (*n, name.as_str())).collect();
-    let list: Vec<serde_json::Value> = ir
-        .resources
-        .iter()
-        .map(|res| {
-            let mut p = particle_json::write(&ir, res);
-            if let (Some(name), Some(fields)) = (name_of.get(&res.user_index), p.as_object_mut()) {
-                fields.insert("name".into(), serde_json::Value::from(*name));
-            }
-            p
-        })
-        .collect();
-    Ok(serde_json::json!({ "particles": list }))
-}
-
-/// A file a game's mod could use: what's in it, in one line.
-pub fn describe_file(path: &Path) -> Result<String> {
-    let bytes = fs::read(path).with_context(|| format!("{} cannot be read", path.display()))?;
-    let bytes = if nebula_import::cook::archive::is_compressed(&bytes) { nebula_import::cook::archive::expand(&bytes)? } else { bytes };
-    if nebula_import::cook::archive::is_archive(&bytes) {
-        let members = nebula_import::cook::archive::members(&bytes)?;
-        return Ok(format!("an archive of {} files", members.len()));
-    }
-    if let Ok(table) = table_to_json(&bytes) {
-        return Ok(format!("a table of {} rows", table["rows"].as_array().map_or(0, Vec::len)));
-    }
-    Ok(format!("{} bytes", bytes.len()))
-}
-
-/// An archive's files into a folder, named as the mod's own folder form names them.
-pub fn unarchive(path: &Path, output: &Path) -> Result<usize> {
-    let bytes = fs::read(path).with_context(|| format!("{} cannot be read", path.display()))?;
-    let bytes = if nebula_import::cook::archive::is_compressed(&bytes) { nebula_import::cook::archive::expand(&bytes)? } else { bytes };
-    let members = nebula_import::cook::archive::members(&bytes)?;
-    let mut written = 0;
-    for member in &members {
-        let target = output.join(&member.path);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        if let Ok(table) = table_to_json(&member.bytes) {
-            let mut json = target.as_os_str().to_owned();
-            json.push(".json");
-            fs::write(&json, serde_json::to_vec_pretty(&table)?)?;
-        }
-        fs::write(&target, &member.bytes)?;
-        written += 1;
-    }
-    Ok(written)
+    let names = particle_json::names_index(&game_store::read_file(store, &format!("{folder}/ParticleNames.bcsv"))?)?;
+    Ok(effects::extract(&ir, &names, &|_| true))
 }
 
 /// The game's rules among its tunables (`luma.json` "tunables", by "<file stem>.<name>"), what each does and the game's
@@ -424,19 +447,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_the_game_builds_are_known() {
-        // A light table's columns, an animation's file and a camera's vector: no literal of the game spells them whole.
-        let names = column_names();
-        for name in ["PlayerLight0ColorR", "PlanetAmbientA", "StrongLight1FollowCamera", "BckName", "BtpStartFrame", "vpanaxis.Z"] {
-            assert_eq!(names.get(&column_hash(name)), Some(&name), "{name}");
-        }
+    fn column_names_come_from_the_self_description() {
+        let file = br#"{"self": 1, "names": {"columns": ["PlanetAmbientA", "vpanaxis.Z"]}}"#;
+        let names = ColumnNames::from_self_description(file, Path::new("self.json")).unwrap();
+        assert_eq!(names.len(), 2);
+        assert_eq!(names.name(column_hash("PlanetAmbientA")), "PlanetAmbientA");
+        assert_eq!(names.name(column_hash("vpanaxis.Z")), "vpanaxis.Z");
+        assert_eq!(ColumnNames::none().name(0x1234), "0x00001234");
+        assert!(ColumnNames::from_self_description(b"not json", Path::new("self.json")).is_err());
     }
 
     #[test]
     fn a_cooked_table_reads_back_as_the_json_that_made_it() {
         let source = br#"{"columns":{"scale_x":"float"},"rows":[{"name":"Kuribo","scale_x":1.5,"Count":-3},{"name":"","scale_x":2,"Count":7}]}"#;
         let cooked = nebula_import::cook::table::TableIr::from_json(source).unwrap().to_ntbl();
-        let json = table_to_json(&cooked).unwrap();
+        let names = ColumnNames::from_self_description(br#"{"names": {"columns": ["name", "scale_x", "Count"]}}"#, Path::new("self.json")).unwrap();
+        let json = table_to_json(&cooked, &names).unwrap();
+        // Without the names, each column is its hash, which the cooker reads as that column again (the columns may
+        // come out in another order: a JSON object's keys are sorted).
+        let hashed = table_to_json(&cooked, &ColumnNames::none()).unwrap();
+        assert_eq!(hashed["columns"][format!("0x{:08x}", column_hash("scale_x"))], "float");
+        let again = nebula_import::cook::table::TableIr::from_json(serde_json::to_string(&hashed).unwrap().as_bytes()).unwrap().to_ntbl();
+        assert_eq!(table_to_json(&again, &ColumnNames::none()).unwrap(), hashed);
         assert_eq!(json["columns"]["scale_x"], "float");
         let rows = json["rows"].as_array().unwrap();
         assert_eq!(rows.len(), 2);

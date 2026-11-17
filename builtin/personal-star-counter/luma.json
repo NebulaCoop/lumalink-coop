@@ -1,32 +1,21 @@
 {
+  "format": "1.0",
+  "id": "personal-star-counter",
+  "version": "2.0.0",
+  "name": "Personal Star Counter",
+  "summary": "sm64coopdx's Personal Star Counter: your stars this room (red) and ever (green) under the star count, and each player's in the list. /psc on or off shows or hides it.",
   "authors": [
     "NebulaCoop"
   ],
-  "description": "See how many Power Stars you've collected, as sm64coopdx's Personal Star Counter: under the star count, red for the ones you got in this room and green for every one you ever got, and each player's red count in the player list. /psc off hides the counters, /psc on brings them back.",
-  "format": 1,
-  "game": "RMG",
-  "id": "personal-star-counter",
-  "layers": [
-    {
-      "path": "layers/base",
-      "commands": [
-        {
-          "name": "psc",
-          "description": "CoopCmdPscHelp",
-          "options": [
-            "on",
-            "off"
-          ]
-        }
-      ],
-      "scripts": [
-        "psc"
-      ]
-    }
-  ],
-  "name": "Personal Star Counter",
-  "requires": [
-    "coop"
-  ],
-  "version": "1.0.0"
+  "game": {
+    "id": "RMG",
+    "regions": [
+      "RMGE01",
+      "RMGP01",
+      "RMGJ01"
+    ]
+  },
+  "code": {
+    "platforms": ["windows-x64", "windows-arm64", "linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "android-arm64", "android-x64", "ios-arm64"]
+  }
 }

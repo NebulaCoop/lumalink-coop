@@ -2,6 +2,7 @@
 
 use crate::game_store::GameStore;
 use crate::known_patches;
+use crate::say;
 use crate::layout::{self, Layout, PatchFile};
 use crate::riivolution::{self, Disc, FilePatch, FolderPatch, MemoryPatch};
 use anyhow::Result;
@@ -35,11 +36,22 @@ pub struct Note {
 }
 
 /// A code patch with no native version.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct UnknownCode {
+    /// In the first release (RMGE01): where the game's functions are known.
     pub address: u32,
     pub bytes: usize,
     pub kind: &'static str,
+    /// The release the patch is for (its disc id's fourth letter), and the address as the patch gives it.
+    #[serde(skip)]
+    pub release: char,
+    #[serde(skip)]
+    pub own: u32,
+    /// What the mod writes, and what the game has there (the patch's `original`, else the imported game's program).
+    #[serde(skip)]
+    pub value: Vec<u8>,
+    #[serde(skip)]
+    pub original: Vec<u8>,
 }
 
 /// When a layer is used. Empty: always.
@@ -98,6 +110,7 @@ pub struct Plan {
     pub unknown_code: Vec<UnknownCode>,
     pub save_folder: Option<PathBuf>,
     pub save_clone: bool,
+    /// The id a patch names when it is for another game (`SB4E01`, or the three letters of one).
     pub for_another_game: Option<String>,
     /// It adds a galaxy: its saves have to be its own, since a save's shape follows the galaxy list.
     pub adds_galaxy: bool,
@@ -119,16 +132,16 @@ impl Plan {
     fn set(&mut self, disc: &str, host: &Path) {
         let disc = if disc.starts_with('/') { disc.to_string() } else { format!("/{disc}") };
         if crate::source::safe_relative(disc.trim_start_matches('/')).is_none() {
-            self.note(Level::Lost, format!("{disc}: this isn't a place in the game"));
+            self.note(Level::Lost, say!("LumaLink.Convert.NotAPlace", path = disc));
             return;
         }
         if disc.to_ascii_lowercase().starts_with("/nebuladata/") && !disc.eq_ignore_ascii_case("/NebulaData/GalaxyInfoTable.bcsv") {
-            self.note(Level::Lost, format!("{disc}: Nebula's own tables are not set by mods"));
+            self.note(Level::Lost, say!("LumaLink.Plan.NebulaTables", path = disc));
             return;
         }
         // A console's own files (banner, HOME menu, module list): Nebula has none of those.
         if nebula_import::cook::console_only(disc.trim_start_matches('/')) || is_language_home_menu(&disc) {
-            self.note(Level::Info, format!("{disc}: only the console reads this (its banner, HOME menu or module list); Nebula has none"));
+            self.note(Level::Info, say!("LumaLink.Plan.ConsoleOnly", path = disc));
             return;
         }
         // Keyed as the store names it: two of the mod's paths may be one place in the game (a zone's archive both at
@@ -138,7 +151,7 @@ impl Plan {
             if !have.disc.eq_ignore_ascii_case(&disc) {
                 let depth = |path: &str| path.matches('/').count();
                 let (kept, dropped) = if depth(&have.disc) <= depth(&disc) { (have.disc.clone(), disc.clone()) } else { (disc.clone(), have.disc.clone()) };
-                self.note(Level::Info, format!("{dropped}: the same file of the game as {kept}, which the game reads; left out"));
+                self.note(Level::Info, say!("LumaLink.Plan.SameFile", path = dropped, kept = kept));
                 if kept != disc {
                     return;
                 }
@@ -171,7 +184,7 @@ impl Plan {
         left.sort();
         left.dedup();
         for disc in left {
-            self.note(Level::Info, format!("{disc}: empty, as the game's own is; nothing to change"));
+            self.note(Level::Info, say!("LumaLink.Plan.EmptyAsGame", path = disc));
         }
     }
 
@@ -320,7 +333,7 @@ pub fn mod_id(name: &str) -> String {
     if !name.chars().any(|c| c.is_alphanumeric() && !c.is_ascii()) {
         return id;
     }
-    // FNV-1a: the same on every system and in every build.
+    // the same on every system and in every build.
     let mark = name.bytes().fold(0x811c_9dc5u32, |hash, byte| (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193));
     let mut head = id;
     head.truncate(49);
@@ -366,14 +379,32 @@ fn base_program(store: Option<&GameStore>) -> Option<Vec<u8>> {
     fs::read(folder.join("game-inputs").join("sys").join("main.dol")).ok()
 }
 
+/// What the game has where each code patch writes, from the imported game's program when the patch is for its release.
+fn game_instructions(unknown: &mut [UnknownCode], store: Option<&GameStore>) {
+    let Some(release) = store.and_then(|s| s.game_id.chars().nth(3)) else {
+        return;
+    };
+    if !unknown.iter().any(|u| u.original.is_empty() && !u.value.is_empty() && matches!(u.kind, "memory" | "code file") && u.release == release) {
+        return;
+    }
+    let Some(program) = base_program(store) else {
+        return;
+    };
+    for u in unknown.iter_mut().filter(|u| u.original.is_empty() && !u.value.is_empty() && matches!(u.kind, "memory" | "code file") && u.release == release) {
+        if let Some(bytes) = crate::gecko::program_bytes(&program, u.own | 0x8000_0000, u.value.len()) {
+            u.original = bytes.to_vec();
+        }
+    }
+}
+
 impl Builder<'_> {
     fn file(&mut self, sd_root: &Path, patch_root: &Path, f: &FilePatch) {
         let Some(host) = resolve(sd_root, patch_root, &f.external).filter(|h| h.is_file()) else {
-            self.plan.note(Level::Lost, format!("{}: not in the mod (wanted for {})", f.external, f.disc));
+            self.plan.note(Level::Lost, say!("LumaLink.Plan.NotInMod", path = f.external, disc = f.disc));
             return;
         };
         if f.offset != 0 || f.file_offset != 0 || f.length != 0 || !f.resize {
-            self.plan.note(Level::Lost, format!("{}: patched in part, by offsets into the disc's file, which have no meaning after conversion", f.disc));
+            self.plan.note(Level::Lost, say!("LumaLink.Plan.PatchedInPart", path = f.disc));
             return;
         }
         if f.disc.eq_ignore_ascii_case("main.dol") || f.disc.eq_ignore_ascii_case("/main.dol") {
@@ -383,7 +414,7 @@ impl Builder<'_> {
         if f.disc.starts_with('/') {
             if let Some(store) = self.store {
                 if !f.create && !store.has(&f.disc) {
-                    self.plan.note(Level::Lost, format!("{}: the game has no such file and the patch does not create it", f.disc));
+                    self.plan.note(Level::Lost, say!("LumaLink.Plan.NoSuchFile", path = f.disc));
                     return;
                 }
             }
@@ -395,13 +426,13 @@ impl Builder<'_> {
             Some(store) => {
                 let paths = store.named(&f.disc);
                 if paths.is_empty() {
-                    self.plan.note(Level::Lost, format!("{}: no file of that name in the game", f.disc));
+                    self.plan.note(Level::Lost, say!("LumaLink.Plan.NoFileNamed", name = f.disc));
                 }
                 for path in paths {
                     self.plan.set(&path, &host);
                 }
             }
-            None => self.plan.note(Level::Lost, format!("{}: named without a folder; choose your game store so it can be placed", f.disc)),
+            None => self.plan.note(Level::Lost, say!("LumaLink.Plan.NoFolder", name = f.disc)),
         }
     }
 
@@ -411,7 +442,7 @@ impl Builder<'_> {
             return;
         };
         let Ok(entries) = fs::read_dir(&directory) else {
-            self.plan.note(Level::Lost, format!("{external}: cannot be read"));
+            self.plan.note(Level::Lost, say!("LumaLink.CannotRead", path = external));
             return;
         };
         let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
@@ -421,7 +452,7 @@ impl Builder<'_> {
             // A link is left out, as in an archive: one to a folder above it would never end.
             let Ok(kind) = entry.file_type() else { continue };
             if kind.is_symlink() {
-                self.plan.note(Level::Info, format!("{}: a link, left out", join(external, &name)));
+                self.plan.note(Level::Info, say!("LumaLink.Plan.Link", path = join(external, &name)));
                 continue;
             }
             if kind.is_dir() {
@@ -451,12 +482,12 @@ impl Builder<'_> {
             return;
         };
         let Some(original) = base_program(self.store) else {
-            self.plan.note(Level::Lost, "main.dol: to read what it changes, LumaLink needs the game's own: give it with --base");
+            self.plan.note(Level::Lost, say!("LumaLink.Plan.NeedsBase"));
             return;
         };
         match crate::gecko::program_changes(&changed, &original) {
             Some(writes) => self.writes(sd_root, patch_root, writes),
-            None => self.plan.note(Level::Lost, "main.dol: this isn't a program LumaLink can read"),
+            None => self.plan.note(Level::Lost, say!("LumaLink.Plan.NotAProgram")),
         }
     }
 
@@ -471,6 +502,7 @@ impl Builder<'_> {
     fn memory(&mut self, sd_root: &Path, patch_root: &Path, patch: &MemoryPatch) {
         // Addresses and the pointers in tables, as the first release has them.
         let moved;
+        let own = patch.offset;
         let patch = if self.version == 'E' || !matches!(self.version, 'P' | 'J' | 'K') {
             patch
         } else {
@@ -487,7 +519,7 @@ impl Builder<'_> {
             if let Some(bytes) = resolve(sd_root, patch_root, &patch.value_file).filter(|f| f.is_file()).and_then(|f| fs::read(f).ok()) {
                 let list = crate::gecko::from_gct(&bytes);
                 for _ in 0..list.other {
-                    self.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                    self.plan.unknown_code.push(UnknownCode { kind: "code list", ..Default::default() });
                 }
                 self.writes(sd_root, patch_root, list.writes);
                 return;
@@ -500,13 +532,13 @@ impl Builder<'_> {
             if let Some(file) = file {
                 if address == known_patches::GALAXY_TABLE {
                     self.plan.set("/NebulaData/GalaxyInfoTable.bcsv", &file);
-                    self.plan.known_patches.push("where each galaxy is on the map and what opens it".to_string());
+                    self.plan.known_patches.push("LumaLink.Patch.GalaxyMap".to_string());
                     return;
                 }
                 if address == known_patches::EVENT_FLAG_TABLE {
                     if let Some(rows) = fs::read(&file).ok().and_then(|bytes| known_patches::event_flag_table(&bytes)) {
                         self.plan.event_flags = rows;
-                        self.plan.known_patches.push("the hungry Lumas and which galaxies open which".to_string());
+                        self.plan.known_patches.push("LumaLink.Patch.HungryLumas".to_string());
                         return;
                     }
                 }
@@ -527,22 +559,22 @@ impl Builder<'_> {
             }
             if let Some(found) = crate::player_constants::write(patch.offset, value) {
                 crate::player_constants::merge(&mut self.plan.player_constants, found);
-                self.said("how the player moves and how long power-ups last");
+                self.said("LumaLink.Patch.PlayerMoves");
                 return;
             }
             if let Some(changes) = known_patches::object_table_write(patch.offset, value) {
                 self.plan.object_changes.extend(changes);
-                self.said("which objects the game can create");
+                self.said("LumaLink.Patch.ObjectTable");
                 return;
             }
             if let Some(change) = known_patches::treasure_box_write(patch.offset, value) {
                 self.plan.object_changes.push(change);
-                self.said("what treasure boxes hold");
+                self.said("LumaLink.Patch.TreasureBoxes");
                 return;
             }
             if let Some(change) = known_patches::display_model_write(patch.offset, value) {
                 self.plan.object_changes.push(change);
-                self.said("the models shown before things are collected");
+                self.said("LumaLink.Patch.CollectModels");
                 return;
             }
             if let Some(target) = known_patches::comet_limit_hook(patch.offset, value) {
@@ -557,19 +589,21 @@ impl Builder<'_> {
         if !patch.search && !patch.ocarina && patch.value_file.is_empty() {
             if let Some((dome, rows)) = known_patches::comet_table(patch.offset, &patch.value) {
                 self.plan.comet_schedule.insert(dome, rows);
-                if !self.plan.known_patches.iter().any(|w| w == "the comets' schedule") {
-                    self.plan.known_patches.push("the comets' schedule".to_string());
+                if !self.plan.known_patches.iter().any(|w| w == "LumaLink.Patch.CometSchedule") {
+                    self.plan.known_patches.push("LumaLink.Patch.CometSchedule".to_string());
                 }
                 return;
             }
         }
         if patch.ocarina || !patch.value_file.is_empty() {
             let kind = if patch.ocarina { "code list" } else { "code file" };
-            self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: 0, kind });
+            let value = from_file.unwrap_or_default();
+            self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: 0, kind, release: self.version, own, value, original: patch.original.clone() });
             return;
         }
         if patch.search {
-            self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: patch.value.len(), kind: "search" });
+            let (release, value, original) = (self.version, patch.value.clone(), patch.original.clone());
+            self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: patch.value.len(), kind: "search", release, own, value, original });
             return;
         }
         match known_patches::find(patch.offset, &patch.value) {
@@ -581,7 +615,10 @@ impl Builder<'_> {
                     self.plan.known_patches.push(known.what.to_string());
                 }
             }
-            None => self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: patch.value.len(), kind: "memory" }),
+            None => {
+                let (release, value, original) = (self.version, patch.value.clone(), patch.original.clone());
+                self.plan.unknown_code.push(UnknownCode { address: patch.offset, bytes: patch.value.len(), kind: "memory", release, own, value, original });
+            }
         }
     }
 
@@ -598,14 +635,15 @@ impl Builder<'_> {
             match self.spare.comet_limits(target) {
                 Some((rows, used)) => {
                     self.plan.comet_limits.extend(rows);
-                    self.said("comet time limits");
+                    self.said("LumaLink.Patch.CometLimits");
                     left.retain(|(at, size)| !used.iter().any(|(u, length)| u >= at && *u < at + *size as u32 && *length > 0));
                 }
-                None => self.plan.unknown_code.push(UnknownCode { address: target, bytes: 4, kind: "memory" }),
+                None => self.plan.unknown_code.push(UnknownCode { address: target, bytes: 4, kind: "memory", release: self.version, own: target, ..Default::default() }),
             }
         }
         for (at, size) in left {
-            self.plan.unknown_code.push(UnknownCode { address: at, bytes: size, kind: "memory" });
+            let value = self.spare.parts.iter().find(|(start, bytes)| *start == at && bytes.len() == size).map(|(_, b)| b.clone()).unwrap_or_default();
+            self.plan.unknown_code.push(UnknownCode { address: at, bytes: size, kind: "memory", release: self.version, own: at, value, original: Vec::new() });
         }
     }
 
@@ -828,18 +866,14 @@ impl Builder<'_> {
             Ok(disc) => disc,
             Err(error) => {
                 // Other XML beside the patches (a tool's settings) is not a patch.
-                self.plan.note(Level::Info, format!("{name}: not used: {error:#}"));
+                self.plan.note(Level::Info, say!("LumaLink.Plan.NotUsed", name = name, why = format!("{error:#}")));
                 return Ok(false);
             }
         };
         // A mod written with one version in mind still works on the others: their files are the same.
         let wanted = disc.target.game.clone().unwrap_or_default();
         if !wanted.is_empty() && wanted.get(..3).unwrap_or(&wanted) != ANY_VERSION {
-            let described = match wanted.get(..3) {
-                Some("SB4") | Some("SB5") => "Super Mario Galaxy 2".to_string(),
-                _ => "another game".to_string(),
-            };
-            self.plan.for_another_game.get_or_insert(described);
+            self.plan.for_another_game.get_or_insert(wanted);
             return Ok(false);
         }
         let game_id = version_named(&disc.target, game_id);
@@ -875,7 +909,7 @@ impl Builder<'_> {
             let name = entry.file_name().to_string_lossy().to_string();
             let Ok(kind) = entry.file_type() else { continue };
             if kind.is_symlink() {
-                self.plan.note(Level::Info, format!("/{name}: a link, left out"));
+                self.plan.note(Level::Info, say!("LumaLink.Plan.Link", path = format!("/{name}")));
                 continue;
             }
             if kind.is_dir() {
@@ -887,6 +921,11 @@ impl Builder<'_> {
             }
         }
     }
+}
+
+/// Whether a game id (`SB4E01`, or its first three letters) is Super Mario Galaxy 2's.
+pub fn is_galaxy_2(id: &str) -> bool {
+    matches!(id.get(..3), Some("SB4") | Some("SB5"))
 }
 
 /// The plan for a mod on this disc. `store`, when given, is the player's imported game; without it some placements cannot
@@ -918,7 +957,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
     }
     if !used_patch && !layout.patches.is_empty() {
         if let Some(wanted) = builder.plan.for_another_game.clone() {
-            builder.plan.note(Level::Blocked, format!("This mod is for {wanted}."));
+            builder.plan.note(Level::Blocked, if is_galaxy_2(&wanted) { say!("LumaLink.Plan.ForGalaxy2") } else { say!("LumaLink.Plan.ForOtherGame", game = wanted) });
         }
     }
     if !builder.plan.blocked() {
@@ -931,13 +970,13 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                 Some(s) => {
                     let paths = s.named(&name);
                     if paths.is_empty() {
-                        builder.plan.note(Level::Lost, format!("{name}: no file of that name in the game"));
+                        builder.plan.note(Level::Lost, say!("LumaLink.Plan.NoFileNamed", name = name));
                     }
                     for path in paths {
                         builder.plan.set(&path, file);
                     }
                 }
-                None => builder.plan.note(Level::Lost, format!("{name}: a loose file; choose your game store so it can be placed")),
+                None => builder.plan.note(Level::Lost, say!("LumaLink.Plan.LooseFile", name = name)),
             }
         }
         if builder.plan.for_another_game.is_none() {
@@ -951,7 +990,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                         let list = crate::gecko::from_gct(&bytes);
                         if !list.writes.is_empty() {
                             for _ in 0..list.other {
-                                builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                                builder.plan.unknown_code.push(UnknownCode { kind: "code list", ..Default::default() });
                             }
                             builder.writes(&layout.root, &layout.root, list.writes);
                             continue;
@@ -974,7 +1013,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                             }
                             let list = crate::gecko::from_pairs(&one.pairs);
                             for _ in 0..list.other {
-                                builder.plan.unknown_code.push(UnknownCode { address: 0, bytes: 0, kind: "code list" });
+                                builder.plan.unknown_code.push(UnknownCode { kind: "code list", ..Default::default() });
                             }
                             writes.extend(list.writes);
                         }
@@ -982,7 +1021,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
                     }
                     continue;
                 }
-                builder.plan.note(Level::Lost, format!("{name} is compiled Wii code and can't be converted. What it does has to be written again as a Nebula plugin."));
+                builder.plan.note(Level::Lost, say!("LumaLink.Plan.CompiledCode", name = name));
             }
         }
     }
@@ -1003,7 +1042,7 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
         builder.plan.adds_galaxy = !new_galaxies.is_empty();
         builder.plan.new_galaxies = new_galaxies.into_iter().collect();
         if builder.plan.adds_galaxy {
-            builder.plan.note(Level::Info, "It adds a galaxy, so it keeps its own saves.");
+            builder.plan.note(Level::Info, say!("LumaLink.Plan.OwnSaves"));
         }
     }
     // Options all off and nothing else would be a mod that does nothing when it's turned on.
@@ -1016,12 +1055,13 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
     }
     let count = builder.plan.unknown_code.len();
     if count != 0 {
-        builder.plan.note(Level::Lost, format!("Most of this mod works. {count} code changes need a Nebula update or a plugin."));
+        game_instructions(&mut builder.plan.unknown_code, store);
+        builder.plan.note(Level::Lost, say!("LumaLink.Plan.CodeChanges", count = count));
     }
     if let Some(pack) = &layout.pack {
         for (game, count) in &pack.other_games {
             if !game_id.starts_with(game.get(..3).unwrap_or(game)) {
-                builder.plan.note(Level::Info, format!("{count} texture pack files are for {game} and were left out"));
+                builder.plan.note(Level::Info, say!("LumaLink.Plan.PackOtherGame", count = count, game = game));
             }
         }
     }
@@ -1033,9 +1073,9 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
     if builder.plan.file_count() == 0 && builder.plan.native_patches.is_empty() && builder.plan.player_constants.is_empty() && builder.plan.object_changes.is_empty() && builder.plan.comet_limits.is_empty() && builder.plan.event_flags.is_empty() && layout.pack.as_ref().is_none_or(|p| p.textures == 0) && !builder.plan.blocked() {
         let other = layout.pack.as_ref().and_then(|p| p.other_games.keys().next().cloned());
         match other {
-            Some(game) if game.starts_with("SB4") => builder.plan.note(Level::Blocked, "These textures are for Super Mario Galaxy 2."),
-            Some(_) => builder.plan.note(Level::Blocked, "These textures are for another game."),
-            None => builder.plan.note(Level::Blocked, "This doesn't look like a mod. Nothing in it could be used."),
+            Some(game) if is_galaxy_2(&game) => builder.plan.note(Level::Blocked, say!("LumaLink.Plan.TexturesGalaxy2")),
+            Some(game) => builder.plan.note(Level::Blocked, say!("LumaLink.Plan.TexturesOtherGame", game = game)),
+            None => builder.plan.note(Level::Blocked, say!("LumaLink.Plan.NotAMod")),
         }
     }
     Ok(builder.plan)
@@ -1044,6 +1084,15 @@ pub fn build(layout: &Layout, game_id: &str, store: Option<&GameStore>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// docs/modding/format/luma.md, section 4's rule for an id: 3 to 64 characters, lowercase letters, digits, `-` and `.`, starting with a
+    /// letter, no `..` (the validator holds the rule; this is its statement for the tests of a converted mod's id).
+    fn valid_id(id: &str) -> bool {
+        (3..=64).contains(&id.len())
+            && id.starts_with(|c: char| c.is_ascii_lowercase())
+            && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.')
+            && !id.contains("..")
+    }
 
     #[test]
     fn a_patch_cannot_name_a_place_outside_the_game() {
@@ -1080,8 +1129,8 @@ mod tests {
     #[test]
     fn any_name_makes_an_id_the_game_reads() {
         for name in ["Aux", "CON", "com1", "!!!", "", "A Very Long Name That Goes On And On And On And On And On And On And On And On", "Kaizo: Rebalanced!"] {
-            assert!(crate::project::valid_id(&slug(name)), "{name:?} -> {}", slug(name));
-            assert!(crate::project::valid_id(&mod_id(name)), "{name:?} -> {}", mod_id(name));
+            assert!(valid_id(&slug(name)), "{name:?} -> {}", slug(name));
+            assert!(valid_id(&mod_id(name)), "{name:?} -> {}", mod_id(name));
         }
     }
 
@@ -1089,7 +1138,7 @@ mod tests {
     fn names_in_other_letters_are_different_mods() {
         let ids: Vec<String> = ["スーパーマリオ", "マリオギャラクシー", "Café Galaxy", "Cafe Galaxy", "Ñandú ".repeat(20).as_str()].iter().map(|n| mod_id(n)).collect();
         for id in &ids {
-            assert!(crate::project::valid_id(id), "{id}");
+            assert!(valid_id(id), "{id}");
         }
         assert_ne!(ids[0], ids[1]);
         assert_ne!(ids[2], ids[3]);
@@ -1154,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    fn a_popular_code_names_the_sample_that_does_it() {
+    fn a_popular_code_is_said_by_what_it_does() {
         let dir = tempfile::tempdir().unwrap();
         let ini = ["[Gecko]", "$Moon Jump [someone]", "C0000000 00000003", "$Hide HUD", "04001000 00000001", "[Gecko_Enabled]", "$Moon Jump"].join("
 ");
@@ -1162,8 +1211,8 @@ mod tests {
         let store = store();
         let plan = build(&Layout::of(dir.path()), "RMGE01", Some(&store)).unwrap();
         let text: Vec<_> = plan.notes.iter().map(|n| n.text.as_str()).collect();
-        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("gecko-moon-jump")), "{text:?}");
-        assert!(!text.iter().any(|t| t.contains("hide-hud")), "a code that is off says nothing: {text:?}");
+        assert!(text.iter().any(|t| t.contains("Moon Jump") && t.contains("rise while jump is held") && t.contains("source/")), "{text:?}");
+        assert!(!text.iter().any(|t| t.contains("HUD hidden")), "a code that is off says nothing: {text:?}");
         assert!(plan.unknown_code.is_empty(), "{:?}", plan.unknown_code);
     }
 
@@ -1210,6 +1259,10 @@ mod tests {
         assert_eq!(plan.native_patches[&known_patches::id::SKELETAL_FISH_BABY_NO_BUBBLE], 1);
         assert_eq!(plan.known_patches.len(), 2);
         assert_eq!(plan.unknown_code.len(), 2);
+        // Each write keeps what it writes and where the patch says, for the list of code changes.
+        for u in plan.unknown_code.iter().filter(|u| u.kind == "memory") {
+            assert!(u.value.len() == u.bytes && u.bytes != 0 && u.release != '\0' && u.own != 0, "{u:?}");
+        }
         assert!(plan.save_folder.is_some());
     }
 

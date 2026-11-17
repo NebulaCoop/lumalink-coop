@@ -1,0 +1,394 @@
+// kit.hud: text, counters, meters and timers in the screen's corners, and a popup, drawn by the game's own layout
+// drawer through svc.ui on LumaKit's layout LumaKitHud (layers/base: eight corners of six rows each and a popup).
+// Elements in one corner stack in the order made; a seventh in a full corner is not shown and its handle is empty
+// (slot 0), which every call takes and does nothing with. A meter is a bar scaled to its share (ui set_scale). The
+// screen ends with each scene (ui alive says so); the kit opens it again and puts every element back.
+
+use svc.ui
+use svc.time
+
+// Where an element stands (in one corner, in the order made: top first for the top corners, bottom first for the
+// bottom ones).
+pub enum Corner { TopLeft, Top, TopRight, Left, Right, BottomLeft, Bottom, BottomRight }
+
+// The handles: the element's slot, 0 when it was not shown. Their functions are also module functions
+// (`hud.set_text(t, s)`).
+pub struct Text {
+    slot: u32
+    fn set(self, s: text) { set_text(self, s) }
+    fn remove(self) { remove_text(self) }
+}
+pub struct Counter {
+    slot: u32
+    fn set(self, value: i64) { set_counter(self, value) }
+    fn remove(self) { remove_counter(self) }
+}
+pub struct Meter {
+    slot: u32
+    max: i32
+    fn set(self, value: i32) { set_meter(self, value) }
+    fn remove(self) { remove_meter(self) }
+}
+pub struct Timer {
+    slot: u32
+    fn set(self, frames: u64) { set_timer(self, frames) }
+    fn run(self, counting: bool) { run_timer(self, counting) }
+    fn remove(self) { remove_timer(self) }
+}
+
+let rows: u32 = 6
+let slots: u32 = 48
+// The layout's pane names, by corner (the order of Corner).
+let codes: list<text> = ["TL", "T", "TR", "L", "R", "BL", "B", "BR"]
+
+var screen: ui.Screen? = none
+var panes: list<ui.Pane> = []
+// Each row's meter bar: its back and its fill.
+var backs: list<ui.Pane> = []
+var fills: list<ui.Pane> = []
+var popup_pane: ui.Pane? = none
+var popup_title: ui.Pane? = none
+var popup_line: ui.Pane? = none
+// Each slot (corner * rows + row): in use, what it shows, the frame it ends at (0: kept), a timer's count and
+// whether it runs.
+var used: list<bool> = []
+var shown: list<text> = []
+var until: list<u64> = []
+var counts: list<u64> = []
+var running: list<bool> = []
+// A meter's share filled, 0 to 1; below 0 the slot is no meter.
+var levels: list<f32> = []
+// The mod each slot was made for (caller()), and the popup's.
+var owners: list<u64> = []
+var popup_owner: u64 = 0
+var frame: u64 = 0
+var popup_left: u32 = 0
+var popup_text: list<text> = []
+
+fn corner_of(at: Corner) -> u32 {
+    match at {
+        Corner.TopLeft => return 0
+        Corner.Top => return 1
+        Corner.TopRight => return 2
+        Corner.Left => return 3
+        Corner.Right => return 4
+        Corner.BottomLeft => return 5
+        Corner.Bottom => return 6
+        Corner.BottomRight => return 7
+    }
+}
+
+fn empty() {
+    if used.len() == 0 {
+        for i in 0..slots {
+            used.push(false)
+            shown.push("")
+            until.push(0)
+            counts.push(0)
+            running.push(false)
+            owners.push(0)
+            levels.push(-1.0)
+        }
+    }
+}
+
+// The screen open and its panes found, every element in use put back; false while no scene runs.
+fn ready() -> bool {
+    if let sc = screen {
+        if ui.alive(sc) {
+            return true
+        }
+        screen = none
+    }
+    // ui.open with no scene up (the boot, a scene being built or taken down, a movie) is the player's mod-log error
+    // Ui.NoScene: the kit asks only while a scene runs, and opens again with the next scene.
+    let st = time.now().state
+    if st != time.State.Play and st != time.State.Menu {
+        return false
+    }
+    let s = ui.open("LumaKitHud", ui.Layer.Hud)
+    if s == none {
+        return false
+    }
+    let sc = s!
+    var found: list<ui.Pane> = []
+    var found_backs: list<ui.Pane> = []
+    var found_fills: list<ui.Pane> = []
+    for c in 0..8 {
+        for r in 0..rows {
+            let p = ui.pane(sc, "{codes[c]}{r}")
+            let k = ui.pane(sc, "{codes[c]}{r}K")
+            let f = ui.pane(sc, "{codes[c]}{r}F")
+            if p == none or k == none or f == none {
+                ui.close(sc)
+                return false
+            }
+            found.push(p!)
+            found_backs.push(k!)
+            found_fills.push(f!)
+        }
+    }
+    panes = found
+    backs = found_backs
+    fills = found_fills
+    popup_pane = ui.pane(sc, "Popup")
+    popup_title = ui.pane(sc, "PopTitle")
+    popup_line = ui.pane(sc, "PopLine")
+    screen = sc
+    for i in 0..slots {
+        if used[i] {
+            put(i)
+        }
+    }
+    if popup_left > 0 {
+        show_popup()
+    }
+    return true
+}
+
+fn put(i: u32) {
+    if screen == none {
+        return
+    }
+    if levels[i] >= 0.0 {
+        ui.set_visible(panes[i], false)
+        ui.set_scale(fills[i], levels[i], 1.0)
+        ui.set_visible(backs[i], true)
+        ui.set_visible(fills[i], true)
+    } else {
+        ui.set_text(panes[i], shown[i])
+        ui.set_visible(panes[i], true)
+    }
+}
+
+fn show_popup() {
+    if let p = popup_title {
+        ui.set_text(p, popup_text[0])
+    }
+    if let p = popup_line {
+        ui.set_text(p, popup_text[1])
+    }
+    if let p = popup_pane {
+        ui.set_visible(p, true)
+    }
+}
+
+// The first free row of the corner, made `s`; 0 when the corner is full.
+fn take(at: Corner, s: text) -> u32 {
+    empty()
+    let c = corner_of(at)
+    for r in 0..rows {
+        let i = c * rows + r
+        if not used[i] {
+            used[i] = true
+            shown[i] = s
+            until[i] = 0
+            running[i] = false
+            counts[i] = 0
+            levels[i] = -1.0
+            owners[i] = caller()
+            if ready() {
+                put(i)
+            }
+            return i + 1
+        }
+    }
+    return 0
+}
+
+fn change(slot: u32, s: text) {
+    if slot == 0 or slot > slots or not used[slot - 1] {
+        return
+    }
+    shown[slot - 1] = s
+    put(slot - 1)
+}
+
+fn free(slot: u32) {
+    if slot == 0 or slot > slots or not used[slot - 1] {
+        return
+    }
+    let i = slot - 1
+    used[i] = false
+    running[i] = false
+    shown[i] = ""
+    let was_meter = levels[i] >= 0.0
+    levels[i] = -1.0
+    if screen != none {
+        ui.set_visible(panes[i], false)
+        if was_meter {
+            ui.set_visible(backs[i], false)
+            ui.set_visible(fills[i], false)
+        }
+    }
+}
+
+fn two(n: u64) -> text {
+    if n < 10 {
+        return "0{n}"
+    }
+    return "{n}"
+}
+
+// Frames as the game's timers show them: minutes, seconds and hundredths at 60 frames a second.
+fn clock(frames: u64) -> text {
+    let seconds = frames / 60
+    let hundredths = (frames % 60) * 100 / 60
+    return "{seconds / 60}:{two(seconds % 60)}.{two(hundredths)}"
+}
+
+// `s` in the corner; with `frames`, it removes itself after that many frames.
+pub fn text(at: Corner, s: text, frames: u32? = none) -> Text {
+    let slot = take(at, s)
+    if slot != 0 {
+        if let f = frames {
+            until[slot - 1] = frame + f as u64
+        }
+    }
+    return Text { slot: slot }
+}
+
+pub fn set_text(t: Text, s: text) {
+    change(t.slot, s)
+}
+
+pub fn remove_text(t: Text) {
+    free(t.slot)
+}
+
+// A number in the corner.
+pub fn counter(at: Corner, value: i64) -> Counter {
+    return Counter { slot: take(at, "{value}") }
+}
+
+pub fn set_counter(c: Counter, value: i64) {
+    change(c.slot, "{value}")
+}
+
+pub fn remove_counter(c: Counter) {
+    free(c.slot)
+}
+
+// A bar of 0 to `max` (less than 1 is taken as 1), empty at first.
+pub fn meter(at: Corner, max: i32) -> Meter {
+    var m = max
+    if m < 1 {
+        m = 1
+    }
+    let slot = take(at, "")
+    if slot != 0 {
+        levels[slot - 1] = 0.0
+        put(slot - 1)
+    }
+    return Meter { slot: slot, max: m }
+}
+
+// The meter's value, held between 0 and its max.
+pub fn set_meter(m: Meter, value: i32) {
+    var v = value
+    if v < 0 {
+        v = 0
+    }
+    if v > m.max {
+        v = m.max
+    }
+    if m.slot == 0 or m.slot > slots or not used[m.slot - 1] {
+        return
+    }
+    levels[m.slot - 1] = v as f32 / m.max as f32
+    put(m.slot - 1)
+}
+
+pub fn remove_meter(m: Meter) {
+    free(m.slot)
+}
+
+// A timer counting up from `frames`, one each frame, shown as minutes, seconds and hundredths.
+pub fn timer(at: Corner, frames: u64 = 0) -> Timer {
+    let slot = take(at, clock(frames))
+    if slot != 0 {
+        counts[slot - 1] = frames
+        running[slot - 1] = true
+    }
+    return Timer { slot: slot }
+}
+
+// The timer shows `frames` and counts on from there.
+pub fn set_timer(t: Timer, frames: u64) {
+    if t.slot == 0 or t.slot > slots or not used[t.slot - 1] {
+        return
+    }
+    counts[t.slot - 1] = frames
+    change(t.slot, clock(frames))
+}
+
+// The timer held (`counting` false) or counting again.
+pub fn run_timer(t: Timer, counting: bool) {
+    if t.slot == 0 or t.slot > slots or not used[t.slot - 1] {
+        return
+    }
+    running[t.slot - 1] = counting
+}
+
+pub fn remove_timer(t: Timer) {
+    free(t.slot)
+}
+
+// The popup, over the middle of the screen for three seconds; a new one replaces the one shown.
+pub fn popup(title: text, line: text) {
+    popup_text = [title, line]
+    popup_left = 180
+    popup_owner = caller()
+    if ready() {
+        show_popup()
+    }
+}
+
+// A mod that made elements was taken out: its elements go, the others stay where they are.
+on mods.stopped(gone) {
+    for i in 0..used.len() as u32 {
+        if used[i] and owners[i] == gone {
+            free(i + 1)
+        }
+    }
+    if popup_left > 0 and popup_owner == gone {
+        popup_left = 0
+        if screen != none {
+            if let p = popup_pane {
+                ui.set_visible(p, false)
+            }
+        }
+    }
+}
+
+on frame {
+    frame += 1
+    if used.len() == 0 and popup_left == 0 {
+        return
+    }
+    if not ready() {
+        return
+    }
+    for i in 0..used.len() as u32 {
+        if not used[i] {
+            continue
+        }
+        if until[i] != 0 and frame >= until[i] {
+            free(i + 1)
+            continue
+        }
+        if running[i] {
+            counts[i] += 1
+            shown[i] = clock(counts[i])
+            put(i)
+        }
+    }
+    if popup_left > 0 {
+        popup_left -= 1
+        if popup_left == 0 {
+            if let p = popup_pane {
+                ui.set_visible(p, false)
+            }
+        }
+    }
+}
