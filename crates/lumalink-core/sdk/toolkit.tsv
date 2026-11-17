@@ -3402,6 +3402,7 @@ coop.max_players		c
 coop.me		c
 coop.mission	c	c
 coop.name	c	g
+coop.palette_color	cc	c
 coop.ping	c	c
 coop.same_place	c	c
 coop.set_description	cgc	
@@ -3430,6 +3431,7 @@ nebula.character_find	g	c
 nebula.character_id	c	g
 nebula.character_like	c	c
 nebula.character_name	c	g
+nebula.character_palette_color	cc	c
 nebula.circle_wipe	cc	c
 nebula.declare_item	hcc	
 nebula.distance_to_player	h	d
@@ -3502,6 +3504,7 @@ nebula.player		h
 nebula.player_character		c
 nebula.player_constant	cgc	d
 nebula.player_front	E	
+nebula.player_palette_color	c	c
 nebula.pointer	J	c
 nebula.rail_at_end	h	c
 nebula.rail_coord	h	d
@@ -3513,6 +3516,7 @@ nebula.registry_find	gg	c
 nebula.registry_mod	gc	g
 nebula.registry_name	gc	g
 nebula.registry_value	gg	c
+nebula.reset_player_palette		
 nebula.save_game		
 nebula.screen_position	eJ	c
 nebula.set_animation_frame	hd	
@@ -3531,6 +3535,7 @@ nebula.set_player_character	c	c
 nebula.set_player_character_id	g	c
 nebula.set_player_constant	cgcd	c
 nebula.set_player_control	c	
+nebula.set_player_palette_color	cc	c
 nebula.set_position	he	
 nebula.set_rail_coord	hd	
 nebula.set_rotation	he	
