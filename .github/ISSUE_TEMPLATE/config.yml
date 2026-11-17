@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/NebulaCoop/nebula-coop/security/advisories/new
+    about: LumaLink security problems are reported privately through nebula-coop. Never in a public issue.
+  - name: A problem in upstream LumaLink
+    url: https://github.com/keepvaibin/lumalink/issues
+    about: Bugs that happen with a plain .luma in keepvaibin's LumaLink and have nothing to do with co-op.
+  - name: A problem in the game or a co-op room
+    url: https://github.com/NebulaCoop/nebula-coop/issues/new/choose
+    about: Crashes, co-op and anything that isn't LumaLink's.
+  - name: Ask on Discord
+    url: https://discord.gg/hNbgFtaRHv
+    about: Modding questions and help.

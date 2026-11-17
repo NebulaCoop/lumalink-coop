@@ -1,0 +1,87 @@
+name: Bug report
+description: LumaLink, a built-in co-op mod, or the coop.* LumaScript API does something wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        - **Security problems** (a mod or an archive that makes LumaLink or the game run code, or read or write
+          outside its folder) must **not** go here. Report them privately as nebula-coop's
+          [SECURITY.md](https://github.com/NebulaCoop/nebula-coop/blob/main/SECURITY.md) says.
+        - **Does it happen in upstream [LumaLink](https://github.com/keepvaibin/lumalink) with a plain `.luma` too?**
+          If it has nothing to do with co-op, it may belong
+          [upstream](https://github.com/keepvaibin/lumalink/issues).
+        - A mod that misbehaves in a co-op room, where LumaLink packed it fine, is usually a
+          [nebula-coop](https://github.com/NebulaCoop/nebula-coop/issues/new/choose) issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - A built-in mod (Personal Star Counter, Character Movesets)
+        - The coop.* LumaScript API or .lumacoop files
+        - Converting or packing a mod or texture pack
+        - Building mod code (LumaScript, the compiler)
+        - The LumaLink window
+        - The command line
+        - Setup or updates
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The command you ran or what you clicked. For a mod, attach it or link it, or give the smallest folder that shows the problem.
+      placeholder: |
+        lumalink pack -o my-mod.lumacoop my-mod
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What LumaLink said
+      description: The full output or error, copied as text.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: LumaLink version
+      description: "`lumalink --version`. For a built-in mod, give the Nebula Co-Op version instead."
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows (x64)
+        - Windows on ARM
+        - Linux (x64)
+        - Linux (ARM64)
+        - macOS (Apple silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the game log (`%LOCALAPPDATA%\NebulaCoop\logs\latest.log`) for a mod that failed in game, or what you've already tried.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send it
+      options:
+        - label: I searched the open issues and this isn't already reported.
+          required: true
+        - label: This is not a security problem (those go through [SECURITY.md](https://github.com/NebulaCoop/nebula-coop/blob/main/SECURITY.md)).
+          required: true
