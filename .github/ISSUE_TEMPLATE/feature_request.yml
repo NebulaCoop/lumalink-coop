@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a coop.* API call, a built-in mod change, or something new for LumaLink.
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - The coop.* LumaScript API
+        - A built-in mod
+        - LumaLink itself (window, command line, converting, packing)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: For an API call, sketch how a mod would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What it would let a mod do, or the problem it solves.
+    validations:
+      required: true
+  - type: textarea
+    id: sm64coopdx
+    attributes:
+      label: The sm64coopdx equivalent
+      description: The coop.* API follows sm64coopdx's Lua API. If it has this (a function, hook or field), name it.
